@@ -4,6 +4,7 @@ import { runMigrations } from '@/db/migrations'
 import { NAV_THEME } from '@/lib/theme'
 import { ThemeProvider } from '@react-navigation/native'
 import { PortalHost } from '@rn-primitives/portal'
+import { setAudioModeAsync } from 'expo-audio'
 import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
@@ -23,6 +24,11 @@ export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false)
 
   useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: 'mixWithOthers',
+    }).catch(console.warn)
+
     runMigrations()
       .then(() => setDbReady(true))
       .then(() => SplashScreen.hideAsync())
