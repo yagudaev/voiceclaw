@@ -3,6 +3,7 @@ export {
   getConversations,
   getConversation,
   deleteConversation,
+  updateConversationVapi,
 } from './conversations'
 export { addMessage, getMessages } from './messages'
 export { getSetting, setSetting, getAllSettings } from './settings'

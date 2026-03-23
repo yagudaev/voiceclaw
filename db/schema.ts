@@ -6,7 +6,9 @@ export const CREATE_TABLES = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL DEFAULT 'New Conversation',
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    vapi_session_id TEXT,
+    vapi_last_chat_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS messages (
