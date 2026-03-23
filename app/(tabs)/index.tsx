@@ -5,9 +5,10 @@ import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { TranscriptEvent } from '@/modules/expo-vapi'
+import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native'
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
@@ -156,6 +157,15 @@ export default function ChatScreen() {
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={startNewConversation} className="mr-2 p-2">
+              <PlusIcon size={22} color={Platform.OS === 'ios' ? '#007AFF' : '#000'} />
+            </Pressable>
+          ),
+        }}
+      />
       {/* Messages */}
       <FlatList
         ref={flatListRef}
@@ -193,9 +203,6 @@ export default function ChatScreen() {
 
       {/* Input Bar */}
       <View className="flex-row items-center gap-2 border-t border-border px-4 py-3">
-        <Button variant="ghost" size="icon" className="rounded-full" onPress={startNewConversation}>
-          <Icon as={PlusIcon} size={20} className="text-foreground" />
-        </Button>
         {!isCallActive && (
           <Button variant="secondary" size="icon" className="rounded-full" onPress={toggleCall}>
             <Icon as={MicIcon} size={20} className="text-foreground" />
