@@ -1,0 +1,23 @@
+node_modules/
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+ios/
+android/
+
+# macOS
+.DS_Store
+
+# env
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
