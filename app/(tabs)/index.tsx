@@ -3,17 +3,16 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db'
+import { getApiConfig, streamCompletion } from '@/lib/chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
-import type { TranscriptEvent } from '@/modules/expo-vapi'
+import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
-import type { SpeechEvent } from '@/modules/expo-vapi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
-
   return (
     <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
@@ -35,9 +34,10 @@ export default function ChatScreen() {
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [vapiReady, setVapiReady] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [streamingText, setStreamingText] = useState<string | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
 
-  // Initialize Vapi lazily (called before starting a call)
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
     const apiKey = await getSetting('vapi_api_key')
@@ -52,16 +52,17 @@ export default function ChatScreen() {
     }
   }, [vapiReady])
 
-  // Subscribe to Vapi events
   useEffect(() => {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
         setIsCallActive(true)
+        setIsConnecting(false)
       }),
       ExpoVapiModule.addListener('onCallEnd', () => {
         setIsCallActive(false)
         setIsMuted(false)
         setIsThinking(false)
+        setIsConnecting(false)
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
         if (event.type === 'final' && conversationId) {
@@ -70,14 +71,10 @@ export default function ChatScreen() {
         }
       }),
       ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
-        if (event.role === 'assistant') {
-          setIsThinking(false)
-        }
+        if (event.role === 'assistant') setIsThinking(false)
       }),
       ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
-        if (event.role === 'user') {
-          setIsThinking(true)
-        }
+        if (event.role === 'user') setIsThinking(true)
       }),
       ExpoVapiModule.addListener('onError', async (event) => {
         console.error('[Vapi]', event.message)
@@ -88,7 +85,6 @@ export default function ChatScreen() {
         }
       }),
     ]
-
     return () => subs.forEach((s) => s.remove())
   }, [conversationId])
 
@@ -98,92 +94,100 @@ export default function ChatScreen() {
     setMessages([])
   }, [])
 
-  useEffect(() => {
-    startNewConversation()
-  }, [startNewConversation])
+  useEffect(() => { startNewConversation() }, [startNewConversation])
 
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
-    const msgs = await getMessages(conversationId)
-    setMessages(msgs)
+    setMessages(await getMessages(conversationId))
   }, [conversationId])
 
-  useEffect(() => {
-    loadMessages()
-  }, [loadMessages])
+  useEffect(() => { loadMessages() }, [loadMessages])
 
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !conversationId) return
-
-    await addMessage(conversationId, 'user', inputText.trim())
+    const text = inputText.trim()
     setInputText('')
+
+    await addMessage(conversationId, 'user', text)
     await loadMessages()
 
-    // If Vapi is active, send via Vapi. Otherwise fake response.
     if (isCallActive && vapiReady) {
-      try {
-        await ExpoVapiModule.sendMessage(inputText.trim())
-      } catch (e) {
-        console.warn('Failed to send via Vapi:', e)
-      }
-    } else {
-      setTimeout(async () => {
-        await addMessage(
-          conversationId,
-          'assistant',
-          'Voice integration is ready — configure your API key in Settings to start.'
-        )
-        await loadMessages()
-      }, 1000)
+      try { await ExpoVapiModule.sendMessage(text) }
+      catch (e) { console.warn('Failed to send via Vapi:', e) }
+      return
     }
+
+    const { apiKey, model, apiUrl } = await getApiConfig()
+    if (!apiKey || !apiUrl) {
+      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
+      await loadMessages()
+      return
+    }
+
+    setIsThinking(true)
+    const allMessages = (await getMessages(conversationId)).map((m) => ({ role: m.role, content: m.content }))
+
+    streamCompletion(allMessages, apiKey, model, apiUrl, {
+      onToken: (text) => {
+        setIsThinking(false)
+        setStreamingText(text)
+      },
+      onDone: async (text) => {
+        setStreamingText(null)
+        await addMessage(conversationId, 'assistant', text || 'No response received.')
+        await loadMessages()
+      },
+      onError: async (error) => {
+        setStreamingText(null)
+        setIsThinking(false)
+        await addMessage(conversationId, 'assistant', `Error: ${error}`)
+        await loadMessages()
+      },
+    })
   }, [inputText, conversationId, loadMessages, isCallActive, vapiReady])
 
   const toggleCall = useCallback(async () => {
     if (isCallActive) {
       await ExpoVapiModule.stopCall()
-    } else {
-      const assistantId = await getSetting('assistant_id')
-      const ready = await ensureVapiReady()
-      if (!assistantId || !ready) {
-        await addMessage(
-          conversationId!,
-          'assistant',
-          'Please configure your Vapi API key and Assistant ID in Settings first.'
-        )
-        await loadMessages()
-        return
-      }
-      const overrides: Record<string, unknown> = {}
-      // Load previous messages as context via system prompt
-      if (conversationId) {
-        const prevMessages = await getMessages(conversationId)
-        if (prevMessages.length > 0) {
-          const history = prevMessages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => `${m.role}: ${m.content}`)
-            .join('\n')
-          overrides.firstMessage = 'Welcome back, continuing our conversation.'
-          overrides.model = {
-            url: 'https://pam.yagudaev.com:8443/v1/chat/completions',
-            provider: 'custom-llm',
-            model: 'openclaw:voice',
-            messages: [
-              {
-                role: 'system',
-                content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.`,
-              },
-            ],
-          }
+      return
+    }
+
+    const assistantId = await getSetting('assistant_id')
+    const ready = await ensureVapiReady()
+    if (!assistantId || !ready) {
+      await addMessage(conversationId!, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+      await loadMessages()
+      return
+    }
+
+    const overrides: Record<string, unknown> = {}
+    if (conversationId) {
+      const prevMessages = await getMessages(conversationId)
+      if (prevMessages.length > 0) {
+        const { apiUrl, model } = await getApiConfig()
+        const history = prevMessages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => `${m.role}: ${m.content}`)
+          .join('\n')
+        overrides.firstMessage = 'Welcome back :)'
+        overrides.model = {
+          url: apiUrl,
+          provider: 'custom-llm',
+          model,
+          messages: [{ role: 'system', content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.` }],
         }
       }
-      try {
-        await ExpoVapiModule.startCall(assistantId, Object.keys(overrides).length > 0 ? overrides : undefined)
-      } catch (e: any) {
-        const errorMsg = e?.message || String(e)
-        console.error('Failed to start call:', errorMsg)
-        await addMessage(conversationId!, 'assistant', `Call failed: ${errorMsg}`)
-        await loadMessages()
-      }
+    }
+
+    try {
+      setIsConnecting(true)
+      await ExpoVapiModule.startCall(assistantId, Object.keys(overrides).length > 0 ? overrides : undefined)
+    } catch (e: any) {
+      setIsConnecting(false)
+      const errorMsg = e?.message || String(e)
+      console.error('Failed to start call:', errorMsg)
+      await addMessage(conversationId!, 'assistant', `Call failed: ${errorMsg}`)
+      await loadMessages()
     }
   }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
 
@@ -192,6 +196,10 @@ export default function ChatScreen() {
     await ExpoVapiModule.setMuted(newMuted)
     setIsMuted(newMuted)
   }, [isMuted])
+
+  const displayMessages = streamingText !== null
+    ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now() }]
+    : messages
 
   return (
     <KeyboardAvoidingView
@@ -207,10 +215,10 @@ export default function ChatScreen() {
           ),
         }}
       />
-      {/* Messages */}
+
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={displayMessages}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => <MessageBubble message={item} />}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
@@ -218,15 +226,12 @@ export default function ChatScreen() {
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center pt-40">
             <Text className="text-lg text-muted-foreground">Start a conversation</Text>
-            <Text className="mt-1 text-sm text-muted-foreground">
-              Type a message or tap the mic to speak
-            </Text>
+            <Text className="mt-1 text-sm text-muted-foreground">Type a message or tap the mic to speak</Text>
           </View>
         }
       />
 
-      {/* Thinking Indicator */}
-      {isThinking && isCallActive && (
+      {isThinking && (
         <View className="flex-row items-center gap-2 px-4 py-2">
           <View className="flex-row items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
             <ActivityIndicator size="small" color="#888" />
@@ -235,14 +240,9 @@ export default function ChatScreen() {
         </View>
       )}
 
-      {/* Voice Controls */}
       {isCallActive && (
         <View className="flex-row items-center justify-center gap-4 border-t border-border bg-muted/50 px-4 py-3">
-          <Button
-            variant={isMuted ? 'destructive' : 'secondary'}
-            size="icon"
-            className="rounded-full"
-            onPress={toggleMute}>
+          <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
             <Icon as={isMuted ? MicOffIcon : MicIcon} size={20} className="text-foreground" />
           </Button>
           <Button variant="destructive" className="rounded-full px-6" onPress={toggleCall}>
@@ -252,11 +252,12 @@ export default function ChatScreen() {
         </View>
       )}
 
-      {/* Input Bar */}
       <View className="flex-row items-center gap-2 border-t border-border px-4 py-3">
         {!isCallActive && (
-          <Button variant="secondary" size="icon" className="rounded-full" onPress={toggleCall}>
-            <Icon as={MicIcon} size={20} className="text-foreground" />
+          <Button variant="secondary" size="icon" className="rounded-full" onPress={toggleCall} disabled={isConnecting}>
+            {isConnecting
+              ? <ActivityIndicator size="small" color="#888" />
+              : <Icon as={MicIcon} size={20} className="text-foreground" />}
           </Button>
         )}
         <Input
@@ -267,11 +268,7 @@ export default function ChatScreen() {
           onSubmitEditing={sendMessage}
           returnKeyType="send"
         />
-        <Button
-          size="icon"
-          className="rounded-full"
-          onPress={sendMessage}
-          disabled={!inputText.trim()}>
+        <Button size="icon" className="rounded-full" onPress={sendMessage} disabled={!inputText.trim()}>
           <Icon as={SendIcon} size={20} className="text-primary-foreground" />
         </Button>
       </View>
