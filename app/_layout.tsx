@@ -1,19 +1,37 @@
 import '@/global.css';
 
+import { runMigrations } from '@/db/migrations';
 import { NAV_THEME } from '@/lib/theme';
 import { ThemeProvider } from '@react-navigation/native';
 import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
 
+SplashScreen.preventAutoHideAsync();
+
 export default function RootLayout() {
   const { colorScheme } = useColorScheme();
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    runMigrations()
+      .then(() => setDbReady(true))
+      .then(() => SplashScreen.hideAsync())
+      .catch(console.error);
+  }, []);
+
+  if (!dbReady) {
+    return <View className="flex-1 bg-background" />;
+  }
 
   return (
     <ThemeProvider value={NAV_THEME[colorScheme ?? 'light']}>

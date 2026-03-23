@@ -2,36 +2,10 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
-import { MicIcon, MicOffIcon, PhoneOffIcon, SendIcon } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { addMessage, createConversation, getMessages, type Message } from '@/db';
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
-
-type Message = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-};
-
-const FAKE_MESSAGES: Message[] = [
-  { id: '1', role: 'assistant', content: 'Hello! How can I help you today?', timestamp: new Date() },
-  { id: '2', role: 'user', content: 'Tell me about voice AI assistants.', timestamp: new Date() },
-  {
-    id: '3',
-    role: 'assistant',
-    content:
-      'Voice AI assistants use speech recognition and natural language processing to understand and respond to spoken commands. They can be powered by various LLMs and voice engines.',
-    timestamp: new Date(),
-  },
-  { id: '4', role: 'user', content: 'Can you give me an example?', timestamp: new Date() },
-  {
-    id: '5',
-    role: 'assistant',
-    content:
-      'Sure! Vapi is a platform that lets you build voice AI agents. You can configure different models, voices, and behaviors for your assistant.',
-    timestamp: new Date(),
-  },
-];
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
@@ -51,38 +25,51 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>(FAKE_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isCallActive, setIsCallActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const flatListRef = useRef<FlatList<Message>>(null);
 
-  const sendMessage = useCallback(() => {
-    if (!inputText.trim()) return;
+  const startNewConversation = useCallback(async () => {
+    const conv = await createConversation();
+    setConversationId(conv.id);
+    setMessages([]);
+  }, []);
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: inputText.trim(),
-      timestamp: new Date(),
-    };
+  // Start a new conversation on mount
+  useEffect(() => {
+    startNewConversation();
+  }, [startNewConversation]);
 
-    setMessages((prev) => [...prev, newMessage]);
+  const loadMessages = useCallback(async () => {
+    if (!conversationId) return;
+    const msgs = await getMessages(conversationId);
+    setMessages(msgs);
+  }, [conversationId]);
+
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  const sendMessage = useCallback(async () => {
+    if (!inputText.trim() || !conversationId) return;
+
+    await addMessage(conversationId, 'user', inputText.trim());
     setInputText('');
+    await loadMessages();
 
-    // Fake assistant response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'This is a placeholder response. Voice integration coming soon!',
-          timestamp: new Date(),
-        },
-      ]);
+    // Fake assistant response (will be replaced by Vapi)
+    setTimeout(async () => {
+      await addMessage(
+        conversationId,
+        'assistant',
+        'This is a placeholder response. Voice integration coming soon!',
+      );
+      await loadMessages();
     }, 1000);
-  }, [inputText]);
+  }, [inputText, conversationId, loadMessages]);
 
   const toggleCall = useCallback(() => {
     setIsCallActive((prev) => !prev);
@@ -102,10 +89,18 @@ export default function ChatScreen() {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => <MessageBubble message={item} />}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        ListEmptyComponent={
+          <View className="flex-1 items-center justify-center pt-40">
+            <Text className="text-muted-foreground text-lg">Start a conversation</Text>
+            <Text className="text-muted-foreground mt-1 text-sm">
+              Type a message or tap the mic to speak
+            </Text>
+          </View>
+        }
       />
 
       {/* Voice Controls */}
@@ -127,6 +122,13 @@ export default function ChatScreen() {
 
       {/* Input Bar */}
       <View className="flex-row items-center gap-2 border-t border-border px-4 py-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          onPress={startNewConversation}>
+          <Icon as={PlusIcon} size={20} className="text-foreground" />
+        </Button>
         {!isCallActive && (
           <Button variant="secondary" size="icon" className="rounded-full" onPress={toggleCall}>
             <Icon as={MicIcon} size={20} className="text-foreground" />
@@ -140,7 +142,11 @@ export default function ChatScreen() {
           onSubmitEditing={sendMessage}
           returnKeyType="send"
         />
-        <Button size="icon" className="rounded-full" onPress={sendMessage} disabled={!inputText.trim()}>
+        <Button
+          size="icon"
+          className="rounded-full"
+          onPress={sendMessage}
+          disabled={!inputText.trim()}>
           <Icon as={SendIcon} size={20} className="text-primary-foreground" />
         </Button>
       </View>

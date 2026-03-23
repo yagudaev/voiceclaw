@@ -1,4 +1,3 @@
-import { Icon } from '@/components/ui/icon';
 import { Tabs } from 'expo-router';
 import { HistoryIcon, MessageCircleIcon, SettingsIcon } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
@@ -26,7 +25,7 @@ export default function TabLayout() {
         options={{
           title: 'Chat',
           tabBarIcon: ({ color, size }) => (
-            <Icon as={MessageCircleIcon} size={size} style={{ color }} />
+            <MessageCircleIcon color={color} size={size} />
           ),
         }}
       />
@@ -35,7 +34,7 @@ export default function TabLayout() {
         options={{
           title: 'History',
           tabBarIcon: ({ color, size }) => (
-            <Icon as={HistoryIcon} size={size} style={{ color }} />
+            <HistoryIcon color={color} size={size} />
           ),
         }}
       />
@@ -44,7 +43,7 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <Icon as={SettingsIcon} size={size} style={{ color }} />
+            <SettingsIcon color={color} size={size} />
           ),
         }}
       />

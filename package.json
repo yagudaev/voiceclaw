@@ -24,6 +24,7 @@
     "expo-linking": "~55.0.7",
     "expo-router": "~55.0.5",
     "expo-splash-screen": "~55.0.10",
+    "expo-sqlite": "~55.0.11",
     "expo-status-bar": "~55.0.4",
     "expo-system-ui": "~55.0.9",
     "lucide-react-native": "^0.545.0",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/react": "~19.2.10",
+    "expo-mcp": "~0.2.1",
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "typescript": "~5.9.2"
