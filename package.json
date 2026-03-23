@@ -4,10 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "expo start -c",
+    "ios": "APP_VARIANT=development expo run:ios",
+    "ios:device": "APP_VARIANT=development expo run:ios --device",
+    "ios:release": "expo run:ios --device --configuration Release",
     "android": "expo start -c --android",
-    "ios": "expo start -c --ios",
     "web": "expo start -c --web",
-    "clean": "rm -rf .expo node_modules"
+    "clean": "rm -rf .expo node_modules ios android"
   },
   "dependencies": {
     "@react-navigation/native": "^7.0.0",
