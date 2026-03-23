@@ -2,9 +2,10 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db'
+import { addMessage, createConversation, getConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
+import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
@@ -63,11 +64,14 @@ export default function ChatScreen() {
         setIsCallActive(true)
         setIsConnecting(false)
       }),
-      ExpoVapiModule.addListener('onCallEnd', () => {
+      ExpoVapiModule.addListener('onCallEnd', async () => {
         setIsCallActive(false)
         setIsMuted(false)
         setIsThinking(false)
         setIsConnecting(false)
+        if (conversationId) {
+          syncConversationToVapi(conversationId)
+        }
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
         if (event.type === 'final' && conversationId) {
@@ -110,14 +114,14 @@ export default function ChatScreen() {
 
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || !conversationId) return
-    const text = inputText.trim()
+    const userInput = inputText.trim()
     setInputText('')
 
-    await addMessage(conversationId, 'user', text)
+    await addMessage(conversationId, 'user', userInput)
     await loadMessages()
 
     if (isCallActive && vapiReady) {
-      try { await ExpoVapiModule.sendMessage(text) }
+      try { await ExpoVapiModule.sendMessage(userInput) }
       catch (e) { console.warn('Failed to send via Vapi:', e) }
       return
     }
@@ -143,6 +147,7 @@ export default function ChatScreen() {
         setStreamingText(null)
         await addMessage(conversationId, 'assistant', text || 'No response received.')
         await loadMessages()
+        syncTextMessageToVapi(conversationId, userInput)
       },
       onError: async (error) => {
         setStreamingText(null)
@@ -408,4 +413,54 @@ function parseContent(content: string): ContentPart[] {
   }
 
   return expanded.length > 0 ? expanded : [{ type: 'text', text: content }]
+}
+
+async function syncTextMessageToVapi(conversationId: number, userInput: string) {
+  try {
+    const conv = await getConversation(conversationId)
+    if (!conv) return
+
+    const result = await sendVapiChat(userInput, {
+      sessionId: conv.vapi_session_id || undefined,
+      previousChatId: conv.vapi_last_chat_id || undefined,
+    })
+
+    if (result?.id) {
+      await updateConversationVapi(
+        conversationId,
+        result.sessionId || conv.vapi_session_id,
+        result.id
+      )
+    }
+  } catch (e) {
+    console.warn('[VapiSync] Failed to sync text message:', e)
+  }
+}
+
+async function syncConversationToVapi(conversationId: number) {
+  try {
+    const conv = await getConversation(conversationId)
+    if (!conv) return
+
+    // If we already have a session, the messages were synced incrementally
+    if (conv.vapi_last_chat_id) return
+
+    const msgs = await getMessages(conversationId)
+    if (msgs.length === 0) return
+
+    const result = await syncMessagesToVapi(
+      msgs.map((m) => ({ role: m.role, content: m.content })),
+      { sessionId: conv.vapi_session_id || undefined }
+    )
+
+    if (result.sessionId || result.lastChatId) {
+      await updateConversationVapi(
+        conversationId,
+        result.sessionId || conv.vapi_session_id,
+        result.lastChatId || conv.vapi_last_chat_id
+      )
+    }
+  } catch (e) {
+    console.warn('[VapiSync] Failed to sync conversation:', e)
+  }
 }
