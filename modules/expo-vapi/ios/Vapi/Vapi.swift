@@ -19,6 +19,26 @@ public struct VapiMessage: Encodable {
     }
 }
 
+// Function call result message sent back to Vapi when a client-side function call completes
+public struct VapiFunctionCallResultMessage: Encodable {
+    public let type = "function-call-result"
+    public let functionCallResult: FunctionCallResult
+
+    public struct FunctionCallResult: Encodable {
+        public let forwardToClientEnabled: Bool
+        public let result: String
+        public let name: String
+    }
+
+    public init(name: String, result: String) {
+        self.functionCallResult = FunctionCallResult(
+            forwardToClientEnabled: false,
+            result: result,
+            name: name
+        )
+    }
+}
+
 public final class Vapi: CallClientDelegate {
     
     // MARK: - Supporting Types
@@ -162,12 +182,12 @@ public final class Vapi: CallClientDelegate {
         do {
           // Use JSONEncoder to convert the message to JSON Data
           let jsonData = try JSONEncoder().encode(message)
-          
+
           // Debugging: Print the JSON data to verify its format (optional)
           if let jsonString = String(data: jsonData, encoding: .utf8) {
               print(jsonString)
           }
-          
+
           // Send the JSON data to all targets
           try await self.call?.sendAppMessage(json: jsonData, to: .all)
       } catch {
@@ -175,6 +195,19 @@ public final class Vapi: CallClientDelegate {
           print("Error encoding message to JSON: \(error)")
           throw error // Re-throw the error to be handled by the caller
       }
+    }
+
+    public func sendRaw<T: Encodable>(message: T) async throws {
+        do {
+            let jsonData = try JSONEncoder().encode(message)
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("[Vapi] Sending raw message: \(jsonString)")
+            }
+            try await self.call?.sendAppMessage(json: jsonData, to: .all)
+        } catch {
+            print("Error encoding raw message to JSON: \(error)")
+            throw error
+        }
     }
 
     public func setMuted(_ muted: Bool) async throws {

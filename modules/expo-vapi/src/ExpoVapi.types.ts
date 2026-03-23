@@ -8,6 +8,11 @@ export type SpeechEvent = {
   role: 'user' | 'assistant'
 }
 
+export type FunctionCallEvent = {
+  name: string
+  parameters: Record<string, unknown>
+}
+
 export type ErrorEvent = {
   message: string
 }
@@ -23,5 +28,6 @@ export type ExpoVapiModuleEvents = {
   onTranscript: (event: TranscriptEvent) => void
   onSpeechStart: (event: SpeechEvent) => void
   onSpeechEnd: (event: SpeechEvent) => void
+  onFunctionCall: (event: FunctionCallEvent) => void
   onError: (event: ErrorEvent) => void
 }
