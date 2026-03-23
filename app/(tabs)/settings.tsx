@@ -50,6 +50,7 @@ export default function SettingsScreen() {
   const [defaultModel, setDefaultModel] = useState('openclaw:voice')
   const [openclawApiKey, setOpenclawApiKey] = useState('')
   const [openclawApiUrl, setOpenclawApiUrl] = useState('')
+  const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -64,6 +65,8 @@ export default function SettingsScreen() {
       if (model) setDefaultModel(model)
       if (ocKey) setOpenclawApiKey(ocKey)
       if (ocUrl) setOpenclawApiUrl(ocUrl)
+      const sp = await getSetting('system_prompt')
+      if (sp) setSystemPrompt(sp)
     })()
   }, [])
 
@@ -73,6 +76,7 @@ export default function SettingsScreen() {
     await setSetting('default_model', defaultModel)
     await setSetting('openclaw_api_key', openclawApiKey)
     await setSetting('openclaw_api_url', openclawApiUrl)
+    await setSetting('system_prompt', systemPrompt)
     setSaved(true)
     Alert.alert('Settings Saved', 'Your settings have been saved successfully.')
     setTimeout(() => setSaved(false), 2000)
@@ -115,6 +119,19 @@ export default function SettingsScreen() {
               onChangeText={setDefaultModel}
               autoCapitalize="none"
               autoCorrect={false}
+            />
+          </View>
+
+          <View className="gap-2">
+            <Text className="text-sm text-muted-foreground">System Prompt</Text>
+            <TextInput
+              className="min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-base text-foreground dark:bg-input/30"
+              placeholder="Default: Keep responses concise. Use markdown for formatting and images when appropriate."
+              placeholderTextColor="#888"
+              value={systemPrompt}
+              onChangeText={setSystemPrompt}
+              multiline
+              textAlignVertical="top"
             />
           </View>
         </Card>

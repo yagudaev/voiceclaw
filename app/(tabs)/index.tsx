@@ -117,7 +117,8 @@ export default function ChatScreen() {
     setIsThinking(true)
     const allMessages = (await getMessages(conversationId)).map((m) => ({ role: m.role, content: m.content }))
 
-    streamCompletion(allMessages, apiKey, model, apiUrl, {
+    const systemPrompt = (await getSetting('system_prompt')) || ''
+    streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, {
       onToken: (text) => {
         setIsThinking(false)
         setStreamingText(text)
@@ -164,7 +165,10 @@ export default function ChatScreen() {
           url: apiUrl,
           provider: 'custom-llm',
           model,
-          messages: [{ role: 'system', content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.` }],
+          messages: [
+            { role: 'system', content: 'You are in voice mode. Keep responses concise and conversational — short sentences, natural speech. No bullet lists, no code blocks. Speak like a human in a phone call. Your identity, personality, and capabilities are defined in your system files. When sharing images or URLs, include them as markdown (e.g. ![description](url)) but never speak the URL aloud — just describe what you created or found.' },
+            { role: 'system', content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.` },
+          ],
         }
       }
     }

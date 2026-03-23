@@ -1,7 +1,7 @@
 import { getSetting } from '@/db'
 import EventSource from 'react-native-sse'
 
-const SYSTEM_PROMPT = 'You are a helpful assistant. Keep responses concise and conversational.'
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.'
 
 type ChatMessage = { role: string, content: string }
 
@@ -10,6 +10,7 @@ export function streamCompletion(
   apiKey: string,
   model: string,
   apiUrl: string,
+  systemPrompt: string,
   {
     onToken,
     onDone,
@@ -21,7 +22,7 @@ export function streamCompletion(
   }
 ) {
   const chatMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt || DEFAULT_SYSTEM_PROMPT },
     ...messages,
   ]
 
