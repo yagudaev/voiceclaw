@@ -94,11 +94,25 @@ public class ExpoVapiModule: Module {
           }
 
         case .error(let error):
+          print("[Vapi] Error: \(error.localizedDescription)")
           self.sendEvent("onError", [
             "message": error.localizedDescription
           ])
 
+        case .hang:
+          print("[Vapi] Hang event received (not ending call — letting server handle disconnect)")
+
+        case .statusUpdate(let status):
+          print("[Vapi] Status: \(status.status)")
+
+        case .conversationUpdate(let update):
+          print("[Vapi] Conversation updated: \(update.conversation.count) messages")
+
+        case .modelOutput(let output):
+          print("[Vapi] Model output: \(output.output.prefix(100))")
+
         default:
+          print("[Vapi] Unhandled event: \(event)")
           break
         }
       }

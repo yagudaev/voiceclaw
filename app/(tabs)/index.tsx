@@ -14,6 +14,20 @@ import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pre
 const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
 const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
 
+const VOICE_SYSTEM_PROMPT = `\
+You are on a live voice call. Keep responses concise and conversational — short \
+sentences, natural speech. No bullet lists, no code blocks. Speak like a human \
+in a phone call. Your identity, personality, and capabilities are defined in \
+your system files.
+
+For long-running tasks (image generation, web searches, file operations, etc.), \
+delegate to a sub-agent so the user gets an immediate response and can keep \
+talking. Acknowledge the request quickly ("On it, generating that now") and let \
+the background work complete asynchronously.
+
+When sharing images or URLs, include them as markdown (e.g. ![description](url)) \
+but never speak the URL aloud — just describe what you created or found.`
+
 type ContentPart = { type: 'text', text: string } | { type: 'image', url: string, alt: string }
 
 export default function ChatScreen() {
@@ -151,7 +165,11 @@ export default function ChatScreen() {
       return
     }
 
-    const overrides: Record<string, unknown> = {}
+    const overrides: Record<string, unknown> = {
+      server: { timeoutSeconds: 45 },
+      silenceTimeoutSeconds: 120,
+      endCallPhrases: [],
+    }
     if (conversationId) {
       const prevMessages = await getMessages(conversationId)
       if (prevMessages.length > 0) {
@@ -166,7 +184,7 @@ export default function ChatScreen() {
           provider: 'custom-llm',
           model,
           messages: [
-            { role: 'system', content: 'You are in voice mode. Keep responses concise and conversational — short sentences, natural speech. No bullet lists, no code blocks. Speak like a human in a phone call. Your identity, personality, and capabilities are defined in your system files. When sharing images or URLs, include them as markdown (e.g. ![description](url)) but never speak the URL aloud — just describe what you created or found.' },
+            { role: 'system', content: VOICE_SYSTEM_PROMPT },
             { role: 'system', content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.` },
           ],
         }

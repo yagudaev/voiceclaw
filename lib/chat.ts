@@ -1,7 +1,10 @@
 import { getSetting } from '@/db'
 import EventSource from 'react-native-sse'
 
-const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.'
+const DEFAULT_SYSTEM_PROMPT = `\
+You are a helpful assistant. Keep responses concise. Use markdown for formatting \
+and images when appropriate. Your identity, personality, and capabilities are \
+defined in your system files.`
 
 type ChatMessage = { role: string, content: string }
 
