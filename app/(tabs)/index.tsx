@@ -67,8 +67,12 @@ export default function ChatScreen() {
           loadMessages()
         }
       }),
-      ExpoVapiModule.addListener('onError', (event) => {
+      ExpoVapiModule.addListener('onError', async (event) => {
         console.error('[Vapi]', event.message)
+        if (conversationId) {
+          await addMessage(conversationId, 'assistant', `Error: ${event.message}`)
+          loadMessages()
+        }
       }),
     ]
 
@@ -140,8 +144,11 @@ export default function ChatScreen() {
       const overrides = modelOverride ? { model: { model: modelOverride } } : undefined
       try {
         await ExpoVapiModule.startCall(assistantId, overrides)
-      } catch (e) {
-        console.error('Failed to start call:', e)
+      } catch (e: any) {
+        const errorMsg = e?.message || String(e)
+        console.error('Failed to start call:', errorMsg)
+        await addMessage(conversationId!, 'assistant', `Call failed: ${errorMsg}`)
+        await loadMessages()
       }
     }
   }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
