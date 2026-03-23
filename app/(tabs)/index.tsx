@@ -1,16 +1,16 @@
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
-import { Text } from '@/components/ui/text';
-import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db';
-import ExpoVapiModule from '@/modules/expo-vapi';
-import type { TranscriptEvent } from '@/modules/expo-vapi';
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { Button } from '@/components/ui/button'
+import { Icon } from '@/components/ui/icon'
+import { Input } from '@/components/ui/input'
+import { Text } from '@/components/ui/text'
+import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db'
+import ExpoVapiModule from '@/modules/expo-vapi'
+import type { TranscriptEvent } from '@/modules/expo-vapi'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native'
 
 function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === 'user';
+  const isUser = message.role === 'user'
 
   return (
     <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
@@ -23,132 +23,132 @@ function MessageBubble({ message }: { message: Message }) {
         </Text>
       </View>
     </View>
-  );
+  )
 }
 
 export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isCallActive, setIsCallActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [conversationId, setConversationId] = useState<number | null>(null);
-  const [vapiReady, setVapiReady] = useState(false);
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const [messages, setMessages] = useState<Message[]>([])
+  const [inputText, setInputText] = useState('')
+  const [isCallActive, setIsCallActive] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [conversationId, setConversationId] = useState<number | null>(null)
+  const [vapiReady, setVapiReady] = useState(false)
+  const flatListRef = useRef<FlatList<Message>>(null)
 
   // Initialize Vapi on mount
   useEffect(() => {
-    (async () => {
-      const apiKey = await getSetting('vapi_api_key');
+    ;(async () => {
+      const apiKey = await getSetting('vapi_api_key')
       if (apiKey) {
         try {
-          await ExpoVapiModule.initialize(apiKey);
-          setVapiReady(true);
+          await ExpoVapiModule.initialize(apiKey)
+          setVapiReady(true)
         } catch (e) {
-          console.warn('Vapi init failed:', e);
+          console.warn('Vapi init failed:', e)
         }
       }
-    })();
-  }, []);
+    })()
+  }, [])
 
   // Subscribe to Vapi events
   useEffect(() => {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
-        setIsCallActive(true);
+        setIsCallActive(true)
       }),
       ExpoVapiModule.addListener('onCallEnd', () => {
-        setIsCallActive(false);
-        setIsMuted(false);
+        setIsCallActive(false)
+        setIsMuted(false)
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
         if (event.type === 'final' && conversationId) {
-          await addMessage(conversationId, event.role, event.text);
-          loadMessages();
+          await addMessage(conversationId, event.role, event.text)
+          loadMessages()
         }
       }),
       ExpoVapiModule.addListener('onError', (event) => {
-        console.error('[Vapi]', event.message);
+        console.error('[Vapi]', event.message)
       }),
-    ];
+    ]
 
-    return () => subs.forEach((s) => s.remove());
-  }, [conversationId]);
+    return () => subs.forEach((s) => s.remove())
+  }, [conversationId])
 
   const startNewConversation = useCallback(async () => {
-    const conv = await createConversation();
-    setConversationId(conv.id);
-    setMessages([]);
-  }, []);
+    const conv = await createConversation()
+    setConversationId(conv.id)
+    setMessages([])
+  }, [])
 
   useEffect(() => {
-    startNewConversation();
-  }, [startNewConversation]);
+    startNewConversation()
+  }, [startNewConversation])
 
   const loadMessages = useCallback(async () => {
-    if (!conversationId) return;
-    const msgs = await getMessages(conversationId);
-    setMessages(msgs);
-  }, [conversationId]);
+    if (!conversationId) return
+    const msgs = await getMessages(conversationId)
+    setMessages(msgs)
+  }, [conversationId])
 
   useEffect(() => {
-    loadMessages();
-  }, [loadMessages]);
+    loadMessages()
+  }, [loadMessages])
 
   const sendMessage = useCallback(async () => {
-    if (!inputText.trim() || !conversationId) return;
+    if (!inputText.trim() || !conversationId) return
 
-    await addMessage(conversationId, 'user', inputText.trim());
-    setInputText('');
-    await loadMessages();
+    await addMessage(conversationId, 'user', inputText.trim())
+    setInputText('')
+    await loadMessages()
 
     // If Vapi is active, send via Vapi. Otherwise fake response.
     if (isCallActive && vapiReady) {
       try {
-        await ExpoVapiModule.sendMessage(inputText.trim());
+        await ExpoVapiModule.sendMessage(inputText.trim())
       } catch (e) {
-        console.warn('Failed to send via Vapi:', e);
+        console.warn('Failed to send via Vapi:', e)
       }
     } else {
       setTimeout(async () => {
         await addMessage(
           conversationId,
           'assistant',
-          'Voice integration is ready — configure your API key in Settings to start.',
-        );
-        await loadMessages();
-      }, 1000);
+          'Voice integration is ready — configure your API key in Settings to start.'
+        )
+        await loadMessages()
+      }, 1000)
     }
-  }, [inputText, conversationId, loadMessages, isCallActive, vapiReady]);
+  }, [inputText, conversationId, loadMessages, isCallActive, vapiReady])
 
   const toggleCall = useCallback(async () => {
     if (isCallActive) {
-      await ExpoVapiModule.stopCall();
+      await ExpoVapiModule.stopCall()
     } else {
-      const assistantId = await getSetting('assistant_id');
+      const assistantId = await getSetting('assistant_id')
       if (!assistantId || !vapiReady) {
         await addMessage(
           conversationId!,
           'assistant',
-          'Please configure your Vapi API key and Assistant ID in Settings first.',
-        );
-        await loadMessages();
-        return;
+          'Please configure your Vapi API key and Assistant ID in Settings first.'
+        )
+        await loadMessages()
+        return
       }
-      const modelOverride = await getSetting('default_model');
-      const overrides = modelOverride ? { model: { model: modelOverride } } : undefined;
+      const modelOverride = await getSetting('default_model')
+      const overrides = modelOverride ? { model: { model: modelOverride } } : undefined
       try {
-        await ExpoVapiModule.startCall(assistantId, overrides);
+        await ExpoVapiModule.startCall(assistantId, overrides)
       } catch (e) {
-        console.error('Failed to start call:', e);
+        console.error('Failed to start call:', e)
       }
     }
-  }, [isCallActive, vapiReady, conversationId, loadMessages]);
+  }, [isCallActive, vapiReady, conversationId, loadMessages])
 
   const toggleMute = useCallback(async () => {
-    const newMuted = !isMuted;
-    await ExpoVapiModule.setMuted(newMuted);
-    setIsMuted(newMuted);
-  }, [isMuted]);
+    const newMuted = !isMuted
+    await ExpoVapiModule.setMuted(newMuted)
+    setIsMuted(newMuted)
+  }, [isMuted])
 
   return (
     <KeyboardAvoidingView
@@ -165,8 +165,8 @@ export default function ChatScreen() {
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center pt-40">
-            <Text className="text-muted-foreground text-lg">Start a conversation</Text>
-            <Text className="text-muted-foreground mt-1 text-sm">
+            <Text className="text-lg text-muted-foreground">Start a conversation</Text>
+            <Text className="mt-1 text-sm text-muted-foreground">
               Type a message or tap the mic to speak
             </Text>
           </View>
@@ -192,11 +192,7 @@ export default function ChatScreen() {
 
       {/* Input Bar */}
       <View className="flex-row items-center gap-2 border-t border-border px-4 py-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="rounded-full"
-          onPress={startNewConversation}>
+        <Button variant="ghost" size="icon" className="rounded-full" onPress={startNewConversation}>
           <Icon as={PlusIcon} size={20} className="text-foreground" />
         </Button>
         {!isCallActive && (
@@ -221,5 +217,5 @@ export default function ChatScreen() {
         </Button>
       </View>
     </KeyboardAvoidingView>
-  );
+  )
 }

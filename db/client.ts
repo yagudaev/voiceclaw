@@ -1,3 +1,3 @@
-import * as SQLite from 'expo-sqlite';
+import * as SQLite from 'expo-sqlite'
 
-export const db = SQLite.openDatabaseSync('voiceclaw.db');
+export const db = SQLite.openDatabaseSync('voiceclaw.db')

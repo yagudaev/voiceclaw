@@ -1,27 +1,27 @@
 export type TranscriptEvent = {
-  role: 'user' | 'assistant';
-  text: string;
-  type: 'partial' | 'final';
-};
+  role: 'user' | 'assistant'
+  text: string
+  type: 'partial' | 'final'
+}
 
 export type SpeechEvent = {
-  role: 'user' | 'assistant';
-};
+  role: 'user' | 'assistant'
+}
 
 export type ErrorEvent = {
-  message: string;
-};
+  message: string
+}
 
 export type CallResult = {
-  callId: string;
-  status: string;
-};
+  callId: string
+  status: string
+}
 
 export type ExpoVapiModuleEvents = {
-  onCallStart: () => void;
-  onCallEnd: () => void;
-  onTranscript: (event: TranscriptEvent) => void;
-  onSpeechStart: (event: SpeechEvent) => void;
-  onSpeechEnd: (event: SpeechEvent) => void;
-  onError: (event: ErrorEvent) => void;
-};
+  onCallStart: () => void
+  onCallEnd: () => void
+  onTranscript: (event: TranscriptEvent) => void
+  onSpeechStart: (event: SpeechEvent) => void
+  onSpeechEnd: (event: SpeechEvent) => void
+  onError: (event: ErrorEvent) => void
+}

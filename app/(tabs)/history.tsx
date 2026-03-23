@@ -1,26 +1,26 @@
-import { Card } from '@/components/ui/card';
-import { Text } from '@/components/ui/text';
-import { getConversations, deleteConversation, type Conversation } from '@/db';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, View } from 'react-native';
+import { Card } from '@/components/ui/card'
+import { Text } from '@/components/ui/text'
+import { getConversations, deleteConversation, type Conversation } from '@/db'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, FlatList, Pressable, View } from 'react-native'
 
 export default function HistoryScreen() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([])
 
   const loadConversations = useCallback(async () => {
-    const result = await getConversations();
-    setConversations(result);
-  }, []);
+    const result = await getConversations()
+    setConversations(result)
+  }, [])
 
   useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+    loadConversations()
+  }, [loadConversations])
 
   // Reload when screen comes into focus
   useEffect(() => {
-    const interval = setInterval(loadConversations, 2000);
-    return () => clearInterval(interval);
-  }, [loadConversations]);
+    const interval = setInterval(loadConversations, 2000)
+    return () => clearInterval(interval)
+  }, [loadConversations])
 
   const handleDelete = useCallback(
     (id: number, title: string) => {
@@ -30,14 +30,14 @@ export default function HistoryScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteConversation(id);
-            loadConversations();
+            await deleteConversation(id)
+            loadConversations()
           },
         },
-      ]);
+      ])
     },
-    [loadConversations],
-  );
+    [loadConversations]
+  )
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString('en-US', {
@@ -45,18 +45,16 @@ export default function HistoryScreen() {
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-    });
-  };
+    })
+  }
 
   if (conversations.length === 0) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <Text className="text-muted-foreground text-lg">No conversations yet</Text>
-        <Text className="text-muted-foreground mt-1 text-sm">
-          Start a chat to see your history
-        </Text>
+        <Text className="text-lg text-muted-foreground">No conversations yet</Text>
+        <Text className="mt-1 text-sm text-muted-foreground">Start a chat to see your history</Text>
       </View>
-    );
+    )
   }
 
   return (
@@ -68,8 +66,8 @@ export default function HistoryScreen() {
         renderItem={({ item }) => (
           <Pressable onLongPress={() => handleDelete(item.id, item.title)}>
             <Card className="p-4">
-              <Text className="text-foreground text-base font-medium">{item.title}</Text>
-              <Text className="text-muted-foreground mt-1 text-xs">
+              <Text className="text-base font-medium text-foreground">{item.title}</Text>
+              <Text className="mt-1 text-xs text-muted-foreground">
                 {formatDate(item.updated_at)}
               </Text>
             </Card>
@@ -77,5 +75,5 @@ export default function HistoryScreen() {
         )}
       />
     </View>
-  );
+  )
 }

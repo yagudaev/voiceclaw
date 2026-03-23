@@ -23,4 +23,4 @@ export const CREATE_TABLES = `
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
-`;
+`
