@@ -5,6 +5,8 @@ export type Conversation = {
   title: string
   created_at: number
   updated_at: number
+  vapi_session_id: string | null
+  vapi_last_chat_id: string | null
 }
 
 export async function createConversation(title?: string): Promise<Conversation> {
@@ -18,6 +20,8 @@ export async function createConversation(title?: string): Promise<Conversation> 
     title: title ?? 'New Conversation',
     created_at: now,
     updated_at: now,
+    vapi_session_id: null,
+    vapi_last_chat_id: null,
   }
 }
 
@@ -32,4 +36,15 @@ export async function getConversation(id: number): Promise<Conversation | null> 
 export async function deleteConversation(id: number) {
   await db.runAsync('DELETE FROM messages WHERE conversation_id = ?', [id])
   await db.runAsync('DELETE FROM conversations WHERE id = ?', [id])
+}
+
+export async function updateConversationVapi(
+  id: number,
+  vapiSessionId: string | null,
+  vapiLastChatId: string | null
+) {
+  await db.runAsync(
+    'UPDATE conversations SET vapi_session_id = ?, vapi_last_chat_id = ?, updated_at = ? WHERE id = ?',
+    [vapiSessionId, vapiLastChatId, Date.now(), id]
+  )
 }
