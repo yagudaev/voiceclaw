@@ -7,8 +7,9 @@ import ExpoVapiModule from '@/modules/expo-vapi'
 import type { TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
+import type { SpeechEvent } from '@/modules/expo-vapi'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
@@ -16,9 +17,8 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-          isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
-        }`}>
+        className={`max-w-[80%] rounded-2xl px-4 py-3 ${isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
+          }`}>
         <Text className={`text-sm ${isUser ? 'text-primary-foreground' : 'text-foreground'}`}>
           {message.content}
         </Text>
@@ -34,6 +34,7 @@ export default function ChatScreen() {
   const [isMuted, setIsMuted] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [vapiReady, setVapiReady] = useState(false)
+  const [isThinking, setIsThinking] = useState(false)
   const flatListRef = useRef<FlatList<Message>>(null)
 
   // Initialize Vapi lazily (called before starting a call)
@@ -60,6 +61,7 @@ export default function ChatScreen() {
       ExpoVapiModule.addListener('onCallEnd', () => {
         setIsCallActive(false)
         setIsMuted(false)
+        setIsThinking(false)
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
         if (event.type === 'final' && conversationId) {
@@ -67,8 +69,19 @@ export default function ChatScreen() {
           loadMessages()
         }
       }),
+      ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
+        if (event.role === 'assistant') {
+          setIsThinking(false)
+        }
+      }),
+      ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
+        if (event.role === 'user') {
+          setIsThinking(true)
+        }
+      }),
       ExpoVapiModule.addListener('onError', async (event) => {
         console.error('[Vapi]', event.message)
+        setIsThinking(false)
         if (conversationId) {
           await addMessage(conversationId, 'assistant', `Error: ${event.message}`)
           loadMessages()
@@ -140,10 +153,31 @@ export default function ChatScreen() {
         await loadMessages()
         return
       }
-      const modelOverride = await getSetting('default_model')
-      const overrides = modelOverride ? { model: { model: modelOverride } } : undefined
+      const overrides: Record<string, unknown> = {}
+      // Load previous messages as context via system prompt
+      if (conversationId) {
+        const prevMessages = await getMessages(conversationId)
+        if (prevMessages.length > 0) {
+          const history = prevMessages
+            .filter((m) => m.role === 'user' || m.role === 'assistant')
+            .map((m) => `${m.role}: ${m.content}`)
+            .join('\n')
+          overrides.firstMessage = 'Welcome back, continuing our conversation.'
+          overrides.model = {
+            url: 'https://pam.yagudaev.com:8443/v1/chat/completions',
+            provider: 'custom-llm',
+            model: 'claude-opus-4-6',
+            messages: [
+              {
+                role: 'system',
+                content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.`,
+              },
+            ],
+          }
+        }
+      }
       try {
-        await ExpoVapiModule.startCall(assistantId, overrides)
+        await ExpoVapiModule.startCall(assistantId, Object.keys(overrides).length > 0 ? overrides : undefined)
       } catch (e: any) {
         const errorMsg = e?.message || String(e)
         console.error('Failed to start call:', errorMsg)
@@ -190,6 +224,16 @@ export default function ChatScreen() {
           </View>
         }
       />
+
+      {/* Thinking Indicator */}
+      {isThinking && isCallActive && (
+        <View className="flex-row items-center gap-2 px-4 py-2">
+          <View className="flex-row items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+            <ActivityIndicator size="small" color="#888" />
+            <Text className="text-sm text-muted-foreground">Thinking...</Text>
+          </View>
+        </View>
+      )}
 
       {/* Voice Controls */}
       {isCallActive && (
