@@ -17,7 +17,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yagudaev.voiceclaw"
+      "bundleIdentifier": "com.yagudaev.voiceclaw",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "VoiceClaw needs microphone access for voice calls with your AI assistant.",
+        "UIBackgroundModes": ["audio", "voip"]
+      }
     },
     "android": {
       "adaptiveIcon": {
