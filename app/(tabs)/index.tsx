@@ -165,30 +165,36 @@ export default function ChatScreen() {
       return
     }
 
-    const overrides: Record<string, unknown> = {
-      server: { timeoutSeconds: 45 },
-      silenceTimeoutSeconds: 120,
-      endCallPhrases: [],
-    }
+    const { apiUrl, model } = await getApiConfig()
+    const modelMessages: Array<{ role: string, content: string }> = [
+      { role: 'system', content: VOICE_SYSTEM_PROMPT },
+    ]
+
     if (conversationId) {
       const prevMessages = await getMessages(conversationId)
       if (prevMessages.length > 0) {
-        const { apiUrl, model } = await getApiConfig()
         const history = prevMessages
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => `${m.role}: ${m.content}`)
           .join('\n')
-        overrides.firstMessage = 'Welcome back :)'
-        overrides.model = {
-          url: apiUrl,
-          provider: 'custom-llm',
-          model,
-          messages: [
-            { role: 'system', content: VOICE_SYSTEM_PROMPT },
-            { role: 'system', content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.` },
-          ],
-        }
+        modelMessages.push({
+          role: 'system',
+          content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.`,
+        })
       }
+    }
+
+    const overrides: Record<string, unknown> = {
+      server: { timeoutSeconds: 45 },
+      silenceTimeoutSeconds: 120,
+      endCallPhrases: [],
+      firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
+      model: {
+        url: apiUrl,
+        provider: 'custom-llm',
+        model,
+        messages: modelMessages,
+      },
     }
 
     try {
