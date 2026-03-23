@@ -30,6 +30,7 @@ export async function getConversation(id: number): Promise<Conversation | null> 
 }
 
 export async function deleteConversation(id: number) {
+  await db.runAsync('DELETE FROM conversation_summaries WHERE conversation_id = ?', [id])
   await db.runAsync('DELETE FROM messages WHERE conversation_id = ?', [id])
   await db.runAsync('DELETE FROM conversations WHERE id = ?', [id])
 }

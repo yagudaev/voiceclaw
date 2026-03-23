@@ -6,7 +6,9 @@ export {
 } from './conversations'
 export { addMessage, getMessages } from './messages'
 export { getSetting, setSetting, getAllSettings } from './settings'
+export { getSummary, saveSummary, deleteSummaries } from './summaries'
 export { runMigrations } from './migrations'
 
 export type { Conversation } from './conversations'
 export type { Message } from './messages'
+export type { ConversationSummary } from './summaries'

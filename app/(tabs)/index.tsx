@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
+import { compactMessages } from '@/lib/compact'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
@@ -129,7 +130,8 @@ export default function ChatScreen() {
     }
 
     setIsThinking(true)
-    const allMessages = (await getMessages(conversationId)).map((m) => ({ role: m.role, content: m.content }))
+    const allDbMessages = await getMessages(conversationId)
+    const allMessages = await compactMessages(conversationId, allDbMessages, apiKey, model, apiUrl)
 
     const systemPrompt = (await getSetting('system_prompt')) || ''
     streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, {
@@ -165,7 +167,7 @@ export default function ChatScreen() {
       return
     }
 
-    const { apiUrl, model } = await getApiConfig()
+    const { apiKey, apiUrl, model } = await getApiConfig()
     const modelMessages: Array<{ role: string, content: string }> = [
       { role: 'system', content: VOICE_SYSTEM_PROMPT },
     ]
@@ -173,13 +175,24 @@ export default function ChatScreen() {
     if (conversationId) {
       const prevMessages = await getMessages(conversationId)
       if (prevMessages.length > 0) {
-        const history = prevMessages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
+        const compacted = apiKey && apiUrl
+          ? await compactMessages(conversationId, prevMessages, apiKey, model, apiUrl)
+          : prevMessages.map((m) => ({ role: m.role, content: m.content }))
+
+        const summaryMsg = compacted.find((m) => m.role === 'system' && m.content.startsWith('Previous conversation summary:'))
+        const historyMsgs = compacted.filter((m) => m.role !== 'system')
+
+        const history = historyMsgs
           .map((m) => `${m.role}: ${m.content}`)
           .join('\n')
+        const contextParts = []
+        if (summaryMsg) contextParts.push(summaryMsg.content)
+        if (history) contextParts.push(`Recent messages:\n${history}`)
+        contextParts.push('Continue the conversation naturally from where we left off.')
+
         modelMessages.push({
           role: 'system',
-          content: `Previous conversation context:\n${history}\n\nContinue the conversation naturally from where we left off.`,
+          content: contextParts.join('\n\n'),
         })
       }
     }
