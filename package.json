@@ -22,6 +22,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "^55.0.0",
+    "expo-audio": "^55.0.9",
     "expo-constants": "~55.0.7",
     "expo-linking": "~55.0.7",
     "expo-router": "~55.0.5",

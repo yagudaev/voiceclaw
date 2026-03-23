@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
+import { useCallSounds } from '@/lib/sounds'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
@@ -43,6 +44,9 @@ export default function ChatScreen() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
+  const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
+  const soundsRef = useRef({ playJoin, playEnd, startThinking, stopThinking })
+  soundsRef.current = { playJoin, playEnd, startThinking, stopThinking }
 
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
@@ -63,12 +67,15 @@ export default function ChatScreen() {
       ExpoVapiModule.addListener('onCallStart', () => {
         setIsCallActive(true)
         setIsConnecting(false)
+        soundsRef.current.playJoin()
       }),
       ExpoVapiModule.addListener('onCallEnd', async () => {
         setIsCallActive(false)
         setIsMuted(false)
         setIsThinking(false)
         setIsConnecting(false)
+        soundsRef.current.stopThinking()
+        soundsRef.current.playEnd()
         if (conversationId) {
           syncConversationToVapi(conversationId)
         }
@@ -80,14 +87,21 @@ export default function ChatScreen() {
         }
       }),
       ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
-        if (event.role === 'assistant') setIsThinking(false)
+        if (event.role === 'assistant') {
+          setIsThinking(false)
+          soundsRef.current.stopThinking()
+        }
       }),
       ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
-        if (event.role === 'user') setIsThinking(true)
+        if (event.role === 'user') {
+          setIsThinking(true)
+          soundsRef.current.startThinking()
+        }
       }),
       ExpoVapiModule.addListener('onError', async (event) => {
         console.error('[Vapi]', event.message)
         setIsThinking(false)
+        soundsRef.current.stopThinking()
         if (conversationId) {
           await addMessage(conversationId, 'assistant', `Error: ${event.message}`)
           loadMessages()
