@@ -35,20 +35,20 @@ export default function ChatScreen() {
   const [vapiReady, setVapiReady] = useState(false)
   const flatListRef = useRef<FlatList<Message>>(null)
 
-  // Initialize Vapi on mount
-  useEffect(() => {
-    ;(async () => {
-      const apiKey = await getSetting('vapi_api_key')
-      if (apiKey) {
-        try {
-          await ExpoVapiModule.initialize(apiKey)
-          setVapiReady(true)
-        } catch (e) {
-          console.warn('Vapi init failed:', e)
-        }
-      }
-    })()
-  }, [])
+  // Initialize Vapi lazily (called before starting a call)
+  const ensureVapiReady = useCallback(async (): Promise<boolean> => {
+    if (vapiReady) return true
+    const apiKey = await getSetting('vapi_api_key')
+    if (!apiKey) return false
+    try {
+      await ExpoVapiModule.initialize(apiKey)
+      setVapiReady(true)
+      return true
+    } catch (e) {
+      console.warn('Vapi init failed:', e)
+      return false
+    }
+  }, [vapiReady])
 
   // Subscribe to Vapi events
   useEffect(() => {
@@ -125,7 +125,8 @@ export default function ChatScreen() {
       await ExpoVapiModule.stopCall()
     } else {
       const assistantId = await getSetting('assistant_id')
-      if (!assistantId || !vapiReady) {
+      const ready = await ensureVapiReady()
+      if (!assistantId || !ready) {
         await addMessage(
           conversationId!,
           'assistant',
@@ -142,7 +143,7 @@ export default function ChatScreen() {
         console.error('Failed to start call:', e)
       }
     }
-  }, [isCallActive, vapiReady, conversationId, loadMessages])
+  }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
