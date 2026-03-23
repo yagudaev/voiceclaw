@@ -1,16 +1,19 @@
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, setSetting } from '@/db'
+import { EyeIcon, EyeOffIcon } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native'
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native'
 
 export default function SettingsScreen() {
   const [vapiApiKey, setVapiApiKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [defaultModel, setDefaultModel] = useState('')
   const [saved, setSaved] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -43,14 +46,24 @@ export default function SettingsScreen() {
 
           <View className="gap-2">
             <Text className="text-sm text-muted-foreground">API Key</Text>
-            <Input
-              placeholder="Enter your Vapi API key"
-              value={vapiApiKey}
-              onChangeText={setVapiApiKey}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View className="flex-row items-center gap-2">
+              <Input
+                className="flex-1"
+                placeholder="Enter your Vapi API key"
+                value={vapiApiKey}
+                onChangeText={setVapiApiKey}
+                secureTextEntry={!showApiKey}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable onPress={() => setShowApiKey((prev) => !prev)} className="p-2">
+                <Icon
+                  as={showApiKey ? EyeOffIcon : EyeIcon}
+                  size={20}
+                  className="text-muted-foreground"
+                />
+              </Pressable>
+            </View>
           </View>
 
           <View className="gap-2">
