@@ -1,14 +1,11 @@
 import ExpoModulesCore
 import Combine
 
-// Forward declaration — Vapi SDK will be linked via SPM in the Xcode project
-// import Vapi
-
 public class ExpoVapiModule: Module {
-  // private var vapi: Vapi.Vapi?
-  // private var cancellables = Set<AnyCancellable>()
-  private var isCallActive = false
-  private var isMicMuted = false
+  private var vapi: Vapi?
+  private var cancellables = Set<AnyCancellable>()
+  private var callActive = false
+  private var micMuted = false
 
   public func definition() -> ModuleDefinition {
     Name("ExpoVapi")
@@ -22,68 +19,47 @@ public class ExpoVapiModule: Module {
       "onError"
     )
 
-    // Initialize Vapi with a public key
     AsyncFunction("initialize") { (publicKey: String) in
-      // TODO: Uncomment when Vapi SDK is linked
-      // self.vapi = Vapi.Vapi(publicKey: publicKey)
-      // self.subscribeToEvents()
+      self.vapi = Vapi(publicKey: publicKey)
+      self.subscribeToEvents()
     }
 
-    // Start a voice call
     AsyncFunction("startCall") { (assistantId: String, overrides: [String: Any]?) -> [String: Any] in
-      guard !self.isCallActive else {
-        throw Exception(name: "ERR_CALL_IN_PROGRESS", description: "A call is already in progress")
+      guard let vapi = self.vapi else {
+        throw Exception(name: "ERR_NOT_INITIALIZED", description: "Call initialize() first")
       }
 
-      // TODO: Uncomment when Vapi SDK is linked
-      // let response = try await self.vapi?.start(
-      //   assistantId: assistantId,
-      //   assistantOverrides: overrides ?? [:]
-      // )
+      let response = try await vapi.start(
+        assistantId: assistantId,
+        assistantOverrides: overrides ?? [:]
+      )
 
-      self.isCallActive = true
-      self.sendEvent("onCallStart", [:])
-
-      // Simulate for now
-      return ["callId": "stub-\(Date().timeIntervalSince1970)", "status": "started"]
+      return ["callId": response.id, "status": "started"]
     }
 
-    // Stop the current call
     AsyncFunction("stopCall") { () in
-      // TODO: Uncomment when Vapi SDK is linked
-      // self.vapi?.stop()
-      self.isCallActive = false
-      self.sendEvent("onCallEnd", [:])
+      self.vapi?.stop()
     }
 
-    // Set microphone mute state
     AsyncFunction("setMuted") { (muted: Bool) in
-      // TODO: Uncomment when Vapi SDK is linked
-      // try await self.vapi?.setMuted(muted)
-      self.isMicMuted = muted
+      try await self.vapi?.setMuted(muted)
+      self.micMuted = muted
     }
 
-    // Check if a call is active
     Function("isCallActive") { () -> Bool in
-      return self.isCallActive
+      return self.callActive
     }
 
-    // Check if microphone is muted
     Function("isMuted") { () -> Bool in
-      return self.isMicMuted
+      return self.micMuted
     }
 
-    // Send a text message during a call
     AsyncFunction("sendMessage") { (content: String) in
-      // TODO: Uncomment when Vapi SDK is linked
-      // let message = VapiMessage(type: "add-message", role: "user", content: content)
-      // try await self.vapi?.send(message: message)
+      let message = VapiMessage(type: "add-message", role: "user", content: content)
+      try await self.vapi?.send(message: message)
     }
   }
 
-  // MARK: - Event subscription (uncomment when Vapi SDK is linked)
-
-  /*
   private func subscribeToEvents() {
     guard let vapi = vapi else { return }
 
@@ -94,12 +70,12 @@ public class ExpoVapiModule: Module {
 
         switch event {
         case .callDidStart:
-          self.isCallActive = true
+          self.callActive = true
           self.sendEvent("onCallStart", [:])
 
         case .callDidEnd:
-          self.isCallActive = false
-          self.isMicMuted = false
+          self.callActive = false
+          self.micMuted = false
           self.sendEvent("onCallEnd", [:])
 
         case .transcript(let transcript):
@@ -128,5 +104,4 @@ public class ExpoVapiModule: Module {
       }
       .store(in: &cancellables)
   }
-  */
 }

@@ -1,5 +1,3 @@
-require 'json'
-
 Pod::Spec.new do |s|
   s.name           = 'ExpoVapi'
   s.version        = '1.0.0'
@@ -15,14 +13,11 @@ Pod::Spec.new do |s|
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
+    'FRAMEWORK_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Frameworks/Daily.xcframework/ios-arm64" "$(PODS_TARGET_SRCROOT)/Frameworks/Daily.xcframework/ios-arm64_x86_64-simulator"',
+    'SWIFT_INCLUDE_PATHS' => '"$(PODS_TARGET_SRCROOT)/Frameworks/Daily.xcframework/ios-arm64/Daily.framework/Modules" "$(PODS_TARGET_SRCROOT)/Frameworks/Daily.xcframework/ios-arm64_x86_64-simulator/Daily.framework/Modules"',
   }
 
-  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
-
-  # Add Vapi Swift SDK via SPM
-  spm_dependency(s,
-    url: 'https://github.com/VapiAI/ios',
-    requirement: { kind: 'branch', branch: 'main' },
-    products: ['Vapi']
-  )
+  s.source_files = "*.swift", "Vapi/**/*.swift"
+  s.vendored_frameworks = "Frameworks/Daily.xcframework"
+  s.exclude_files = "Frameworks/**/*.h", "Frameworks/**/*.modulemap"
 end
