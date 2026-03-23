@@ -161,7 +161,7 @@ export default function ChatScreen() {
         options={{
           headerRight: () => (
             <Pressable onPress={startNewConversation} className="mr-2 p-2">
-              <PlusIcon size={22} color={Platform.OS === 'ios' ? '#007AFF' : '#000'} />
+              <PlusIcon size={22} color="#fff" />
             </Pressable>
           ),
         }}
