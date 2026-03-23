@@ -166,7 +166,7 @@ export default function ChatScreen() {
           overrides.model = {
             url: 'https://pam.yagudaev.com:8443/v1/chat/completions',
             provider: 'custom-llm',
-            model: 'claude-opus-4-6',
+            model: 'openclaw:voice',
             messages: [
               {
                 role: 'system',
