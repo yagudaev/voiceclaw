@@ -10,6 +10,7 @@ declare class ExpoVapiModule extends NativeModule<ExpoVapiModuleEvents> {
   isCallActive(): boolean
   isMuted(): boolean
   sendMessage(content: string): Promise<void>
+  sendFunctionCallResult(name: string, result: string): Promise<void>
 }
 
 export default requireNativeModule<ExpoVapiModule>('ExpoVapi')

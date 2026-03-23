@@ -8,7 +8,7 @@ import { compactMessages } from '@/lib/compact'
 import { useCallSounds } from '@/lib/sounds'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
-import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
+import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -29,7 +29,39 @@ talking. Acknowledge the request quickly ("On it, generating that now") and let 
 the background work complete asynchronously.
 
 When sharing images or URLs, include them as markdown (e.g. ![description](url)) \
-but never speak the URL aloud — just describe what you created or found.`
+but never speak the URL aloud — just describe what you created or found.
+
+## Display Tool
+
+You have a \`displayText\` function that writes content to the user's screen \
+WITHOUT it being spoken aloud. Use it for:
+- URLs, links, or code snippets
+- Long text the user asked you to write (emails, summaries, lists)
+- Image markdown (![desc](url))
+- Any content better read than heard
+
+After calling displayText, briefly tell the user verbally, e.g. "I've put that \
+on your screen" or "Check your display". Keep the spoken part short — the detail \
+is on screen.`
+
+const DISPLAY_TEXT_FUNCTION = {
+  name: 'displayText',
+  description: 'Write content to the user\'s screen without it being spoken aloud by TTS. Use for URLs, code, long text, images, or anything better read than heard.',
+  parameters: {
+    type: 'object',
+    properties: {
+      text: {
+        type: 'string',
+        description: 'The content to display. Supports markdown including image syntax ![alt](url).',
+      },
+      title: {
+        type: 'string',
+        description: 'Optional short title shown above the content.',
+      },
+    },
+    required: ['text'],
+  },
+}
 
 type ContentPart = { type: 'text', text: string } | { type: 'image', url: string, alt: string }
 
@@ -96,6 +128,24 @@ export default function ChatScreen() {
         if (event.role === 'user') {
           setIsThinking(true)
           soundsRef.current.startThinking()
+        }
+      }),
+      ExpoVapiModule.addListener('onFunctionCall', async (event: FunctionCallEvent) => {
+        if (event.name === 'displayText' && conversationId) {
+          const text = (event.parameters.text as string) || ''
+          const title = event.parameters.title as string | undefined
+          const displayContent = title ? `**${title}**\n\n${text}` : text
+          await addMessage(conversationId, 'assistant', displayContent)
+          loadMessages()
+
+          try {
+            await ExpoVapiModule.sendFunctionCallResult(
+              'displayText',
+              JSON.stringify({ status: 'displayed', length: text.length })
+            )
+          } catch (e) {
+            console.warn('[DisplayText] Failed to send function call result:', e)
+          }
         }
       }),
       ExpoVapiModule.addListener('onError', async (event) => {
@@ -220,12 +270,22 @@ export default function ChatScreen() {
       server: { timeoutSeconds: 45 },
       silenceTimeoutSeconds: 120,
       endCallPhrases: [],
+      clientMessages: [
+        'transcript',
+        'hang',
+        'function-call',
+        'speech-update',
+        'status-update',
+        'conversation-update',
+        'model-output',
+      ],
       firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
       model: {
         url: apiUrl,
         provider: 'custom-llm',
         model,
         messages: modelMessages,
+        functions: [DISPLAY_TEXT_FUNCTION],
       },
     }
 
