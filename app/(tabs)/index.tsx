@@ -9,22 +9,12 @@ import type { SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === 'user'
-  return (
-    <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
-      <View
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
-          }`}>
-        <Text className={`text-sm ${isUser ? 'text-primary-foreground' : 'text-foreground'}`}>
-          {message.content}
-        </Text>
-      </View>
-    </View>
-  )
-}
+const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
+const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
+
+type ContentPart = { type: 'text', text: string } | { type: 'image', url: string, alt: string }
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -274,4 +264,107 @@ export default function ChatScreen() {
       </View>
     </KeyboardAvoidingView>
   )
+}
+
+// --- Helper Components ---
+
+function ChatImage({ url }: { url: string }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  if (error) {
+    return (
+      <View className="my-2 items-center justify-center rounded-lg bg-muted/50 p-4">
+        <Text className="text-xs text-muted-foreground">Image failed to load</Text>
+      </View>
+    )
+  }
+
+  return (
+    <View className="my-2">
+      {loading && (
+        <View className="absolute inset-0 z-10 items-center justify-center">
+          <ActivityIndicator size="small" color="#888" />
+        </View>
+      )}
+      <Image
+        source={{ uri: url }}
+        className="w-full rounded-lg"
+        style={{ aspectRatio: 1 }}
+        resizeMode="cover"
+        onLoad={() => setLoading(false)}
+        onError={() => { setLoading(false); setError(true) }}
+      />
+    </View>
+  )
+}
+
+function MessageBubble({ message }: { message: Message }) {
+  const isUser = message.role === 'user'
+  const parts = parseContent(message.content)
+
+  return (
+    <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
+      <View
+        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+          isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
+        }`}>
+        {parts.map((part, i) =>
+          part.type === 'image' ? (
+            <ChatImage key={i} url={part.url} />
+          ) : part.text.trim() ? (
+            <Text key={i} className={`text-sm ${isUser ? 'text-primary-foreground' : 'text-foreground'}`}>
+              {part.text.trim()}
+            </Text>
+          ) : null
+        )}
+      </View>
+    </View>
+  )
+}
+
+// --- Helper Functions ---
+
+function parseContent(content: string): ContentPart[] {
+  const parts: ContentPart[] = []
+  let lastIndex = 0
+
+  for (const match of content.matchAll(MD_IMAGE_REGEX)) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', text: content.slice(lastIndex, match.index) })
+    }
+    parts.push({ type: 'image', alt: match[1], url: match[2] })
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: 'text', text: content.slice(lastIndex) })
+  }
+
+  if (parts.length === 0) {
+    parts.push({ type: 'text', text: content })
+  }
+
+  const expanded: ContentPart[] = []
+  for (const part of parts) {
+    if (part.type !== 'text') {
+      expanded.push(part)
+      continue
+    }
+    let textLastIndex = 0
+    for (const match of part.text.matchAll(URL_IMAGE_REGEX)) {
+      const url = match[1]
+      const start = match.index + (match[0].length - url.length)
+      if (start > textLastIndex) {
+        expanded.push({ type: 'text', text: part.text.slice(textLastIndex, start) })
+      }
+      expanded.push({ type: 'image', alt: '', url })
+      textLastIndex = start + url.length
+    }
+    if (textLastIndex < part.text.length) {
+      expanded.push({ type: 'text', text: part.text.slice(textLastIndex) })
+    }
+  }
+
+  return expanded.length > 0 ? expanded : [{ type: 'text', text: content }]
 }
