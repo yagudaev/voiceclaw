@@ -2,7 +2,9 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
-import { addMessage, createConversation, getMessages, type Message } from '@/db';
+import { addMessage, createConversation, getMessages, getSetting, type Message } from '@/db';
+import ExpoVapiModule from '@/modules/expo-vapi';
+import type { TranscriptEvent } from '@/modules/expo-vapi';
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
@@ -30,7 +32,47 @@ export default function ChatScreen() {
   const [isCallActive, setIsCallActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const [vapiReady, setVapiReady] = useState(false);
   const flatListRef = useRef<FlatList<Message>>(null);
+
+  // Initialize Vapi on mount
+  useEffect(() => {
+    (async () => {
+      const apiKey = await getSetting('vapi_api_key');
+      if (apiKey) {
+        try {
+          await ExpoVapiModule.initialize(apiKey);
+          setVapiReady(true);
+        } catch (e) {
+          console.warn('Vapi init failed:', e);
+        }
+      }
+    })();
+  }, []);
+
+  // Subscribe to Vapi events
+  useEffect(() => {
+    const subs = [
+      ExpoVapiModule.addListener('onCallStart', () => {
+        setIsCallActive(true);
+      }),
+      ExpoVapiModule.addListener('onCallEnd', () => {
+        setIsCallActive(false);
+        setIsMuted(false);
+      }),
+      ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
+        if (event.type === 'final' && conversationId) {
+          await addMessage(conversationId, event.role, event.text);
+          loadMessages();
+        }
+      }),
+      ExpoVapiModule.addListener('onError', (event) => {
+        console.error('[Vapi]', event.message);
+      }),
+    ];
+
+    return () => subs.forEach((s) => s.remove());
+  }, [conversationId]);
 
   const startNewConversation = useCallback(async () => {
     const conv = await createConversation();
@@ -38,7 +80,6 @@ export default function ChatScreen() {
     setMessages([]);
   }, []);
 
-  // Start a new conversation on mount
   useEffect(() => {
     startNewConversation();
   }, [startNewConversation]);
@@ -60,25 +101,54 @@ export default function ChatScreen() {
     setInputText('');
     await loadMessages();
 
-    // Fake assistant response (will be replaced by Vapi)
-    setTimeout(async () => {
-      await addMessage(
-        conversationId,
-        'assistant',
-        'This is a placeholder response. Voice integration coming soon!',
-      );
-      await loadMessages();
-    }, 1000);
-  }, [inputText, conversationId, loadMessages]);
+    // If Vapi is active, send via Vapi. Otherwise fake response.
+    if (isCallActive && vapiReady) {
+      try {
+        await ExpoVapiModule.sendMessage(inputText.trim());
+      } catch (e) {
+        console.warn('Failed to send via Vapi:', e);
+      }
+    } else {
+      setTimeout(async () => {
+        await addMessage(
+          conversationId,
+          'assistant',
+          'Voice integration is ready — configure your API key in Settings to start.',
+        );
+        await loadMessages();
+      }, 1000);
+    }
+  }, [inputText, conversationId, loadMessages, isCallActive, vapiReady]);
 
-  const toggleCall = useCallback(() => {
-    setIsCallActive((prev) => !prev);
-    setIsMuted(false);
-  }, []);
+  const toggleCall = useCallback(async () => {
+    if (isCallActive) {
+      await ExpoVapiModule.stopCall();
+    } else {
+      const assistantId = await getSetting('assistant_id');
+      if (!assistantId || !vapiReady) {
+        await addMessage(
+          conversationId!,
+          'assistant',
+          'Please configure your Vapi API key and Assistant ID in Settings first.',
+        );
+        await loadMessages();
+        return;
+      }
+      const modelOverride = await getSetting('default_model');
+      const overrides = modelOverride ? { model: { model: modelOverride } } : undefined;
+      try {
+        await ExpoVapiModule.startCall(assistantId, overrides);
+      } catch (e) {
+        console.error('Failed to start call:', e);
+      }
+    }
+  }, [isCallActive, vapiReady, conversationId, loadMessages]);
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => !prev);
-  }, []);
+  const toggleMute = useCallback(async () => {
+    const newMuted = !isMuted;
+    await ExpoVapiModule.setMuted(newMuted);
+    setIsMuted(newMuted);
+  }, [isMuted]);
 
   return (
     <KeyboardAvoidingView
