@@ -1,14 +1,18 @@
 import { Card } from '@/components/ui/card'
 import { Text } from '@/components/ui/text'
-import { getConversations, deleteConversation, type Conversation } from '@/db'
+import { deleteConversation, getConversationsWithPreview, type ConversationWithPreview } from '@/db'
+import { useConversationContext } from '@/lib/conversation-context'
+import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, FlatList, Pressable, View } from 'react-native'
 
 export default function HistoryScreen() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversations, setConversations] = useState<ConversationWithPreview[]>([])
+  const { selectConversation } = useConversationContext()
+  const router = useRouter()
 
   const loadConversations = useCallback(async () => {
-    const result = await getConversations()
+    const result = await getConversationsWithPreview()
     setConversations(result)
   }, [])
 
@@ -21,6 +25,14 @@ export default function HistoryScreen() {
     const interval = setInterval(loadConversations, 2000)
     return () => clearInterval(interval)
   }, [loadConversations])
+
+  const handleTap = useCallback(
+    (id: number) => {
+      selectConversation(id)
+      router.navigate('/(tabs)')
+    },
+    [selectConversation, router]
+  )
 
   const handleDelete = useCallback(
     (id: number, title: string) => {
@@ -39,15 +51,6 @@ export default function HistoryScreen() {
     [loadConversations]
   )
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })
-  }
-
   if (conversations.length === 0) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
@@ -64,11 +67,22 @@ export default function HistoryScreen() {
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ padding: 16, gap: 8 }}
         renderItem={({ item }) => (
-          <Pressable onLongPress={() => handleDelete(item.id, item.title)}>
+          <Pressable
+            onPress={() => handleTap(item.id)}
+            onLongPress={() => handleDelete(item.id, getDisplayTitle(item))}
+          >
             <Card className="p-4">
-              <Text className="text-base font-medium text-foreground">{item.title}</Text>
+              <Text className="text-base font-medium text-foreground" numberOfLines={1}>
+                {getDisplayTitle(item)}
+              </Text>
+              {item.preview && (
+                <Text className="mt-1 text-sm text-muted-foreground" numberOfLines={2}>
+                  {item.preview}
+                </Text>
+              )}
               <Text className="mt-1 text-xs text-muted-foreground">
                 {formatDate(item.updated_at)}
+                {item.message_count > 0 ? ` \u00B7 ${item.message_count} message${item.message_count === 1 ? '' : 's'}` : ''}
               </Text>
             </Card>
           </Pressable>
@@ -76,4 +90,27 @@ export default function HistoryScreen() {
       />
     </View>
   )
+}
+
+// --- Helper Functions ---
+
+function getDisplayTitle(conversation: ConversationWithPreview): string {
+  if (conversation.title && conversation.title !== 'New Conversation') {
+    return conversation.title
+  }
+  if (conversation.preview) {
+    return conversation.preview.length > 60
+      ? conversation.preview.slice(0, 60) + '...'
+      : conversation.preview
+  }
+  return 'New Conversation'
+}
+
+function formatDate(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }

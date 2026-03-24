@@ -1,6 +1,7 @@
 import '@/global.css'
 
 import { runMigrations } from '@/db/migrations'
+import { ConversationProvider } from '@/lib/conversation-context'
 import { NAV_THEME } from '@/lib/theme'
 import { ThemeProvider } from '@react-navigation/native'
 import { PortalHost } from '@rn-primitives/portal'
@@ -40,12 +41,14 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={NAV_THEME[colorScheme ?? 'light']}>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-      <PortalHost />
-    </ThemeProvider>
+    <ConversationProvider>
+      <ThemeProvider value={NAV_THEME[colorScheme ?? 'light']}>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+        <PortalHost />
+      </ThemeProvider>
+    </ConversationProvider>
   )
 }

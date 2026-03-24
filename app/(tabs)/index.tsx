@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
+import { useConversationContext } from '@/lib/conversation-context'
 import { useCallSounds } from '@/lib/sounds'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
@@ -79,6 +80,7 @@ export default function ChatScreen() {
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
   const soundsRef = useRef({ playJoin, playEnd, startThinking, stopThinking })
   soundsRef.current = { playJoin, playEnd, startThinking, stopThinking }
+  const { selectedConversationId, clearSelection } = useConversationContext()
 
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
@@ -165,9 +167,28 @@ export default function ChatScreen() {
     const conv = await createConversation()
     setConversationId(conv.id)
     setMessages([])
+    setStreamingText(null)
+    setIsThinking(false)
   }, [])
 
-  useEffect(() => { startNewConversation() }, [startNewConversation])
+  const loadConversation = useCallback(async (id: number) => {
+    setConversationId(id)
+    setMessages(await getMessages(id))
+    setStreamingText(null)
+    setIsThinking(false)
+  }, [])
+
+  // Handle conversation selection from History tab
+  useEffect(() => {
+    if (selectedConversationId !== null) {
+      loadConversation(selectedConversationId)
+      clearSelection()
+    }
+  }, [selectedConversationId, loadConversation, clearSelection])
+
+  // Create a new conversation on first mount only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { startNewConversation() }, [])
 
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
