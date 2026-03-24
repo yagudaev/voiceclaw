@@ -39,6 +39,12 @@ export async function deleteConversation(id: number) {
   await db.runAsync('DELETE FROM conversations WHERE id = ?', [id])
 }
 
+export async function deleteAllConversations() {
+  await db.runAsync('DELETE FROM conversation_summaries')
+  await db.runAsync('DELETE FROM messages')
+  await db.runAsync('DELETE FROM conversations')
+}
+
 export async function updateConversationVapi(
   id: number,
   vapiSessionId: string | null,

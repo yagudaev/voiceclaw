@@ -1,6 +1,7 @@
+import { SwipeableRow } from '@/components/swipeable-row'
 import { Card } from '@/components/ui/card'
 import { Text } from '@/components/ui/text'
-import { getConversations, deleteConversation, type Conversation } from '@/db'
+import { deleteAllConversations, deleteConversation, getConversations, type Conversation } from '@/db'
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, FlatList, Pressable, View } from 'react-native'
 
@@ -39,14 +40,23 @@ export default function HistoryScreen() {
     [loadConversations]
   )
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })
-  }
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      'Clear All History',
+      'This will permanently delete all conversations and messages. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteAllConversations()
+            loadConversations()
+          },
+        },
+      ]
+    )
+  }, [loadConversations])
 
   if (conversations.length === 0) {
     return (
@@ -63,17 +73,31 @@ export default function HistoryScreen() {
         data={conversations}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ padding: 16, gap: 8 }}
+        ListHeaderComponent={
+          <Pressable onPress={handleClearAll} className="mb-2 self-end">
+            <Text className="text-sm font-medium text-destructive">Clear All</Text>
+          </Pressable>
+        }
         renderItem={({ item }) => (
-          <Pressable onLongPress={() => handleDelete(item.id, item.title)}>
+          <SwipeableRow onDelete={() => handleDelete(item.id, item.title)}>
             <Card className="p-4">
               <Text className="text-base font-medium text-foreground">{item.title}</Text>
               <Text className="mt-1 text-xs text-muted-foreground">
                 {formatDate(item.updated_at)}
               </Text>
             </Card>
-          </Pressable>
+          </SwipeableRow>
         )}
       />
     </View>
   )
+}
+
+function formatDate(timestamp: number) {
+  return new Date(timestamp).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
