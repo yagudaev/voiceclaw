@@ -1,15 +1,19 @@
 import { SwipeableRow } from '@/components/swipeable-row'
 import { Card } from '@/components/ui/card'
 import { Text } from '@/components/ui/text'
-import { deleteAllConversations, deleteConversation, getConversations, type Conversation } from '@/db'
+import { deleteAllConversations, deleteConversation, getConversationsWithPreview, type ConversationWithPreview } from '@/db'
+import { useConversationContext } from '@/lib/conversation-context'
+import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, FlatList, Pressable, View } from 'react-native'
 
 export default function HistoryScreen() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversations, setConversations] = useState<ConversationWithPreview[]>([])
+  const { selectConversation } = useConversationContext()
+  const router = useRouter()
 
   const loadConversations = useCallback(async () => {
-    const result = await getConversations()
+    const result = await getConversationsWithPreview()
     setConversations(result)
   }, [])
 
@@ -22,6 +26,14 @@ export default function HistoryScreen() {
     const interval = setInterval(loadConversations, 2000)
     return () => clearInterval(interval)
   }, [loadConversations])
+
+  const handleTap = useCallback(
+    (id: number) => {
+      selectConversation(id)
+      router.navigate('/(tabs)')
+    },
+    [selectConversation, router]
+  )
 
   const handleDelete = useCallback(
     (id: number, title: string) => {
@@ -79,13 +91,23 @@ export default function HistoryScreen() {
           </Pressable>
         }
         renderItem={({ item }) => (
-          <SwipeableRow onDelete={() => handleDelete(item.id, item.title)}>
+          <SwipeableRow onDelete={() => handleDelete(item.id, getDisplayTitle(item))}>
+            <Pressable onPress={() => handleTap(item.id)}>
             <Card className="p-4">
-              <Text className="text-base font-medium text-foreground">{item.title}</Text>
+              <Text className="text-base font-medium text-foreground" numberOfLines={1}>
+                {getDisplayTitle(item)}
+              </Text>
+              {item.preview && (
+                <Text className="mt-1 text-sm text-muted-foreground" numberOfLines={2}>
+                  {item.preview}
+                </Text>
+              )}
               <Text className="mt-1 text-xs text-muted-foreground">
                 {formatDate(item.updated_at)}
+                {item.message_count > 0 ? ` \u00B7 ${item.message_count} message${item.message_count === 1 ? '' : 's'}` : ''}
               </Text>
             </Card>
+            </Pressable>
           </SwipeableRow>
         )}
       />
@@ -93,7 +115,21 @@ export default function HistoryScreen() {
   )
 }
 
-function formatDate(timestamp: number) {
+// --- Helper Functions ---
+
+function getDisplayTitle(conversation: ConversationWithPreview): string {
+  if (conversation.title && conversation.title !== 'New Conversation') {
+    return conversation.title
+  }
+  if (conversation.preview) {
+    return conversation.preview.length > 60
+      ? conversation.preview.slice(0, 60) + '...'
+      : conversation.preview
+  }
+  return 'New Conversation'
+}
+
+function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
