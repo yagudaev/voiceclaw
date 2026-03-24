@@ -14,6 +14,7 @@ import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
+import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
@@ -69,6 +70,7 @@ const DISPLAY_TEXT_FUNCTION = {
 type ContentPart = { type: 'text', text: string } | { type: 'image', url: string, alt: string }
 
 export default function ChatScreen() {
+  const { colorScheme } = useColorScheme()
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isCallActive, setIsCallActive] = useState(false)
@@ -388,7 +390,7 @@ export default function ChatScreen() {
         options={{
           headerRight: () => (
             <Pressable onPress={startNewConversation} className="mr-2 p-2">
-              <PlusIcon size={22} color="#fff" />
+              <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
             </Pressable>
           ),
         }}
