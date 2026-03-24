@@ -39,6 +39,13 @@ export async function deleteConversation(id: number) {
   await db.runAsync('DELETE FROM conversations WHERE id = ?', [id])
 }
 
+export async function updateConversationTitle(id: number, title: string) {
+  await db.runAsync(
+    'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?',
+    [title, Date.now(), id]
+  )
+}
+
 export async function updateConversationVapi(
   id: number,
   vapiSessionId: string | null,
