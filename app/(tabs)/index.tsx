@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
+import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
@@ -116,6 +117,7 @@ export default function ChatScreen() {
         if (event.type === 'final' && conversationId) {
           await addMessage(conversationId, event.role, event.text)
           loadMessages()
+          maybeGenerateTitle(conversationId)
         }
       }),
       ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
@@ -211,6 +213,7 @@ export default function ChatScreen() {
         setStreamingText(null)
         await addMessage(conversationId, 'assistant', text || 'No response received.')
         await loadMessages()
+        maybeGenerateTitle(conversationId)
         syncTextMessageToVapi(conversationId, userInput)
       },
       onError: async (error) => {
