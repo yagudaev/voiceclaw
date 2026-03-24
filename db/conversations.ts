@@ -25,8 +25,23 @@ export async function createConversation(title?: string): Promise<Conversation> 
   }
 }
 
+export type ConversationWithPreview = Conversation & {
+  preview: string | null
+  message_count: number
+}
+
 export async function getConversations(): Promise<Conversation[]> {
   return db.getAllAsync<Conversation>('SELECT * FROM conversations ORDER BY updated_at DESC')
+}
+
+export async function getConversationsWithPreview(): Promise<ConversationWithPreview[]> {
+  return db.getAllAsync<ConversationWithPreview>(
+    `SELECT c.*,
+      (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at ASC LIMIT 1) as preview,
+      (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
+    FROM conversations c
+    ORDER BY c.updated_at DESC`
+  )
 }
 
 export async function getConversation(id: number): Promise<Conversation | null> {
