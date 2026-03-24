@@ -8,11 +8,12 @@ import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
+import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SendIcon } from 'lucide-react-native'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
@@ -82,6 +83,29 @@ export default function ChatScreen() {
   const soundsRef = useRef({ playJoin, playEnd, startThinking, stopThinking })
   soundsRef.current = { playJoin, playEnd, startThinking, stopThinking }
   const { selectedConversationId, clearSelection } = useConversationContext()
+  const userInitiatedEndRef = useRef(false)
+  const wasCallActiveRef = useRef(false)
+  const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
+  const lastAssistantIdRef = useRef<string | null>(null)
+
+  const reconnectCall = useCallback(async () => {
+    const assistantId = lastAssistantIdRef.current
+    if (!assistantId) {
+      throw new Error('No previous call configuration to reconnect with')
+    }
+    const overrides = lastCallOverridesRef.current
+    setIsConnecting(true)
+    try {
+      await ExpoVapiModule.startCall(assistantId, overrides ?? undefined)
+    } catch (e) {
+      setIsConnecting(false)
+      throw e
+    }
+  }, [])
+
+  const { state: reconnectState, trigger: triggerReconnect, cancel: cancelReconnect, retry: manualRetry } = useAutoReconnect({
+    onReconnect: reconnectCall,
+  })
 
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
@@ -102,17 +126,31 @@ export default function ChatScreen() {
       ExpoVapiModule.addListener('onCallStart', () => {
         setIsCallActive(true)
         setIsConnecting(false)
+        wasCallActiveRef.current = true
+        cancelReconnect()
         soundsRef.current.playJoin()
       }),
       ExpoVapiModule.addListener('onCallEnd', async () => {
+        const wasActive = wasCallActiveRef.current
+        const wasUserInitiated = userInitiatedEndRef.current
         setIsCallActive(false)
         setIsMuted(false)
         setIsThinking(false)
         setIsConnecting(false)
+        wasCallActiveRef.current = false
+        userInitiatedEndRef.current = false
         soundsRef.current.stopThinking()
-        soundsRef.current.playEnd()
-        if (conversationId) {
-          syncConversationToVapi(conversationId)
+
+        if (wasActive && !wasUserInitiated) {
+          // Unexpected disconnect -- attempt auto-reconnect
+          console.log('[Chat] Unexpected disconnect detected, triggering auto-reconnect')
+          triggerReconnect()
+        } else {
+          // User-initiated end -- normal cleanup
+          soundsRef.current.playEnd()
+          if (conversationId) {
+            syncConversationToVapi(conversationId)
+          }
         }
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
@@ -163,7 +201,7 @@ export default function ChatScreen() {
       }),
     ]
     return () => subs.forEach((s) => s.remove())
-  }, [conversationId])
+  }, [conversationId, cancelReconnect, triggerReconnect])
 
   const startNewConversation = useCallback(async () => {
     const conv = await createConversation()
@@ -248,6 +286,8 @@ export default function ChatScreen() {
 
   const toggleCall = useCallback(async () => {
     if (isCallActive) {
+      userInitiatedEndRef.current = true
+      cancelReconnect()
       await ExpoVapiModule.stopCall()
       return
     }
@@ -313,9 +353,13 @@ export default function ChatScreen() {
       },
     }
 
+    const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
+    lastAssistantIdRef.current = assistantId
+    lastCallOverridesRef.current = callOverrides ?? null
+
     try {
       setIsConnecting(true)
-      await ExpoVapiModule.startCall(assistantId, Object.keys(overrides).length > 0 ? overrides : undefined)
+      await ExpoVapiModule.startCall(assistantId, callOverrides)
     } catch (e: any) {
       setIsConnecting(false)
       const errorMsg = e?.message || String(e)
@@ -323,7 +367,7 @@ export default function ChatScreen() {
       await addMessage(conversationId!, 'assistant', `Call failed: ${errorMsg}`)
       await loadMessages()
     }
-  }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
+  }, [isCallActive, ensureVapiReady, conversationId, loadMessages, cancelReconnect])
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
@@ -370,6 +414,37 @@ export default function ChatScreen() {
           <View className="flex-row items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
             <ActivityIndicator size="small" color="#888" />
             <Text className="text-sm text-muted-foreground">Thinking...</Text>
+          </View>
+        </View>
+      )}
+
+      {reconnectState.status === 'reconnecting' && (
+        <View className="items-center gap-2 border-t border-border bg-muted/50 px-4 py-3">
+          <View className="flex-row items-center gap-2">
+            <ActivityIndicator size="small" color="#f59e0b" />
+            <Text className="text-sm font-medium text-yellow-500">
+              Reconnecting... (attempt {reconnectState.attempt}/{reconnectState.maxAttempts})
+            </Text>
+          </View>
+          <Button variant="ghost" size="sm" onPress={() => { cancelReconnect(); soundsRef.current.playEnd() }}>
+            <Icon as={XIcon} size={16} className="text-muted-foreground" />
+            <Text className="ml-1 text-sm text-muted-foreground">Cancel</Text>
+          </Button>
+        </View>
+      )}
+
+      {reconnectState.status === 'failed' && (
+        <View className="items-center gap-2 border-t border-border bg-muted/50 px-4 py-3">
+          <Text className="text-sm font-medium text-destructive">Connection lost</Text>
+          <View className="flex-row gap-2">
+            <Button variant="secondary" size="sm" onPress={manualRetry}>
+              <Icon as={RefreshCwIcon} size={16} className="text-foreground" />
+              <Text className="ml-1 text-sm text-foreground">Retry</Text>
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => { cancelReconnect(); soundsRef.current.playEnd() }}>
+              <Icon as={XIcon} size={16} className="text-muted-foreground" />
+              <Text className="ml-1 text-sm text-muted-foreground">Dismiss</Text>
+            </Button>
           </View>
         </View>
       )}
