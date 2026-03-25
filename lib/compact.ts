@@ -36,13 +36,13 @@ export async function compactMessages(
         return buildCompactedMessages(cached.summary, recentMessages)
       }
 
-      const summary = await generateSummary(cached.summary, newOldMessages, apiKey, model, apiUrl)
+      const summary = await generateSummary(cached.summary, newOldMessages, apiKey, model, apiUrl, conversationId)
       await saveSummary(conversationId, summary, messages.length)
       return buildCompactedMessages(summary, recentMessages)
     }
 
     const oldMessages = chatMessages.slice(0, -KEEP_RECENT)
-    const summary = await generateSummary('', oldMessages, apiKey, model, apiUrl)
+    const summary = await generateSummary('', oldMessages, apiKey, model, apiUrl, conversationId)
     await saveSummary(conversationId, summary, messages.length)
 
     return buildCompactedMessages(summary, recentMessages)
@@ -75,7 +75,8 @@ async function generateSummary(
   messages: ChatMessage[],
   apiKey: string,
   model: string,
-  apiUrl: string
+  apiUrl: string,
+  conversationId: number
 ): Promise<string> {
   const transcript = messages
     .map((m) => `${m.role}: ${m.content}`)
@@ -98,6 +99,7 @@ async function generateSummary(
         { role: 'user', content: prompt },
       ],
       stream: false,
+      user: `voiceclaw:${conversationId}`,
     }),
   })
 
