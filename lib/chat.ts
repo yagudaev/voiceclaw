@@ -14,6 +14,7 @@ export function streamCompletion(
   model: string,
   apiUrl: string,
   systemPrompt: string,
+  conversationId: number,
   {
     onToken,
     onDone,
@@ -35,7 +36,7 @@ export function streamCompletion(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages: chatMessages, stream: true }),
+    body: JSON.stringify({ model, messages: chatMessages, stream: true, user: `voiceclaw:${conversationId}` }),
   })
 
   let fullText = ''

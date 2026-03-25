@@ -265,7 +265,7 @@ export default function ChatScreen() {
     const allMessages = await compactMessages(conversationId, allDbMessages, apiKey, model, apiUrl)
 
     const systemPrompt = (await getSetting('system_prompt')) || ''
-    streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, {
+    streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, conversationId, {
       onToken: (text) => {
         setIsThinking(false)
         setStreamingText(text)
@@ -352,6 +352,7 @@ export default function ChatScreen() {
         model,
         messages: modelMessages,
         functions: [DISPLAY_TEXT_FUNCTION],
+        user: `voiceclaw:${conversationId}`,
       },
     }
 
