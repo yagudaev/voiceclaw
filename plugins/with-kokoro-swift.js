@@ -1,0 +1,382 @@
+/**
+ * Expo config plugin that integrates the KokoroSwift on-device TTS package into
+ * the iOS Xcode project during prebuild.
+ *
+ * KokoroSwift and its dependency MisakiSwift are patched forks of upstream packages
+ * that require:
+ *   - mlx-swift pinned to 0.30.6 (0.30.2 has undefined symbol errors with Xcode 26,
+ *     0.31.x has consteval C++ errors)
+ *   - Resources moved to Sources/<Target>/Resources/ so .process("Resources") works
+ *   - MisakiSwift referenced as a local path dependency instead of a remote URL
+ *
+ * This plugin:
+ *   1. Clones the upstream repos into ios/LocalPackages/ (if not already present)
+ *   2. Overwrites Package.swift with our patched versions from native-packages/
+ *   3. Copies the package Resources into Sources/<Target>/Resources/ for SPM bundling
+ *   4. Adds KokoroSwift as an XCLocalSwiftPackageReference to the Xcode project
+ *   5. Patches the Podfile post_install hook so ExpoCustomPipeline can import KokoroSwift
+ *      via #if canImport(KokoroSwift) by adding PackageFrameworks to its search paths
+ *
+ * Source repos:
+ *   - kokoro-ios: https://github.com/mlalma/kokoro-ios (tag 1.0.11)
+ *   - MisakiSwift: https://github.com/mlalma/MisakiSwift (tag 1.0.6)
+ */
+const { withDangerousMod } = require('expo/config-plugins')
+const xcode = require('xcode')
+const path = require('path')
+const fs = require('fs')
+const { execSync } = require('child_process')
+
+// Fixed UUIDs so the plugin is idempotent across successive expo prebuild runs
+const KOKORO_PKG_REF_UUID = '537A5415B5E84E3AA4E7F9B2'
+const KOKORO_PRODUCT_DEP_UUID = '42251F5B356C440BB08B5070'
+const KOKORO_BUILD_FILE_UUID = 'CB07DF55B1234E0BB71AFA78'
+
+// Upstream repos and tags to clone
+const KOKORO_IOS_REPO = 'https://github.com/mlalma/kokoro-ios'
+const KOKORO_IOS_TAG = '1.0.11'
+const MISAKI_SWIFT_REPO = 'https://github.com/mlalma/MisakiSwift'
+const MISAKI_SWIFT_TAG = '1.0.6'
+
+function withKokoroSwift(config) {
+  // Step 1: patch the Podfile
+  config = withKokoroPodfile(config)
+  // Step 2: patch the Xcode project
+  config = withKokoroPbxproj(config)
+  return config
+}
+
+// --- Podfile patch ---
+
+function withKokoroPodfile(config) {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const platformRoot = config.modRequest.platformProjectRoot
+      const podfilePath = path.join(platformRoot, 'Podfile')
+
+      if (!fs.existsSync(podfilePath)) {
+        console.warn('[with-kokoro-swift] Podfile not found, skipping Podfile patch')
+        return config
+      }
+
+      let podfile = fs.readFileSync(podfilePath, 'utf8')
+
+      if (podfile.includes('PackageFrameworks')) {
+        console.log('[with-kokoro-swift] Podfile already patched for PackageFrameworks, skipping')
+        return config
+      }
+
+      // Ruby code to inject into the post_install block
+      const injection = `
+    # Make KokoroSwift (SPM package linked to VoiceClaw app target) importable
+    # from the ExpoCustomPipeline pod target. SPM dynamic frameworks are built
+    # into $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/PackageFrameworks/
+    # which maps to ${PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks inside the
+    # pods build system.
+    installer.pods_project.targets.each do |target|
+      if target.name == 'ExpoCustomPipeline'
+        target.build_configurations.each do |config|
+          existing = config.build_settings['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
+          unless existing.include?('PackageFrameworks')
+            config.build_settings['FRAMEWORK_SEARCH_PATHS'] = "#{existing} \\"${PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
+          end
+        end
+      end
+    end`
+
+      // Find the post_install block's closing `end` by locating the block and
+      // finding the matching end. We insert our code just before the `end` line
+      // that closes the post_install block.
+      const postInstallRegex = /( *post_install do \|installer\|)([\s\S]*?)(\n *end\n)/
+      const match = podfile.match(postInstallRegex)
+      if (match) {
+        // Insert our code before the closing `end` of the post_install block
+        const insertPoint = match.index + match[1].length + match[2].length
+        podfile = podfile.slice(0, insertPoint) + injection + '\n' + podfile.slice(insertPoint)
+      } else {
+        // No post_install block — append one before the final `end` (target block close)
+        const lastEndIdx = podfile.lastIndexOf('\nend')
+        if (lastEndIdx !== -1) {
+          podfile = podfile.slice(0, lastEndIdx) +
+            `\n\n  post_install do |installer|\n${injection}\n  end` +
+            podfile.slice(lastEndIdx)
+        } else {
+          podfile += `\n\npost_install do |installer|\n${injection}\nend\n`
+        }
+      }
+
+      fs.writeFileSync(podfilePath, podfile)
+      console.log('[with-kokoro-swift] Patched Podfile with PackageFrameworks search path')
+
+      return config
+    },
+  ])
+}
+
+// --- Xcode project patch ---
+
+function withKokoroPbxproj(config) {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const appRoot = config.modRequest.projectRoot
+      const platformRoot = config.modRequest.platformProjectRoot
+      const pbxprojPath = path.join(
+        platformRoot,
+        'VoiceClaw.xcodeproj',
+        'project.pbxproj'
+      )
+
+      if (!fs.existsSync(pbxprojPath)) {
+        console.warn('[with-kokoro-swift] project.pbxproj not found, skipping')
+        return config
+      }
+
+      // Step A: ensure LocalPackages exist
+      setupLocalPackages(appRoot, platformRoot)
+
+      // Step B: patch the Xcode project
+      patchPbxproj(pbxprojPath)
+
+      return config
+    },
+  ])
+}
+
+function setupLocalPackages(appRoot, platformRoot) {
+  const localPackagesDir = path.join(platformRoot, 'LocalPackages')
+  if (!fs.existsSync(localPackagesDir)) {
+    fs.mkdirSync(localPackagesDir, { recursive: true })
+  }
+
+  const kokoroDir = path.join(localPackagesDir, 'kokoro-ios')
+  const misakiDir = path.join(localPackagesDir, 'MisakiSwift')
+
+  // Clone kokoro-ios if not present
+  if (!fs.existsSync(kokoroDir)) {
+    console.log(`[with-kokoro-swift] Cloning kokoro-ios ${KOKORO_IOS_TAG}...`)
+    execSync(
+      `git clone --depth 1 --branch ${KOKORO_IOS_TAG} ${KOKORO_IOS_REPO} "${kokoroDir}"`,
+      { stdio: 'inherit' }
+    )
+  } else {
+    console.log('[with-kokoro-swift] kokoro-ios already present, skipping clone')
+  }
+
+  // Clone MisakiSwift if not present
+  if (!fs.existsSync(misakiDir)) {
+    console.log(`[with-kokoro-swift] Cloning MisakiSwift ${MISAKI_SWIFT_TAG}...`)
+    execSync(
+      `git clone --depth 1 --branch ${MISAKI_SWIFT_TAG} ${MISAKI_SWIFT_REPO} "${misakiDir}"`,
+      { stdio: 'inherit' }
+    )
+  } else {
+    console.log('[with-kokoro-swift] MisakiSwift already present, skipping clone')
+  }
+
+  const nativePackagesDir = path.join(appRoot, 'native-packages')
+
+  // Overwrite Package.swift files with our patched versions
+  fs.copyFileSync(
+    path.join(nativePackagesDir, 'kokoro-ios', 'Package.swift'),
+    path.join(kokoroDir, 'Package.swift')
+  )
+  console.log('[with-kokoro-swift] Applied patched Package.swift to kokoro-ios')
+
+  fs.copyFileSync(
+    path.join(nativePackagesDir, 'MisakiSwift', 'Package.swift'),
+    path.join(misakiDir, 'Package.swift')
+  )
+  console.log('[with-kokoro-swift] Applied patched Package.swift to MisakiSwift')
+
+  // Copy kokoro-ios Resources into Sources/KokoroSwift/Resources/ for .process("Resources")
+  const kokoroSrcResDir = path.join(kokoroDir, 'Sources', 'KokoroSwift', 'Resources')
+  if (!fs.existsSync(kokoroSrcResDir)) {
+    fs.mkdirSync(kokoroSrcResDir, { recursive: true })
+  }
+  const kokoroResDir = path.join(kokoroDir, 'Resources')
+  if (fs.existsSync(kokoroResDir)) {
+    for (const file of fs.readdirSync(kokoroResDir)) {
+      fs.copyFileSync(
+        path.join(kokoroResDir, file),
+        path.join(kokoroSrcResDir, file)
+      )
+    }
+    console.log('[with-kokoro-swift] Copied kokoro-ios Resources into Sources/KokoroSwift/Resources/')
+  } else {
+    // Fall back to native-packages copy of config.json
+    const fallbackConfig = path.join(nativePackagesDir, 'kokoro-ios', 'Resources', 'config.json')
+    if (fs.existsSync(fallbackConfig)) {
+      fs.copyFileSync(fallbackConfig, path.join(kokoroSrcResDir, 'config.json'))
+      console.log('[with-kokoro-swift] Copied config.json from native-packages fallback')
+    }
+  }
+
+  // Copy MisakiSwift Resources into Sources/MisakiSwift/Resources/ for .process("Resources")
+  const misakiSrcResDir = path.join(misakiDir, 'Sources', 'MisakiSwift', 'Resources')
+  if (!fs.existsSync(misakiSrcResDir)) {
+    fs.mkdirSync(misakiSrcResDir, { recursive: true })
+  }
+  const misakiResDir = path.join(misakiDir, 'Resources')
+  if (fs.existsSync(misakiResDir)) {
+    for (const file of fs.readdirSync(misakiResDir)) {
+      fs.copyFileSync(
+        path.join(misakiResDir, file),
+        path.join(misakiSrcResDir, file)
+      )
+    }
+    console.log('[with-kokoro-swift] Copied MisakiSwift Resources into Sources/MisakiSwift/Resources/')
+  }
+}
+
+function patchPbxproj(pbxprojPath) {
+  const project = xcode.project(pbxprojPath)
+  project.parseSync()
+
+  // Idempotency check: skip if already patched
+  const localPkgRefs = project.hash.project.objects['XCLocalSwiftPackageReference'] || {}
+  for (const key of Object.keys(localPkgRefs)) {
+    if (typeof localPkgRefs[key] === 'object' && localPkgRefs[key].relativePath === 'LocalPackages/kokoro-ios') {
+      console.log('[with-kokoro-swift] KokoroSwift already in pbxproj, skipping pbxproj patch')
+      return
+    }
+  }
+
+  // 1. Add XCLocalSwiftPackageReference
+  if (!project.hash.project.objects['XCLocalSwiftPackageReference']) {
+    project.hash.project.objects['XCLocalSwiftPackageReference'] = {}
+  }
+  project.hash.project.objects['XCLocalSwiftPackageReference'][KOKORO_PKG_REF_UUID] = {
+    isa: 'XCLocalSwiftPackageReference',
+    relativePath: 'LocalPackages/kokoro-ios',
+  }
+  project.hash.project.objects['XCLocalSwiftPackageReference'][KOKORO_PKG_REF_UUID + '_comment'] =
+    'XCLocalSwiftPackageReference "kokoro-ios"'
+
+  // 2. Add XCSwiftPackageProductDependency
+  if (!project.hash.project.objects['XCSwiftPackageProductDependency']) {
+    project.hash.project.objects['XCSwiftPackageProductDependency'] = {}
+  }
+  project.hash.project.objects['XCSwiftPackageProductDependency'][KOKORO_PRODUCT_DEP_UUID] = {
+    isa: 'XCSwiftPackageProductDependency',
+    package: KOKORO_PKG_REF_UUID,
+    package_comment: 'XCLocalSwiftPackageReference "kokoro-ios"',
+    productName: 'KokoroSwift',
+  }
+  project.hash.project.objects['XCSwiftPackageProductDependency'][KOKORO_PRODUCT_DEP_UUID + '_comment'] = 'KokoroSwift'
+
+  // 3. Add PBXBuildFile for KokoroSwift in Frameworks
+  const pbxBuildFile = project.hash.project.objects['PBXBuildFile']
+  pbxBuildFile[KOKORO_BUILD_FILE_UUID] = {
+    isa: 'PBXBuildFile',
+    productRef: KOKORO_PRODUCT_DEP_UUID,
+    productRef_comment: 'KokoroSwift',
+  }
+  pbxBuildFile[KOKORO_BUILD_FILE_UUID + '_comment'] = 'KokoroSwift in Frameworks'
+
+  // 4. Add KokoroSwift to the main app target's Frameworks build phase
+  const frameworksBuildPhase = findFrameworksBuildPhase(project)
+  if (frameworksBuildPhase) {
+    frameworksBuildPhase.files.push({
+      value: KOKORO_BUILD_FILE_UUID,
+      comment: 'KokoroSwift in Frameworks',
+    })
+    console.log('[with-kokoro-swift] Added KokoroSwift to Frameworks build phase')
+  } else {
+    console.warn('[with-kokoro-swift] Could not find Frameworks build phase for VoiceClaw target')
+  }
+
+  // 5. Add packageProductDependencies to the VoiceClaw native target
+  const mainTarget = findMainTarget(project)
+  if (mainTarget) {
+    if (!mainTarget.packageProductDependencies) {
+      mainTarget.packageProductDependencies = []
+    }
+    mainTarget.packageProductDependencies.push({
+      value: KOKORO_PRODUCT_DEP_UUID,
+      comment: 'KokoroSwift',
+    })
+    console.log('[with-kokoro-swift] Added KokoroSwift packageProductDependency to VoiceClaw target')
+  } else {
+    console.warn('[with-kokoro-swift] Could not find VoiceClaw native target')
+  }
+
+  // 6. Add packageReferences to the PBXProject
+  const projectSection = project.hash.project.objects['PBXProject']
+  const projectObj = projectSection[project.getFirstProject().uuid]
+  if (!projectObj.packageReferences) {
+    projectObj.packageReferences = []
+  }
+  projectObj.packageReferences.push({
+    value: KOKORO_PKG_REF_UUID,
+    comment: 'XCLocalSwiftPackageReference "kokoro-ios"',
+  })
+  console.log('[with-kokoro-swift] Added kokoro-ios packageReference to PBXProject')
+
+  // 7. Ensure CODE_SIGNING_ALLOWED = YES on VoiceClaw target build configurations
+  //    (required when SPM packages with resource bundles are linked)
+  ensureCodeSigningAllowed(project, mainTarget)
+
+  // Write the updated project file
+  fs.writeFileSync(pbxprojPath, project.writeSync())
+  console.log('[with-kokoro-swift] Wrote updated project.pbxproj')
+}
+
+// --- Helper Functions ---
+
+function findMainTarget(project) {
+  const targets = project.hash.project.objects['PBXNativeTarget']
+  for (const key of Object.keys(targets)) {
+    if (typeof targets[key] === 'object' && targets[key].name === 'VoiceClaw') {
+      return targets[key]
+    }
+  }
+  return null
+}
+
+function findMainTargetUuid(project) {
+  const targets = project.hash.project.objects['PBXNativeTarget']
+  for (const key of Object.keys(targets)) {
+    if (typeof targets[key] === 'object' && targets[key].name === 'VoiceClaw') {
+      return key
+    }
+  }
+  return null
+}
+
+function findFrameworksBuildPhase(project) {
+  const mainTargetUuid = findMainTargetUuid(project)
+  if (!mainTargetUuid) return null
+
+  const mainTarget = project.hash.project.objects['PBXNativeTarget'][mainTargetUuid]
+  const buildPhases = project.hash.project.objects['PBXFrameworksBuildPhase']
+
+  for (const phaseRef of mainTarget.buildPhases) {
+    const phaseUuid = phaseRef.value || phaseRef
+    if (buildPhases[phaseUuid]) {
+      return buildPhases[phaseUuid]
+    }
+  }
+  return null
+}
+
+function ensureCodeSigningAllowed(project, mainTarget) {
+  if (!mainTarget) return
+  const configListUuid = mainTarget.buildConfigurationList
+  const configList = project.hash.project.objects['XCConfigurationList'][configListUuid]
+  const buildConfigs = project.hash.project.objects['XCBuildConfiguration']
+
+  for (const configRef of configList.buildConfigurations) {
+    const configUuid = configRef.value || configRef
+    const config = buildConfigs[configUuid]
+    if (config && config.buildSettings) {
+      if (!config.buildSettings['CODE_SIGNING_ALLOWED']) {
+        config.buildSettings['CODE_SIGNING_ALLOWED'] = 'YES'
+        console.log(`[with-kokoro-swift] Set CODE_SIGNING_ALLOWED = YES on ${config.name} config`)
+      }
+    }
+  }
+}
+
+module.exports = withKokoroSwift

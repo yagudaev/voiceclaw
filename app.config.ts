@@ -43,6 +43,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-sqlite',
     './plugins/with-ios-icons',
     './plugins/with-ui-tests',
+    './plugins/with-kokoro-swift',
   ],
   experiments: {
     typedRoutes: true,
