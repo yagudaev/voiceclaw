@@ -34,7 +34,7 @@ export function useAutoSave(debounceMs = 500) {
     fadeTimerRef.current = setTimeout(() => {
       setSaveStatus('idle')
       fadeTimerRef.current = null
-    }, 1500)
+    }, 1800)
   }, [])
 
   const persistSetting = useCallback(async (key: string, value: string) => {
