@@ -91,17 +91,22 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
-  const conversationIdRef = useRef(conversationId)
-  conversationIdRef.current = conversationId
+  const loadMessages = useCallback(async () => {
+    if (!conversationId) return
+    setMessages(await getMessages(conversationId))
+  }, [conversationId])
 
   const handleTranscriptFlush = useCallback(async (role: 'user' | 'assistant', text: string) => {
-    const convId = conversationIdRef.current
-    if (!convId) return
-    console.log('[Chat] Transcript flush:', role, text.substring(0, 50))
-    await addMessage(convId, role, text)
-    setMessages(await getMessages(convId))
-    maybeGenerateTitle(convId)
-  }, [])
+    if (!conversationId) return
+    if (__DEV__) console.log('[Chat] Transcript flush:', role, text.substring(0, 50))
+    try {
+      await addMessage(conversationId, role, text)
+      await loadMessages()
+      maybeGenerateTitle(conversationId)
+    } catch (err) {
+      console.warn('[Chat] Failed to flush transcript:', err)
+    }
+  }, [conversationId, loadMessages])
 
   const transcriptBuffer = useTranscriptBuffer({ onFlush: handleTranscriptFlush })
   const transcriptBufferRef = useRef(transcriptBuffer)
@@ -276,11 +281,6 @@ export default function ChatScreen() {
       }
     })()
   }, [])
-
-  const loadMessages = useCallback(async () => {
-    if (!conversationId) return
-    setMessages(await getMessages(conversationId))
-  }, [conversationId])
 
   useEffect(() => { loadMessages() }, [loadMessages])
 
