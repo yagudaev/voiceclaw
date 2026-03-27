@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, getLatencyAverages, type LatencyAverages } from '@/db'
-import { useAutoSave } from '@/lib/use-auto-save'
+import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { CheckIcon } from 'lucide-react-native'
 import { EyeIcon, EyeOffIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -484,7 +484,7 @@ function OptionGroup<T extends string>({
   )
 }
 
-function SavedIndicator({ status }: { status: import('@/lib/use-auto-save').SaveStatus }) {
+function SavedIndicator({ status }: { status: SaveStatus }) {
   const opacity = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
