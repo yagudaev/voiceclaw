@@ -149,6 +149,10 @@ export default function ChatScreen() {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
         console.log('[Chat] onCallStart fired')
+        if (connectingTimeoutRef.current) {
+          clearTimeout(connectingTimeoutRef.current)
+          connectingTimeoutRef.current = null
+        }
         setIsCallActive(true)
         setIsConnecting(false)
         wasCallActiveRef.current = true
@@ -157,6 +161,10 @@ export default function ChatScreen() {
       }),
       ExpoVapiModule.addListener('onCallEnd', async () => {
         console.log('[Chat] onCallEnd fired')
+        if (connectingTimeoutRef.current) {
+          clearTimeout(connectingTimeoutRef.current)
+          connectingTimeoutRef.current = null
+        }
         const wasActive = wasCallActiveRef.current
         const wasUserInitiated = userInitiatedEndRef.current
 
@@ -331,6 +339,8 @@ export default function ChatScreen() {
     })
   }, [inputText, conversationId, loadMessages, isCallActive, vapiReady])
 
+  const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const toggleCall = useCallback(async () => {
     if (isCallActive) {
       userInitiatedEndRef.current = true
@@ -341,22 +351,38 @@ export default function ChatScreen() {
 
     // Disable the button immediately to prevent double-tap
     setIsConnecting(true)
+    let callStarted = false
 
-    const assistantId = await getSetting('assistant_id')
-    const ready = await ensureVapiReady()
-    if (!assistantId || !ready) {
-      setIsConnecting(false)
-      await addMessage(conversationId!, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
-      await loadMessages()
-      return
-    }
+    try {
+      // Check assistantId first to avoid unnecessary Vapi initialization
+      const assistantId = await getSetting('assistant_id')
+      if (!assistantId) {
+        if (conversationId) {
+          await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+          await loadMessages()
+        }
+        return
+      }
 
-    const { apiKey, apiUrl, model } = await getApiConfig()
-    const modelMessages: Array<{ role: string, content: string }> = [
-      { role: 'system', content: VOICE_SYSTEM_PROMPT },
-    ]
+      const ready = await ensureVapiReady()
+      if (!ready) {
+        if (conversationId) {
+          await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+          await loadMessages()
+        }
+        return
+      }
 
-    if (conversationId) {
+      if (!conversationId) {
+        console.warn('[Chat] No active conversation, cannot start call')
+        return
+      }
+
+      const { apiKey, apiUrl, model } = await getApiConfig()
+      const modelMessages: Array<{ role: string, content: string }> = [
+        { role: 'system', content: VOICE_SYSTEM_PROMPT },
+      ]
+
       const prevMessages = await getMessages(conversationId)
       if (prevMessages.length > 0) {
         const compacted = apiKey && apiUrl
@@ -379,44 +405,61 @@ export default function ChatScreen() {
           content: contextParts.join('\n\n'),
         })
       }
-    }
 
-    const overrides: Record<string, unknown> = {
-      server: { timeoutSeconds: 45 },
-      silenceTimeoutSeconds: 120,
-      endCallPhrases: [],
-      clientMessages: [
-        'transcript',
-        'hang',
-        'function-call',
-        'speech-update',
-        'status-update',
-        'conversation-update',
-        'model-output',
-      ],
-      firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
-      model: {
-        url: apiUrl,
-        provider: 'custom-llm',
-        model,
-        messages: modelMessages,
-        functions: [DISPLAY_TEXT_FUNCTION],
-      },
-      metadata: { conversationId: `voiceclaw:${conversationId}` },
-    }
+      const overrides: Record<string, unknown> = {
+        server: { timeoutSeconds: 45 },
+        silenceTimeoutSeconds: 120,
+        endCallPhrases: [],
+        clientMessages: [
+          'transcript',
+          'hang',
+          'function-call',
+          'speech-update',
+          'status-update',
+          'conversation-update',
+          'model-output',
+        ],
+        firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
+        model: {
+          url: apiUrl,
+          provider: 'custom-llm',
+          model,
+          messages: modelMessages,
+          functions: [DISPLAY_TEXT_FUNCTION],
+        },
+        metadata: { conversationId: `voiceclaw:${conversationId}` },
+      }
 
-    const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
-    lastAssistantIdRef.current = assistantId
-    lastCallOverridesRef.current = callOverrides ?? null
+      const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
+      lastAssistantIdRef.current = assistantId
+      lastCallOverridesRef.current = callOverrides ?? null
 
-    try {
+      // Safety timeout: reset isConnecting if onCallStart never fires
+      if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
+      connectingTimeoutRef.current = setTimeout(() => {
+        setIsConnecting((current) => {
+          if (current) console.warn('[Chat] Connecting timed out after 15s, resetting state')
+          return false
+        })
+      }, 15_000)
+
       await ExpoVapiModule.startCall(assistantId, callOverrides)
+      callStarted = true
     } catch (e: any) {
-      setIsConnecting(false)
       const errorMsg = e?.message || String(e)
       console.error('Failed to start call:', errorMsg)
-      await addMessage(conversationId!, 'assistant', `Call failed: ${errorMsg}`)
-      await loadMessages()
+      if (conversationId) {
+        await addMessage(conversationId, 'assistant', `Call failed: ${errorMsg}`)
+        await loadMessages()
+      }
+    } finally {
+      if (!callStarted) {
+        setIsConnecting(false)
+        if (connectingTimeoutRef.current) {
+          clearTimeout(connectingTimeoutRef.current)
+          connectingTimeoutRef.current = null
+        }
+      }
     }
   }, [isCallActive, ensureVapiReady, conversationId, loadMessages, cancelReconnect])
 
