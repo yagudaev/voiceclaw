@@ -151,7 +151,9 @@ class PipelineManager {
             let payload = String(line.dropFirst(6))
 
             if payload == "[DONE]" {
+                isStreamComplete = true
                 flushSentenceBuffer()
+                restartSTTIfReady()
                 return
             }
 
@@ -232,19 +234,23 @@ class PipelineManager {
             },
             onComplete: { [weak self] in
                 guard let self = self else { return }
-                self.pendingTTSCount -= 1
+                self.pendingTTSCount = max(0, self.pendingTTSCount - 1)
                 print("[PipelineManager] TTS chunk complete (pending: \(self.pendingTTSCount), stream done: \(self.isStreamComplete))")
                 self.delegate?.pipelineDidFinishSpeaking()
                 self.restartSTTIfReady()
             },
             onError: { [weak self] message in
-                self?.delegate?.pipelineDidEncounterError(message)
+                guard let self = self else { return }
+                self.pendingTTSCount = max(0, self.pendingTTSCount - 1)
+                self.delegate?.pipelineDidEncounterError(message)
+                self.restartSTTIfReady()
             }
         )
     }
 
     private func restartSTTIfReady() {
         guard isConversationActive, isStreamComplete, pendingTTSCount <= 0 else { return }
+        isStreamComplete = false
         print("[PipelineManager] All TTS complete, restarting STT")
         startListening()
     }

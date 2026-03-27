@@ -138,8 +138,10 @@ extension ElevenLabsTTSProvider: AVAudioPlayerDelegate {
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        let msg = "ElevenLabs: Audio decode error: \(error?.localizedDescription ?? "unknown")"
         logger.error("[ElevenLabs] Audio decode error: \(error?.localizedDescription ?? "unknown")")
         isSpeaking = false
+        onErrorCallback?(msg)
         onCompleteCallback?()
     }
 }
@@ -151,11 +153,11 @@ private extension ElevenLabsTTSProvider {
         let audioSession = AVAudioSession.sharedInstance()
         do {
             try audioSession.setCategory(
-                .playAndRecord, mode: .default,
+                .playAndRecord, mode: .voiceChat,
                 options: [.defaultToSpeaker, .allowBluetooth]
             )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-            logger.error("[ElevenLabs] Audio session configured for playback")
+            logger.debug("[ElevenLabs] Audio session configured for playback")
         } catch {
             logger.error("[ElevenLabs] Failed to configure audio session: \(error)")
         }

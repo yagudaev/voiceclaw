@@ -11,6 +11,7 @@ class OpenAITTSProvider: NSObject, TTSProvider {
     private var audioPlayer: AVAudioPlayer?
     private var onStartCallback: (() -> Void)?
     private var onCompleteCallback: (() -> Void)?
+    private var onErrorCallback: ((String) -> Void)?
     private var currentTask: URLSessionDataTask?
 
     // MARK: - Configuration
@@ -33,6 +34,7 @@ class OpenAITTSProvider: NSObject, TTSProvider {
 
         onStartCallback = onStart
         onCompleteCallback = onComplete
+        onErrorCallback = onError
 
         guard let url = URL(string: "https://api.openai.com/v1/audio/speech") else {
             print("[OpenAI TTS] Invalid URL")
@@ -66,9 +68,23 @@ class OpenAITTSProvider: NSObject, TTSProvider {
             guard let self = self else { return }
 
             if let error = error {
+                let msg = "OpenAI TTS: \(error.localizedDescription)"
                 print("[OpenAI TTS] Request error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.isSpeaking = false
+                    self.onErrorCallback?(msg)
+                    self.onCompleteCallback?()
+                }
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let msg = "OpenAI TTS HTTP \(httpResponse.statusCode): \(body.prefix(200))"
+                print("[OpenAI TTS] HTTP \(httpResponse.statusCode): \(body.prefix(200))")
+                DispatchQueue.main.async {
+                    self.isSpeaking = false
+                    self.onErrorCallback?(msg)
                     self.onCompleteCallback?()
                 }
                 return
@@ -78,6 +94,7 @@ class OpenAITTSProvider: NSObject, TTSProvider {
                 print("[OpenAI TTS] Empty response")
                 DispatchQueue.main.async {
                     self.isSpeaking = false
+                    self.onErrorCallback?("OpenAI TTS: Empty audio response")
                     self.onCompleteCallback?()
                 }
                 return
@@ -102,6 +119,7 @@ class OpenAITTSProvider: NSObject, TTSProvider {
         isSpeaking = false
         onStartCallback = nil
         onCompleteCallback = nil
+        onErrorCallback = nil
     }
 }
 
@@ -114,8 +132,10 @@ extension OpenAITTSProvider: AVAudioPlayerDelegate {
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        let msg = "OpenAI TTS: Audio decode error: \(error?.localizedDescription ?? "unknown")"
         print("[OpenAI TTS] Audio decode error: \(error?.localizedDescription ?? "unknown")")
         isSpeaking = false
+        onErrorCallback?(msg)
         onCompleteCallback?()
     }
 }
@@ -130,8 +150,10 @@ private extension OpenAITTSProvider {
             onStartCallback?()
             audioPlayer?.play()
         } catch {
+            let msg = "OpenAI TTS: Failed to create audio player: \(error.localizedDescription)"
             print("[OpenAI TTS] Failed to create audio player: \(error)")
             isSpeaking = false
+            onErrorCallback?(msg)
             onCompleteCallback?()
         }
     }
