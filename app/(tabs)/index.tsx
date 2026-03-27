@@ -12,7 +12,9 @@ import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
+import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
+import type { FinalTranscriptEvent } from '@/modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
@@ -91,6 +93,9 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
+  const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
+  const customPipelineSubsRef = useRef<Array<{ remove: () => void }>>([])
+
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
     setMessages(await getMessages(conversationId))
@@ -373,7 +378,11 @@ export default function ChatScreen() {
     if (isCallActive) {
       userInitiatedEndRef.current = true
       cancelReconnect()
-      await ExpoVapiModule.stopCall()
+      if (activeVoiceModeRef.current === 'custom') {
+        stopCustomPipeline()
+      } else {
+        await ExpoVapiModule.stopCall()
+      }
       return
     }
 
@@ -382,97 +391,20 @@ export default function ChatScreen() {
     let callStarted = false
 
     try {
-      // Check assistantId first to avoid unnecessary Vapi initialization
-      const assistantId = await getSetting('assistant_id')
-      if (!assistantId) {
-        if (conversationId) {
-          await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
-          await loadMessages()
-        }
-        return
-      }
-
-      const ready = await ensureVapiReady()
-      if (!ready) {
-        if (conversationId) {
-          await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
-          await loadMessages()
-        }
-        return
-      }
+      const voiceMode = (await getSetting('voice_mode')) || 'vapi'
 
       if (!conversationId) {
         console.warn('[Chat] No active conversation, cannot start call')
         return
       }
 
-      const { apiKey, apiUrl, model } = await getApiConfig()
-      const modelMessages: Array<{ role: string, content: string }> = [
-        { role: 'system', content: VOICE_SYSTEM_PROMPT },
-      ]
-
-      const prevMessages = await getMessages(conversationId)
-      if (prevMessages.length > 0) {
-        const compacted = apiKey && apiUrl
-          ? await compactMessages(conversationId, prevMessages, apiKey, model, apiUrl)
-          : prevMessages.map((m) => ({ role: m.role, content: m.content }))
-
-        const summaryMsg = compacted.find((m) => m.role === 'system' && m.content.startsWith('Previous conversation summary:'))
-        const historyMsgs = compacted.filter((m) => m.role !== 'system')
-
-        const history = historyMsgs
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n')
-        const contextParts = []
-        if (summaryMsg) contextParts.push(summaryMsg.content)
-        if (history) contextParts.push(`Recent messages:\n${history}`)
-        contextParts.push('Continue the conversation naturally from where we left off.')
-
-        modelMessages.push({
-          role: 'system',
-          content: contextParts.join('\n\n'),
-        })
+      if (voiceMode === 'custom') {
+        activeVoiceModeRef.current = 'custom'
+        callStarted = await startCustomPipelineCall()
+      } else {
+        activeVoiceModeRef.current = 'vapi'
+        callStarted = await startVapiCall()
       }
-
-      const overrides: Record<string, unknown> = {
-        server: { timeoutSeconds: 45 },
-        silenceTimeoutSeconds: 120,
-        endCallPhrases: [],
-        clientMessages: [
-          'transcript',
-          'hang',
-          'function-call',
-          'speech-update',
-          'status-update',
-          'conversation-update',
-          'model-output',
-        ],
-        firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
-        model: {
-          url: apiUrl,
-          provider: 'custom-llm',
-          model,
-          messages: modelMessages,
-          functions: [DISPLAY_TEXT_FUNCTION],
-        },
-        metadata: { conversationId: `voiceclaw:${conversationId}` },
-      }
-
-      const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
-      lastAssistantIdRef.current = assistantId
-      lastCallOverridesRef.current = callOverrides ?? null
-
-      // Safety timeout: reset isConnecting if onCallStart never fires
-      if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
-      connectingTimeoutRef.current = setTimeout(() => {
-        setIsConnecting((current) => {
-          if (current) console.warn('[Chat] Connecting timed out after 15s, resetting state')
-          return false
-        })
-      }, 15_000)
-
-      await ExpoVapiModule.startCall(assistantId, callOverrides)
-      callStarted = true
     } catch (e: any) {
       const errorMsg = e?.message || String(e)
       console.error('Failed to start call:', errorMsg)
@@ -490,6 +422,182 @@ export default function ChatScreen() {
       }
     }
   }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
+
+  const startVapiCall = useCallback(async (): Promise<boolean> => {
+    const assistantId = await getSetting('assistant_id')
+    if (!assistantId) {
+      if (conversationId) {
+        await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+        await loadMessages()
+      }
+      return false
+    }
+
+    const ready = await ensureVapiReady()
+    if (!ready) {
+      if (conversationId) {
+        await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+        await loadMessages()
+      }
+      return false
+    }
+
+    if (!conversationId) return false
+
+    const { apiKey, apiUrl, model } = await getApiConfig()
+    const modelMessages: Array<{ role: string, content: string }> = [
+      { role: 'system', content: VOICE_SYSTEM_PROMPT },
+    ]
+
+    const prevMessages = await getMessages(conversationId)
+    if (prevMessages.length > 0) {
+      const compacted = apiKey && apiUrl
+        ? await compactMessages(conversationId, prevMessages, apiKey, model, apiUrl)
+        : prevMessages.map((m) => ({ role: m.role, content: m.content }))
+
+      const summaryMsg = compacted.find((m) => m.role === 'system' && m.content.startsWith('Previous conversation summary:'))
+      const historyMsgs = compacted.filter((m) => m.role !== 'system')
+
+      const history = historyMsgs
+        .map((m) => `${m.role}: ${m.content}`)
+        .join('\n')
+      const contextParts = []
+      if (summaryMsg) contextParts.push(summaryMsg.content)
+      if (history) contextParts.push(`Recent messages:\n${history}`)
+      contextParts.push('Continue the conversation naturally from where we left off.')
+
+      modelMessages.push({
+        role: 'system',
+        content: contextParts.join('\n\n'),
+      })
+    }
+
+    const overrides: Record<string, unknown> = {
+      server: { timeoutSeconds: 45 },
+      silenceTimeoutSeconds: 120,
+      endCallPhrases: [],
+      clientMessages: [
+        'transcript',
+        'hang',
+        'function-call',
+        'speech-update',
+        'status-update',
+        'conversation-update',
+        'model-output',
+      ],
+      firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
+      model: {
+        url: apiUrl,
+        provider: 'custom-llm',
+        model,
+        messages: modelMessages,
+        functions: [DISPLAY_TEXT_FUNCTION],
+      },
+      metadata: { conversationId: `voiceclaw:${conversationId}` },
+    }
+
+    const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
+    lastAssistantIdRef.current = assistantId
+    lastCallOverridesRef.current = callOverrides ?? null
+
+    // Safety timeout: reset isConnecting if onCallStart never fires
+    if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
+    connectingTimeoutRef.current = setTimeout(() => {
+      setIsConnecting((current) => {
+        if (current) console.warn('[Chat] Connecting timed out after 15s, resetting state')
+        return false
+      })
+    }, 15_000)
+
+    await ExpoVapiModule.startCall(assistantId, callOverrides)
+    return true
+  }, [ensureVapiReady, conversationId, loadMessages])
+
+  const startCustomPipelineCall = useCallback(async (): Promise<boolean> => {
+    if (!conversationId) return false
+
+    const { apiKey, apiUrl, model } = await getApiConfig()
+    if (!apiKey || !apiUrl) {
+      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
+      await loadMessages()
+      return false
+    }
+
+    // Read STT/TTS provider settings
+    const sttProvider = (await getSetting('stt_provider')) || 'apple'
+    const ttsProvider = (await getSetting('tts_provider')) || 'apple'
+
+    // Configure STT provider
+    const sttConfig: Record<string, string> = {}
+    if (sttProvider === 'deepgram') {
+      const deepgramKey = await getSetting('deepgram_api_key')
+      if (deepgramKey) sttConfig.apiKey = deepgramKey
+    }
+    ExpoCustomPipelineModule.setSTTProvider(sttProvider, sttConfig)
+
+    // Configure TTS provider
+    const ttsConfig: Record<string, string> = {}
+    if (ttsProvider === 'elevenlabs') {
+      const elKey = await getSetting('elevenlabs_api_key')
+      const elVoice = await getSetting('elevenlabs_voice_id')
+      if (elKey) ttsConfig.apiKey = elKey
+      if (elVoice) ttsConfig.voiceId = elVoice
+    } else if (ttsProvider === 'openai') {
+      const oaiKey = await getSetting('openai_tts_api_key')
+      const oaiVoice = await getSetting('openai_tts_voice')
+      if (oaiKey) ttsConfig.apiKey = oaiKey
+      if (oaiVoice) ttsConfig.voice = oaiVoice
+    }
+    ExpoCustomPipelineModule.setTTSProvider(ttsProvider, ttsConfig)
+
+    // Set up event listeners for custom pipeline
+    customPipelineSubsRef.current.forEach((s) => s.remove())
+    customPipelineSubsRef.current = []
+    const subs = [
+      ExpoCustomPipelineModule.addListener('onFinalTranscript', (event: FinalTranscriptEvent) => {
+        if (conversationId) {
+          addMessage(conversationId, 'user', event.text).then(() => {
+            loadMessages()
+            maybeGenerateTitle(conversationId)
+          })
+        }
+      }),
+      ExpoCustomPipelineModule.addListener('onTTSStart', () => {
+        setIsThinking(false)
+        soundsRef.current.stopThinking()
+      }),
+      ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
+        // TTS finished speaking
+      }),
+      ExpoCustomPipelineModule.addListener('onError', (event) => {
+        console.error('[CustomPipeline]', event.message)
+        setIsThinking(false)
+        soundsRef.current.stopThinking()
+        if (conversationId) {
+          addMessage(conversationId, 'assistant', `Error: ${event.message}`).then(() => loadMessages())
+        }
+      }),
+    ]
+    customPipelineSubsRef.current = subs
+
+    // Start conversation
+    ExpoCustomPipelineModule.startConversation(apiUrl, apiKey, model)
+    setIsCallActive(true)
+    setIsConnecting(false)
+    soundsRef.current.playJoin()
+    return true
+  }, [conversationId, loadMessages])
+
+  const stopCustomPipeline = useCallback(() => {
+    ExpoCustomPipelineModule.stopConversation()
+    customPipelineSubsRef.current.forEach((s) => s.remove())
+    customPipelineSubsRef.current = []
+    setIsCallActive(false)
+    setIsMuted(false)
+    setIsThinking(false)
+    soundsRef.current.stopThinking()
+    soundsRef.current.playEnd()
+  }, [])
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
