@@ -310,7 +310,7 @@ export default function SettingsScreen() {
                           style: 'destructive',
                           onPress: async () => {
                             await clearLatencyData()
-                            loadLatencyStats()
+                            await loadLatencyStats()
                           },
                         },
                       ]
@@ -460,8 +460,6 @@ function OptionGroup<T extends string>({
     </View>
   )
 }
-
-// --- Helper Components ---
 
 function LatencyStageSection({ label, avg, min, max }: {
   label: string

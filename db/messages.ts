@@ -97,8 +97,8 @@ export async function getLatencyAverages(): Promise<LatencyAverages> {
       MAX(llm_latency_ms) as max_llm,
       MIN(tts_latency_ms) as min_tts,
       MAX(tts_latency_ms) as max_tts,
-      MIN(COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0)) as min_total,
-      MAX(COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0)) as max_total,
+      MIN(CASE WHEN stt_latency_ms IS NOT NULL AND llm_latency_ms IS NOT NULL AND tts_latency_ms IS NOT NULL THEN COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0) END) as min_total,
+      MAX(CASE WHEN stt_latency_ms IS NOT NULL AND llm_latency_ms IS NOT NULL AND tts_latency_ms IS NOT NULL THEN COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0) END) as max_total,
       COUNT(*) as turn_count
     FROM messages
     WHERE stt_latency_ms IS NOT NULL
