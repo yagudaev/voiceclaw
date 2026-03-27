@@ -34,7 +34,7 @@ export default function SettingsScreen() {
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
 
   // Kokoro model download state
-  const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error'>('checking')
+  const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
 
   // Latency stats state
   const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
@@ -47,10 +47,15 @@ export default function SettingsScreen() {
   const checkKokoroStatus = useCallback(() => {
     setKokoroStatus('checking')
     try {
+      const available = ExpoCustomPipelineModule.isKokoroAvailable()
+      if (!available) {
+        setKokoroStatus('unavailable')
+        return
+      }
       const ready = ExpoCustomPipelineModule.isKokoroModelReady()
       setKokoroStatus(ready ? 'ready' : 'not-downloaded')
     } catch {
-      setKokoroStatus('not-downloaded')
+      setKokoroStatus('unavailable')
     }
   }, [])
 
@@ -560,10 +565,18 @@ function KokoroModelStatus({
   onDownload,
   onRetry,
 }: {
-  status: 'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error'
+  status: 'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'
   onDownload: () => void
   onRetry: () => void
 }) {
+  if (status === 'unavailable') {
+    return (
+      <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
+        <Text className="text-sm text-muted-foreground">Kokoro TTS is not available in this build. Requires KokoroSwift package.</Text>
+      </View>
+    )
+  }
+
   if (status === 'checking') {
     return (
       <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">

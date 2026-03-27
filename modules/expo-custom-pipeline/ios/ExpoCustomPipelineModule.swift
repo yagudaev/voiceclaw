@@ -5,6 +5,7 @@ public class ExpoCustomPipelineModule: Module {
     private var ttsProvider: TTSProvider?
     private var sttProviderName: String = ""
     private var ttsProviderName: String = ""
+    private let bargeInDetector = BargeInDetector()
 
     public func definition() -> ModuleDefinition {
         Name("ExpoCustomPipeline")
@@ -14,7 +15,8 @@ public class ExpoCustomPipelineModule: Module {
             "onFinalTranscript",
             "onTTSStart",
             "onTTSComplete",
-            "onError"
+            "onError",
+            "onBargeIn"
         )
 
         Function("setSTTProvider") { (name: String, config: [String: String]?) in
@@ -64,6 +66,16 @@ public class ExpoCustomPipelineModule: Module {
             self.ttsProvider?.stop()
         }
 
+        Function("startBargeInDetection") { () in
+            self.bargeInDetector.startMonitoring { [weak self] in
+                self?.sendEvent("onBargeIn", [:])
+            }
+        }
+
+        Function("stopBargeInDetection") { () in
+            self.bargeInDetector.stopMonitoring()
+        }
+
         Function("isKokoroModelReady") { () -> Bool in
             if #available(iOS 18.0, *) {
                 return KokoroTTSProvider.isModelCached()
@@ -71,9 +83,20 @@ public class ExpoCustomPipelineModule: Module {
             return false
         }
 
+        Function("isKokoroAvailable") { () -> Bool in
+            #if canImport(KokoroSwift)
+            if #available(iOS 18.0, *) {
+                return true
+            }
+            #endif
+            return false
+        }
+
         AsyncFunction("prepareKokoroModel") { (promise: Promise) in
+            #if canImport(KokoroSwift)
             guard #available(iOS 18.0, *) else {
-                promise.resolve(false)
+                promise.reject(NSError(domain: "KokoroTTS", code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Kokoro TTS requires iOS 18+"]))
                 return
             }
             let provider = KokoroTTSProvider()
@@ -83,6 +106,10 @@ public class ExpoCustomPipelineModule: Module {
                 case .failure(let err): promise.reject(err)
                 }
             }
+            #else
+            promise.reject(NSError(domain: "KokoroTTS", code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Kokoro TTS is not available in this build. The KokoroSwift package needs to be added to the project."]))
+            #endif
         }
     }
 }

@@ -812,9 +812,15 @@ export default function ChatScreen() {
 
       {isCallActive && (
         <View testID="call-controls" className="flex-row items-center justify-center gap-4 border-t border-border bg-muted/50 px-4 py-3">
-          <Button testID="mute-button" variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
-            <Icon as={isMuted ? MicOffIcon : MicIcon} size={20} className="text-foreground" />
-          </Button>
+          {activeVoiceModeRef.current === 'custom' ? (
+            <Button testID="interrupt-button" variant="secondary" size="icon" className="rounded-full" onPress={pipeline.interrupt}>
+              <Icon as={MicIcon} size={20} className="text-foreground" />
+            </Button>
+          ) : (
+            <Button testID="mute-button" variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
+              <Icon as={isMuted ? MicOffIcon : MicIcon} size={20} className="text-foreground" />
+            </Button>
+          )}
           <Button testID="end-call-button" variant="destructive" className="rounded-full px-6" onPress={toggleCall}>
             <Icon as={PhoneOffIcon} size={20} className="text-destructive-foreground" />
             <Text className="ml-2 text-destructive-foreground">End Call</Text>
