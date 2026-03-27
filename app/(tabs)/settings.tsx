@@ -335,7 +335,7 @@ function SecretInput({
   return (
     <View className="flex-row items-center rounded-md border border-input bg-background dark:bg-input/30">
       <TextInput
-        className="h-10 min-w-0 flex-1 px-3 text-base leading-[40px] text-foreground"
+        className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
         placeholder={placeholder}
         placeholderTextColor="#888"
         value={value}
@@ -349,7 +349,7 @@ function SecretInput({
       <Pressable
         onPress={() => setVisible((prev) => !prev)}
         className="h-10 shrink-0 items-center justify-center px-3"
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Icon
           as={visible ? EyeOffIcon : EyeIcon}
