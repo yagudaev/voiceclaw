@@ -21,8 +21,10 @@ public class ExpoVapiModule: Module {
     )
 
     AsyncFunction("initialize") { (publicKey: String) in
+      print("[ExpoVapi] Initializing with key: \(publicKey.prefix(8))...")
       self.vapi = Vapi(publicKey: publicKey)
       self.subscribeToEvents()
+      print("[ExpoVapi] Initialized and subscribed to events")
     }
 
     AsyncFunction("startCall") { (assistantId: String, overrides: [String: Any]?) -> [String: Any] in
@@ -30,11 +32,15 @@ public class ExpoVapiModule: Module {
         throw Exception(name: "ERR_NOT_INITIALIZED", description: "Call initialize() first")
       }
 
+      print("[ExpoVapi] Starting call with assistantId: \(assistantId)")
+      print("[ExpoVapi] Overrides: \(String(describing: overrides))")
+
       let response = try await vapi.start(
         assistantId: assistantId,
         assistantOverrides: overrides ?? [:]
       )
 
+      print("[ExpoVapi] Call started with id: \(response.id)")
       return ["callId": response.id, "status": "started"]
     }
 

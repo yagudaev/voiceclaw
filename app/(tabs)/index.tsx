@@ -126,6 +126,7 @@ export default function ChatScreen() {
   useEffect(() => {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
+        console.log('[Chat] onCallStart fired')
         setIsCallActive(true)
         setIsConnecting(false)
         wasCallActiveRef.current = true
@@ -133,6 +134,7 @@ export default function ChatScreen() {
         soundsRef.current.playJoin()
       }),
       ExpoVapiModule.addListener('onCallEnd', async () => {
+        console.log('[Chat] onCallEnd fired')
         const wasActive = wasCallActiveRef.current
         const wasUserInitiated = userInitiatedEndRef.current
         setIsCallActive(false)
@@ -156,6 +158,7 @@ export default function ChatScreen() {
         }
       }),
       ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
+        console.log('[Chat] onTranscript:', event.role, event.type, event.text?.substring(0, 50))
         if (event.type === 'final' && conversationId) {
           await addMessage(conversationId, event.role, event.text)
           loadMessages()
@@ -352,8 +355,8 @@ export default function ChatScreen() {
         model,
         messages: modelMessages,
         functions: [DISPLAY_TEXT_FUNCTION],
-        user: `voiceclaw:${conversationId}`,
       },
+      metadata: { conversationId: `voiceclaw:${conversationId}` },
     }
 
     const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
