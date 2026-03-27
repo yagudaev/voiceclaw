@@ -87,12 +87,37 @@ class VoiceClawUITests: XCTestCase {
 
   /// Navigate to a tab by tapping its tab bar button.
   /// Tab titles in this app: "Chat", "History", "Settings"
+  /// React Native uses a custom tab bar (not native UITabBar), so we search
+  /// by accessibility label across all buttons.
   func navigateToTab(_ title: String) {
-    let tabButton = app.tabBars.buttons[title]
+    // Try native tab bar first
+    let nativeTab = app.tabBars.buttons[title]
+    if nativeTab.waitForExistence(timeout: 3) {
+      nativeTab.tap()
+      return
+    }
+    // Fall back to any button matching the title (React Native custom tab bar)
+    let customTab = app.buttons["\(title), tab, \(tabIndex(for: title)) of 3"]
+    if customTab.waitForExistence(timeout: 3) {
+      customTab.tap()
+      return
+    }
+    // Last resort: find by label substring
+    let predicate = NSPredicate(format: "label CONTAINS[c] %@", title)
+    let match = app.buttons.matching(predicate).firstMatch
     XCTAssertTrue(
-      tabButton.waitForExistence(timeout: 10),
-      "Tab '\(title)' not found in tab bar"
+      match.waitForExistence(timeout: 10),
+      "Tab '\(title)' not found in any button"
     )
-    tabButton.tap()
+    match.tap()
+  }
+
+  private func tabIndex(for title: String) -> Int {
+    switch title {
+    case "Chat": return 1
+    case "History": return 2
+    case "Settings": return 3
+    default: return 1
+    }
   }
 }
