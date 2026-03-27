@@ -69,6 +69,21 @@ class KokoroTTSProvider: TTSProvider {
         onCompleteCallback = nil
         onErrorCallback = nil
     }
+
+    // MARK: - Public helpers
+
+    static func isModelCached() -> Bool {
+        let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("KokoroTTS", isDirectory: true)
+        let model = cache.appendingPathComponent("kokoro-v1_0.safetensors")
+        let voices = cache.appendingPathComponent("voices.npz")
+        return FileManager.default.fileExists(atPath: model.path)
+            && FileManager.default.fileExists(atPath: voices.path)
+    }
+
+    func downloadModel(completion: @escaping (Result<Void, Error>) -> Void) {
+        prepareModel(completion: completion)
+    }
 }
 
 // MARK: - Model Preparation
@@ -214,8 +229,10 @@ private extension KokoroTTSProvider {
             return
         }
 
-        guard let voice = voices[defaultVoiceKey] else {
-            onErrorCallback?("Kokoro: voice '\(defaultVoiceKey)' not found in voices.npz")
+        // Try both with and without .npy extension — NPZ key format varies
+        let voiceKey = defaultVoiceKey
+        guard let voice = voices[voiceKey] ?? voices[String(voiceKey.dropLast(4))] else {
+            onErrorCallback?("Kokoro: voice '\(voiceKey)' not found in voices.npz")
             onCompleteCallback?()
             return
         }
@@ -333,6 +350,13 @@ class KokoroTTSProvider: TTSProvider {
     let name = "Kokoro TTS"
     private(set) var isSpeaking = false
     private(set) var latencyMs: Double = 0
+
+    static func isModelCached() -> Bool { return false }
+
+    func downloadModel(completion: @escaping (Result<Void, Error>) -> Void) {
+        completion(.failure(NSError(domain: "KokoroTTS", code: 0,
+            userInfo: [NSLocalizedDescriptionKey: "Kokoro TTS requires iOS 18+ and the KokoroSwift package"])))
+    }
 
     func speak(
         text: String,
