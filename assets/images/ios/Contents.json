@@ -55,6 +55,12 @@
       "size": "60x60"
     },
     {
+      "filename": "icon-20x20.png",
+      "idiom": "ipad",
+      "scale": "1x",
+      "size": "20x20"
+    },
+    {
       "filename": "icon-40x40.png",
       "idiom": "ipad",
       "scale": "2x",
@@ -73,10 +79,22 @@
       "size": "29x29"
     },
     {
+      "filename": "icon-40x40.png",
+      "idiom": "ipad",
+      "scale": "1x",
+      "size": "40x40"
+    },
+    {
       "filename": "icon-80x80.png",
       "idiom": "ipad",
       "scale": "2x",
       "size": "40x40"
+    },
+    {
+      "filename": "icon-76x76.png",
+      "idiom": "ipad",
+      "scale": "1x",
+      "size": "76x76"
     },
     {
       "filename": "icon-152x152.png",
