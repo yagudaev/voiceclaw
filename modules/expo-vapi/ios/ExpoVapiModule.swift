@@ -1,11 +1,13 @@
 import ExpoModulesCore
 import Combine
+import AVFoundation
 
 public class ExpoVapiModule: Module {
   private var vapi: Vapi?
   private var cancellables = Set<AnyCancellable>()
   private var callActive = false
   private var micMuted = false
+  private var audioPlayer: AVAudioPlayer?
 
   public func definition() -> ModuleDefinition {
     Name("ExpoVapi")
@@ -64,6 +66,15 @@ public class ExpoVapiModule: Module {
     AsyncFunction("sendMessage") { (content: String) in
       let message = VapiMessage(type: "add-message", role: "user", content: content)
       try await self.vapi?.send(message: message)
+    }
+
+    Function("playSound") { (soundName: String, volume: Float) in
+      self.playSoundFile(soundName, volume: volume)
+    }
+
+    Function("stopSound") { () in
+      self.audioPlayer?.stop()
+      self.audioPlayer = nil
     }
 
     AsyncFunction("sendFunctionCallResult") { (name: String, result: String) in
@@ -153,5 +164,22 @@ public class ExpoVapiModule: Module {
       "name": functionCall.name,
       "parameters": params
     ])
+  }
+
+  private func playSoundFile(_ name: String, volume: Float) {
+    let bundle = Bundle(for: type(of: self))
+    let url = bundle.url(forResource: name, withExtension: "wav")
+      ?? Bundle.main.url(forResource: name, withExtension: "wav")
+    guard let soundUrl = url else {
+      print("[ExpoVapi] Sound file not found: \(name).wav")
+      return
+    }
+    do {
+      audioPlayer = try AVAudioPlayer(contentsOf: soundUrl)
+      audioPlayer?.volume = volume
+      audioPlayer?.play()
+    } catch {
+      print("[ExpoVapi] Failed to play sound: \(error)")
+    }
   }
 }
