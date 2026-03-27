@@ -7,11 +7,13 @@ import type {
   LatencyUpdateEvent,
   LatencyStats,
 } from '../modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
+import type { LatencyData } from '@/db'
 
 export type CustomPipelineConfig = {
   apiUrl: string
   apiKey: string
   model: string
+  onLatencyUpdate?: (latency: LatencyData) => void
 }
 
 export type CustomPipelineState = {
@@ -33,6 +35,8 @@ export function useCustomPipeline(config: CustomPipelineConfig): CustomPipelineS
     ttsLatencyMs: 0,
   })
   const subscriptions = useRef<Array<{ remove: () => void }>>([])
+  const onLatencyUpdateRef = useRef(config.onLatencyUpdate)
+  onLatencyUpdateRef.current = config.onLatencyUpdate
 
   useEffect(() => {
     const subs = [
@@ -60,6 +64,11 @@ export function useCustomPipeline(config: CustomPipelineConfig): CustomPipelineS
         'onLatencyUpdate',
         (event: LatencyUpdateEvent) => {
           setLatencyStats({
+            sttLatencyMs: event.sttLatencyMs,
+            llmLatencyMs: event.llmLatencyMs,
+            ttsLatencyMs: event.ttsLatencyMs,
+          })
+          onLatencyUpdateRef.current?.({
             sttLatencyMs: event.sttLatencyMs,
             llmLatencyMs: event.llmLatencyMs,
             ttsLatencyMs: event.ttsLatencyMs,
