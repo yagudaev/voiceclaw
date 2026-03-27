@@ -38,8 +38,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite",
-      "./plugins/with-ios-icons"
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true

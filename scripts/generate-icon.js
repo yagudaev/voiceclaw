@@ -31,7 +31,7 @@ const OUTPUT_DIR = path.join(__dirname, '..', 'assets', 'images')
 const IOS_OUTPUT_DIR = path.join(OUTPUT_DIR, 'ios')
 
 // iOS icon sizes required for App Store and devices
-const IOS_ICON_SIZES = [1024, 180, 167, 152, 120, 87, 80, 60, 58, 40, 29]
+const IOS_ICON_SIZES = [1024, 180, 167, 152, 120, 87, 80, 76, 60, 58, 40, 29, 20]
 
 // -------------------------------------------------------
 // Entry points
@@ -282,10 +282,13 @@ function generateIOSIcons() {
       { filename: 'icon-120x120.png', idiom: 'iphone', scale: '3x', size: '40x40' },
       { filename: 'icon-120x120.png', idiom: 'iphone', scale: '2x', size: '60x60' },
       { filename: 'icon-180x180.png', idiom: 'iphone', scale: '3x', size: '60x60' },
+      { filename: 'icon-20x20.png', idiom: 'ipad', scale: '1x', size: '20x20' },
       { filename: 'icon-40x40.png', idiom: 'ipad', scale: '2x', size: '20x20' },
       { filename: 'icon-29x29.png', idiom: 'ipad', scale: '1x', size: '29x29' },
       { filename: 'icon-58x58.png', idiom: 'ipad', scale: '2x', size: '29x29' },
+      { filename: 'icon-40x40.png', idiom: 'ipad', scale: '1x', size: '40x40' },
       { filename: 'icon-80x80.png', idiom: 'ipad', scale: '2x', size: '40x40' },
+      { filename: 'icon-76x76.png', idiom: 'ipad', scale: '1x', size: '76x76' },
       { filename: 'icon-152x152.png', idiom: 'ipad', scale: '2x', size: '76x76' },
       { filename: 'icon-167x167.png', idiom: 'ipad', scale: '2x', size: '83.5x83.5' },
       { filename: 'icon-1024x1024.png', idiom: 'ios-marketing', scale: '1x', size: '1024x1024' },
