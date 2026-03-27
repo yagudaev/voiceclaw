@@ -31,8 +31,9 @@ class DeepgramSTTProvider: NSObject, STTProvider {
         guard isListening else { return }
         isListening = false
         stopAudioEngine()
-        sendCloseMessage()
-        disconnectWebSocket()
+        sendCloseMessage { [weak self] in
+            self?.disconnectWebSocket()
+        }
     }
 
     // MARK: - Configuration
@@ -89,14 +90,14 @@ class DeepgramSTTProvider: NSObject, STTProvider {
         urlSession = nil
     }
 
-    private func sendCloseMessage() {
-        // Deepgram expects a JSON close message to flush final results
+    private func sendCloseMessage(completion: (() -> Void)? = nil) {
+        // Deepgram expects a JSON close message as a text frame to flush final results
         let closeJSON = "{\"type\":\"CloseStream\"}"
-        guard let data = closeJSON.data(using: .utf8) else { return }
-        webSocket?.send(.data(data)) { error in
+        webSocket?.send(.string(closeJSON)) { error in
             if let error = error {
                 print("[DeepgramSTT] Error sending close message: \(error.localizedDescription)")
             }
+            completion?()
         }
     }
 
@@ -105,6 +106,7 @@ class DeepgramSTTProvider: NSObject, STTProvider {
             print("[DeepgramSTT] Max reconnect attempts reached, giving up")
             isListening = false
             stopAudioEngine()
+            disconnectWebSocket()
             return
         }
 
@@ -228,6 +230,9 @@ class DeepgramSTTProvider: NSObject, STTProvider {
             try engine.start()
         } catch {
             print("[DeepgramSTT] Failed to start audio engine: \(error.localizedDescription)")
+            isListening = false
+            stopAudioEngine()
+            disconnectWebSocket()
         }
     }
 
