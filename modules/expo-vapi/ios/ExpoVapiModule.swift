@@ -68,8 +68,8 @@ public class ExpoVapiModule: Module {
       try await self.vapi?.send(message: message)
     }
 
-    Function("playSound") { (soundName: String, volume: Float) in
-      self.playSoundFile(soundName, volume: volume)
+    Function("playSound") { (soundName: String, volume: Float, loop: Bool?) in
+      self.playSoundFile(soundName, volume: volume, loop: loop ?? false)
     }
 
     Function("stopSound") { () in
@@ -166,7 +166,7 @@ public class ExpoVapiModule: Module {
     ])
   }
 
-  private func playSoundFile(_ name: String, volume: Float) {
+  private func playSoundFile(_ name: String, volume: Float, loop: Bool = false) {
     let bundle = Bundle(for: type(of: self))
     let url = bundle.url(forResource: name, withExtension: "wav")
       ?? Bundle.main.url(forResource: name, withExtension: "wav")
@@ -177,6 +177,7 @@ public class ExpoVapiModule: Module {
     do {
       audioPlayer = try AVAudioPlayer(contentsOf: soundUrl)
       audioPlayer?.volume = volume
+      audioPlayer?.numberOfLoops = loop ? -1 : 0
       audioPlayer?.play()
     } catch {
       print("[ExpoVapi] Failed to play sound: \(error)")

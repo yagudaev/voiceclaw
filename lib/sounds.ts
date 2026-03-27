@@ -15,8 +15,7 @@ export function useCallSounds() {
   const startThinking = useCallback(() => {
     if (thinkingActive.current) return
     thinkingActive.current = true
-    // TODO: looping thinking sound — for now just play once
-    ExpoVapiModule.playSound('thinking', 0.15)
+    ExpoVapiModule.playSound('thinking', 0.15, true)
   }, [])
 
   const stopThinking = useCallback(() => {
