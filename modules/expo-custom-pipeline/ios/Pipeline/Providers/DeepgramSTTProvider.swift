@@ -91,13 +91,16 @@ class DeepgramSTTProvider: NSObject, STTProvider {
     }
 
     private func sendCloseMessage(completion: (() -> Void)? = nil) {
-        // Deepgram expects a JSON close message as a text frame to flush final results
+        // Deepgram expects a JSON close message as a text frame to flush final results.
+        // Wait briefly after sending so Deepgram can return any trailing transcripts.
         let closeJSON = "{\"type\":\"CloseStream\"}"
         webSocket?.send(.string(closeJSON)) { error in
             if let error = error {
                 print("[DeepgramSTT] Error sending close message: \(error.localizedDescription)")
             }
-            completion?()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                completion?()
+            }
         }
     }
 
@@ -204,12 +207,12 @@ class DeepgramSTTProvider: NSObject, STTProvider {
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        // Target format: 16-bit PCM mono at 16kHz
+        // Target format: 16-bit PCM mono at 16kHz (non-interleaved so int16ChannelData is populated)
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16000,
             channels: 1,
-            interleaved: true
+            interleaved: false
         ) else {
             print("[DeepgramSTT] Failed to create target audio format")
             return
@@ -227,6 +230,9 @@ class DeepgramSTTProvider: NSObject, STTProvider {
         }
 
         do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
             try engine.start()
         } catch {
             print("[DeepgramSTT] Failed to start audio engine: \(error.localizedDescription)")
@@ -240,6 +246,7 @@ class DeepgramSTTProvider: NSObject, STTProvider {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func convertToPCM16(
