@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Role = 'user' | 'assistant'
 
@@ -29,7 +29,7 @@ type TranscriptBufferActions = {
 
 type UseTranscriptBufferOptions = {
   /** Called when a speech turn is finalized with the accumulated transcript text. */
-  onFlush: (role: Role, text: string) => void
+  onFlush: (role: Role, text: string) => void | Promise<void>
 }
 
 export function useTranscriptBuffer(options: UseTranscriptBufferOptions): TranscriptBufferActions {
@@ -59,7 +59,16 @@ export function useTranscriptBuffer(options: UseTranscriptBufferOptions): Transc
     buffersRef.current.delete(role)
     syncPartials()
     if (text && text.trim().length > 0) {
-      onFlushRef.current(role, text.trim())
+      try {
+        const result = onFlushRef.current(role, text.trim())
+        if (result && typeof result.catch === 'function') {
+          result.catch((err: unknown) => {
+            console.warn('[TranscriptBuffer] onFlush error:', err)
+          })
+        }
+      } catch (err) {
+        console.warn('[TranscriptBuffer] onFlush error:', err)
+      }
     }
   }, [syncPartials])
 
@@ -119,6 +128,16 @@ export function useTranscriptBuffer(options: UseTranscriptBufferOptions): Transc
     syncPartials()
     return results
   }, [syncPartials])
+
+  // Clean up pending timers on unmount to prevent calling onFlush after unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of pendingFlushRef.current.values()) {
+        clearTimeout(timer)
+      }
+      pendingFlushRef.current.clear()
+    }
+  }, [])
 
   return { onSpeechStart, onTranscriptFinal, onSpeechEnd, flushAll, partials }
 }
