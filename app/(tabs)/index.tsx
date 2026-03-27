@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
+import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -81,6 +81,7 @@ export default function ChatScreen() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
+  const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
   const soundsRef = useRef({ playJoin, playEnd, startThinking, stopThinking })
   soundsRef.current = { playJoin, playEnd, startThinking, stopThinking }
@@ -209,6 +210,7 @@ export default function ChatScreen() {
   }, [conversationId, cancelReconnect, triggerReconnect])
 
   const startNewConversation = useCallback(async () => {
+    hasScrolledRef.current = false
     const conv = await createConversation()
     setConversationId(conv.id)
     setMessages([])
@@ -217,6 +219,7 @@ export default function ChatScreen() {
   }, [])
 
   const loadConversation = useCallback(async (id: number) => {
+    hasScrolledRef.current = false
     setConversationId(id)
     setMessages(await getMessages(id))
     setStreamingText(null)
@@ -231,9 +234,18 @@ export default function ChatScreen() {
     }
   }, [selectedConversationId, loadConversation, clearSelection])
 
-  // Create a new conversation on first mount only
+  // Resume the most recent conversation on first mount, or create a new one if none exist
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { startNewConversation() }, [])
+  useEffect(() => {
+    (async () => {
+      const latest = await getLatestConversation()
+      if (latest) {
+        loadConversation(latest.id)
+      } else {
+        startNewConversation()
+      }
+    })()
+  }, [])
 
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
@@ -406,7 +418,11 @@ export default function ChatScreen() {
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => <MessageBubble message={item} />}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => {
+          const animated = hasScrolledRef.current
+          hasScrolledRef.current = true
+          flatListRef.current?.scrollToEnd({ animated })
+        }}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center pt-40">
             <Text className="text-lg text-muted-foreground">Start a conversation</Text>
