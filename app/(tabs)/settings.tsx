@@ -2,12 +2,11 @@ import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { getSetting, getLatencyAverages, type LatencyAverages } from '@/db'
+import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
-import { CheckIcon } from 'lucide-react-native'
-import { EyeIcon, EyeOffIcon } from 'lucide-react-native'
+import { CheckIcon, EyeIcon, EyeOffIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -347,22 +346,53 @@ export default function SettingsScreen() {
         </Card>
 
         <Card className="gap-4 p-4">
-          <Text className="text-lg font-semibold text-foreground">Latency Stats</Text>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-lg font-semibold text-foreground">Latency Stats</Text>
+            <View className="flex-row items-center gap-2">
+              <Pressable onPress={loadLatencyStats} className="p-2" disabled={loadingStats}>
+                <Icon as={RefreshCwIcon} size={18} className="text-muted-foreground" />
+              </Pressable>
+              {latencyStats && latencyStats.turnCount > 0 && (
+                <Pressable
+                  onPress={() => {
+                    Alert.alert(
+                      'Clear Latency Data',
+                      'This will remove all latency measurements from messages. The messages themselves will not be deleted.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Clear',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await clearLatencyData()
+                            await loadLatencyStats()
+                          },
+                        },
+                      ]
+                    )
+                  }}
+                  className="p-2"
+                >
+                  <Icon as={Trash2Icon} size={18} className="text-destructive" />
+                </Pressable>
+              )}
+            </View>
+          </View>
           {loadingStats ? (
             <ActivityIndicator size="small" color="#888" />
           ) : latencyStats && latencyStats.turnCount > 0 ? (
-            <View className="gap-2">
-              <LatencyStatRow label="Avg STT" value={latencyStats.avgStt} />
-              <LatencyStatRow label="Avg LLM" value={latencyStats.avgLlm} />
-              <LatencyStatRow label="Avg TTS" value={latencyStats.avgTts} />
-              <LatencyStatRow label="Avg Total" value={latencyStats.avgTotal} />
+            <View className="gap-3">
+              <LatencyStageSection label="STT" avg={latencyStats.avgStt} min={latencyStats.minStt} max={latencyStats.maxStt} />
+              <LatencyStageSection label="LLM" avg={latencyStats.avgLlm} min={latencyStats.minLlm} max={latencyStats.maxLlm} />
+              <LatencyStageSection label="TTS" avg={latencyStats.avgTts} min={latencyStats.minTts} max={latencyStats.maxTts} />
+              <LatencyStageSection label="Total" avg={latencyStats.avgTotal} min={latencyStats.minTotal} max={latencyStats.maxTotal} />
               <Text className="text-xs text-muted-foreground/60">
                 Based on {latencyStats.turnCount} turn{latencyStats.turnCount !== 1 ? 's' : ''} with latency data
               </Text>
             </View>
           ) : (
             <Text className="text-sm text-muted-foreground">
-              No latency data yet. Use Custom Pipeline mode to collect stats.
+              No latency data yet. Use Custom Pipeline or Vapi mode to collect stats.
             </Text>
           )}
         </Card>
@@ -389,18 +419,22 @@ function SecretInput({
   return (
     <View className="flex-row items-center rounded-md border border-input bg-background dark:bg-input/30">
       <TextInput
-        className="h-10 min-w-0 flex-1 px-3 text-base text-foreground"
+        className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
         placeholder={placeholder}
         placeholderTextColor="#888"
-        value={visible ? value : value ? '\u2022'.repeat(Math.min(value.length, 30)) : ''}
-        onChangeText={visible ? onChangeText : undefined}
-        editable={visible}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={!visible}
         autoCapitalize="none"
         autoCorrect={false}
         numberOfLines={1}
         scrollEnabled
       />
-      <Pressable onPress={() => setVisible((prev) => !prev)} className="shrink-0 px-3">
+      <Pressable
+        onPress={() => setVisible((prev) => !prev)}
+        className="h-10 shrink-0 items-center justify-center px-3"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
         <Icon
           as={visible ? EyeOffIcon : EyeIcon}
           size={20}
@@ -512,13 +546,26 @@ function SavedIndicator({ status }: { status: SaveStatus }) {
   )
 }
 
-function LatencyStatRow({ label, value }: { label: string, value: number | null }) {
+function LatencyStageSection({ label, avg, min, max }: {
+  label: string
+  avg: number | null
+  min: number | null
+  max: number | null
+}) {
   return (
-    <View className="flex-row items-center justify-between">
-      <Text className="text-sm text-muted-foreground">{label}</Text>
-      <Text className="text-sm font-medium text-foreground">
-        {value != null ? formatLatencyMs(value) : '--'}
-      </Text>
+    <View className="gap-1">
+      <View className="flex-row items-center justify-between">
+        <Text className="text-sm font-medium text-foreground">{label}</Text>
+        <Text className="text-sm font-semibold text-foreground">
+          {avg != null ? formatLatencyMs(avg) : '--'}
+        </Text>
+      </View>
+      <View className="flex-row items-center justify-between pl-2">
+        <Text className="text-xs text-muted-foreground">Min / Max</Text>
+        <Text className="text-xs text-muted-foreground">
+          {min != null ? formatLatencyMs(min) : '--'} / {max != null ? formatLatencyMs(max) : '--'}
+        </Text>
+      </View>
     </View>
   )
 }
