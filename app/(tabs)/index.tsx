@@ -401,7 +401,7 @@ export default function ChatScreen() {
   }, [])
 
   useEffect(() => {
-    getSetting('show_latency').then((v) => { if (v === 'true') setShowLatency(true) })
+    getSetting('show_latency').then((v) => { if (v === 'true') setShowLatency(true) }).catch(() => {})
   }, [])
 
   useEffect(() => { loadMessages() }, [loadMessages])
