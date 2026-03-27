@@ -3,8 +3,8 @@ import { NativeModule, requireNativeModule } from 'expo'
 import { ExpoCustomPipelineModuleEvents, LatencyStats } from './ExpoCustomPipeline.types'
 
 declare class ExpoCustomPipelineModule extends NativeModule<ExpoCustomPipelineModuleEvents> {
-  setSTTProvider(name: string): void
-  setTTSProvider(name: string): void
+  setSTTProvider(name: string, config?: Record<string, string>): void
+  setTTSProvider(name: string, config?: Record<string, string>): void
   startListening(): void
   stopListening(): void
   speak(text: string): void
