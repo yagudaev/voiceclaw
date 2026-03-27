@@ -98,6 +98,12 @@ export default function ChatScreen() {
   const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
   const customPipelineSubsRef = useRef<Array<{ remove: () => void }>>([])
 
+  // Vapi latency tracking refs
+  const vapiUserSpeechEndTimeRef = useRef<number | null>(null)
+  const vapiUserFinalTranscriptTimeRef = useRef<number | null>(null)
+  const vapiAssistantFirstTokenTimeRef = useRef<number | null>(null)
+  const vapiPendingLatencyRef = useRef<LatencyData>({})
+
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
     setMessages(await getMessages(conversationId))
@@ -182,6 +188,11 @@ export default function ChatScreen() {
         wasCallActiveRef.current = true
         cancelReconnect()
         soundsRef.current.playJoin()
+        // Reset Vapi latency tracking for fresh call
+        vapiUserSpeechEndTimeRef.current = null
+        vapiUserFinalTranscriptTimeRef.current = null
+        vapiAssistantFirstTokenTimeRef.current = null
+        vapiPendingLatencyRef.current = {}
       }),
       ExpoVapiModule.addListener('onCallEnd', async () => {
         console.log('[Chat] onCallEnd fired')
@@ -192,12 +203,21 @@ export default function ChatScreen() {
         const wasActive = wasCallActiveRef.current
         const wasUserInitiated = userInitiatedEndRef.current
 
+        // Store any accumulated Vapi latency before flushing
+        const vapiLatency = vapiPendingLatencyRef.current
+        if (vapiLatency.sttLatencyMs != null || vapiLatency.llmLatencyMs != null || vapiLatency.ttsLatencyMs != null) {
+          pendingLatencyRef.current = { ...vapiLatency }
+        }
+        vapiPendingLatencyRef.current = {}
+
         // Flush any in-progress transcript buffers before cleanup
         if (conversationId) {
           const pending = transcriptBufferRef.current.flushAll()
           for (const { role, text } of pending) {
             console.log('[Chat] Flushing buffered transcript on call end:', role, text.substring(0, 50))
-            await addMessage(conversationId, role, text)
+            const latency = role === 'assistant' ? pendingLatencyRef.current ?? undefined : undefined
+            if (role === 'assistant') pendingLatencyRef.current = null
+            await addMessage(conversationId, role, text, latency)
           }
           if (pending.length > 0) {
             loadMessages()
@@ -230,12 +250,44 @@ export default function ChatScreen() {
         if (event.type === 'final') {
           transcriptBufferRef.current.onTranscriptFinal(event.role, event.text)
         }
+
+        // Vapi latency tracking
+        if (event.type === 'final' && event.role === 'user') {
+          // STT latency: time from user speech end to final user transcript
+          if (vapiUserSpeechEndTimeRef.current != null) {
+            vapiPendingLatencyRef.current.sttLatencyMs = Date.now() - vapiUserSpeechEndTimeRef.current
+            vapiUserSpeechEndTimeRef.current = null
+          }
+          vapiUserFinalTranscriptTimeRef.current = Date.now()
+          // Reset assistant first-token tracker for the new turn
+          vapiAssistantFirstTokenTimeRef.current = null
+        }
+
+        if (event.role === 'assistant' && vapiAssistantFirstTokenTimeRef.current == null) {
+          // LLM latency: time from user's final transcript to first assistant output
+          if (vapiUserFinalTranscriptTimeRef.current != null) {
+            vapiPendingLatencyRef.current.llmLatencyMs = Date.now() - vapiUserFinalTranscriptTimeRef.current
+            vapiUserFinalTranscriptTimeRef.current = null
+          }
+          vapiAssistantFirstTokenTimeRef.current = Date.now()
+        }
       }),
       ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
         transcriptBufferRef.current.onSpeechStart(event.role)
         if (event.role === 'assistant') {
           setIsThinking(false)
           soundsRef.current.stopThinking()
+          // Vapi latency tracking
+          const now = Date.now()
+          if (vapiAssistantFirstTokenTimeRef.current != null) {
+            // TTS latency: time from first assistant text to speech start
+            vapiPendingLatencyRef.current.ttsLatencyMs = now - vapiAssistantFirstTokenTimeRef.current
+          } else if (vapiUserFinalTranscriptTimeRef.current != null) {
+            // Speech started before any transcript -- count full time as LLM latency
+            vapiPendingLatencyRef.current.llmLatencyMs = now - vapiUserFinalTranscriptTimeRef.current
+            vapiUserFinalTranscriptTimeRef.current = null
+            vapiAssistantFirstTokenTimeRef.current = now
+          }
         }
       }),
       ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
@@ -243,6 +295,18 @@ export default function ChatScreen() {
         if (event.role === 'user') {
           setIsThinking(true)
           soundsRef.current.startThinking()
+          // Vapi latency: mark when user stopped speaking (STT timer starts)
+          vapiUserSpeechEndTimeRef.current = Date.now()
+        }
+        if (event.role === 'assistant') {
+          // Vapi latency: assistant turn is done — store accumulated latency for flush
+          const latency = vapiPendingLatencyRef.current
+          if (latency.sttLatencyMs != null || latency.llmLatencyMs != null || latency.ttsLatencyMs != null) {
+            pendingLatencyRef.current = { ...latency }
+          }
+          // Reset for next turn
+          vapiPendingLatencyRef.current = {}
+          vapiAssistantFirstTokenTimeRef.current = null
         }
       }),
       ExpoVapiModule.addListener('onFunctionCall', async (event: FunctionCallEvent) => {
