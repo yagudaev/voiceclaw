@@ -690,15 +690,12 @@ export default function ChatScreen() {
     setIsMuted(newMuted)
   }, [isMuted])
 
-  const displayMessages = (() => {
-    let msgs = messages as Message[]
-    if (streamingText !== null) {
-      msgs = [...msgs, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
-    } else if (isThinking) {
-      msgs = [...msgs, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
-    }
-    return msgs
-  })()
+  let displayMessages = messages as Message[]
+  if (streamingText !== null) {
+    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  } else if (isThinking) {
+    displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  }
 
   const { partials } = transcriptBuffer
 
@@ -724,7 +721,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <>
             <MessageBubble message={item} />
-            <LatencyBadge message={item} />
+            {item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
           </>
         )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
@@ -842,27 +839,22 @@ function ThinkingDots() {
   const dot3 = useRef(new Animated.Value(0.3)).current
 
   useEffect(() => {
-    const animate = (dot: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0.3, duration: 400, useNativeDriver: true }),
-        ])
-      )
+    // Single loop with sequential steps prevents animation drift between dots
+    const pulse = (dot: Animated.Value) =>
+      Animated.sequence([
+        Animated.timing(dot, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0.3, duration: 200, useNativeDriver: true }),
+      ])
 
-    const a1 = animate(dot1, 0)
-    const a2 = animate(dot2, 200)
-    const a3 = animate(dot3, 400)
-    a1.start()
-    a2.start()
-    a3.start()
-
-    return () => {
-      a1.stop()
-      a2.stop()
-      a3.stop()
-    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        pulse(dot1),
+        pulse(dot2),
+        pulse(dot3),
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
   }, [dot1, dot2, dot3])
 
   return (
@@ -874,7 +866,7 @@ function ThinkingDots() {
             width: 8,
             height: 8,
             borderRadius: 4,
-            backgroundColor: '#888',
+            backgroundColor: '#aaa',
             opacity: dot,
           }}
         />
