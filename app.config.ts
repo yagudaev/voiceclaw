@@ -42,6 +42,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-sqlite',
     './plugins/with-ios-icons',
+    './plugins/with-ui-tests',
   ],
   experiments: {
     typedRoutes: true,
