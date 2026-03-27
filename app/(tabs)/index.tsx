@@ -91,7 +91,24 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
-  const transcriptBuffer = useTranscriptBuffer()
+  const loadMessages = useCallback(async () => {
+    if (!conversationId) return
+    setMessages(await getMessages(conversationId))
+  }, [conversationId])
+
+  const handleTranscriptFlush = useCallback(async (role: 'user' | 'assistant', text: string) => {
+    if (!conversationId) return
+    if (__DEV__) console.log('[Chat] Transcript flush:', role, text.substring(0, 50))
+    try {
+      await addMessage(conversationId, role, text)
+      await loadMessages()
+      maybeGenerateTitle(conversationId)
+    } catch (err) {
+      console.warn('[Chat] Failed to flush transcript:', err)
+    }
+  }, [conversationId, loadMessages])
+
+  const transcriptBuffer = useTranscriptBuffer({ onFlush: handleTranscriptFlush })
   const transcriptBufferRef = useRef(transcriptBuffer)
   transcriptBufferRef.current = transcriptBuffer
 
@@ -189,13 +206,8 @@ export default function ChatScreen() {
           soundsRef.current.stopThinking()
         }
       }),
-      ExpoVapiModule.addListener('onSpeechEnd', async (event: SpeechEvent) => {
-        const fullText = transcriptBufferRef.current.onSpeechEnd(event.role)
-        if (fullText && conversationId) {
-          await addMessage(conversationId, event.role, fullText)
-          loadMessages()
-          maybeGenerateTitle(conversationId)
-        }
+      ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
+        transcriptBufferRef.current.onSpeechEnd(event.role)
         if (event.role === 'user') {
           setIsThinking(true)
           soundsRef.current.startThinking()
@@ -269,11 +281,6 @@ export default function ChatScreen() {
       }
     })()
   }, [])
-
-  const loadMessages = useCallback(async () => {
-    if (!conversationId) return
-    setMessages(await getMessages(conversationId))
-  }, [conversationId])
 
   useEffect(() => { loadMessages() }, [loadMessages])
 
