@@ -6,7 +6,7 @@ import { Text } from '@/components/ui/text'
 import { getSetting, setSetting } from '@/db'
 import { EyeIcon, EyeOffIcon } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, View } from 'react-native'
 
 function SecretInput({
   value,
@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}>
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
         <Card className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">Vapi Configuration</Text>
 
