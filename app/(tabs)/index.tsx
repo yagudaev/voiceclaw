@@ -119,10 +119,24 @@ export default function ChatScreen() {
     }
     const overrides = lastCallOverridesRef.current
     setIsConnecting(true)
+
+    // Safety timeout: reset isConnecting if onCallStart never fires after reconnect
+    if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
+    connectingTimeoutRef.current = setTimeout(() => {
+      setIsConnecting((current) => {
+        if (current) console.warn('[Chat] Reconnect connecting timed out after 15s, resetting state')
+        return false
+      })
+    }, 15_000)
+
     try {
       await ExpoVapiModule.startCall(assistantId, overrides ?? undefined)
     } catch (e) {
       setIsConnecting(false)
+      if (connectingTimeoutRef.current) {
+        clearTimeout(connectingTimeoutRef.current)
+        connectingTimeoutRef.current = null
+      }
       throw e
     }
   }, [])
@@ -241,6 +255,11 @@ export default function ChatScreen() {
       }),
       ExpoVapiModule.addListener('onError', async (event) => {
         console.error('[Vapi]', event.message)
+        setIsConnecting(false)
+        if (connectingTimeoutRef.current) {
+          clearTimeout(connectingTimeoutRef.current)
+          connectingTimeoutRef.current = null
+        }
         setIsThinking(false)
         soundsRef.current.stopThinking()
         if (conversationId) {
