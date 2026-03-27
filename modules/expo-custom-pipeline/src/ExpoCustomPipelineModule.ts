@@ -9,6 +9,9 @@ declare class ExpoCustomPipelineModule extends NativeModule<ExpoCustomPipelineMo
   stopListening(): void
   speak(text: string): void
   stopSpeaking(): void
+  startBargeInDetection(): void
+  stopBargeInDetection(): void
+  isKokoroAvailable(): boolean
   isKokoroModelReady(): boolean
   prepareKokoroModel(): Promise<boolean>
 }
