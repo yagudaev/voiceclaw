@@ -8,6 +8,7 @@ import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
+import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoVapiModule from '@/modules/expo-vapi'
@@ -89,6 +90,9 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
+  const transcriptBuffer = useTranscriptBuffer()
+  const transcriptBufferRef = useRef(transcriptBuffer)
+  transcriptBufferRef.current = transcriptBuffer
 
   const reconnectCall = useCallback(async () => {
     const assistantId = lastAssistantIdRef.current
@@ -137,6 +141,20 @@ export default function ChatScreen() {
         console.log('[Chat] onCallEnd fired')
         const wasActive = wasCallActiveRef.current
         const wasUserInitiated = userInitiatedEndRef.current
+
+        // Flush any in-progress transcript buffers before cleanup
+        if (conversationId) {
+          const pending = transcriptBufferRef.current.flushAll()
+          for (const { role, text } of pending) {
+            console.log('[Chat] Flushing buffered transcript on call end:', role, text.substring(0, 50))
+            await addMessage(conversationId, role, text)
+          }
+          if (pending.length > 0) {
+            loadMessages()
+            maybeGenerateTitle(conversationId)
+          }
+        }
+
         setIsCallActive(false)
         setIsMuted(false)
         setIsThinking(false)
@@ -157,21 +175,26 @@ export default function ChatScreen() {
           }
         }
       }),
-      ExpoVapiModule.addListener('onTranscript', async (event: TranscriptEvent) => {
+      ExpoVapiModule.addListener('onTranscript', (event: TranscriptEvent) => {
         console.log('[Chat] onTranscript:', event.role, event.type, event.text?.substring(0, 50))
-        if (event.type === 'final' && conversationId) {
-          await addMessage(conversationId, event.role, event.text)
-          loadMessages()
-          maybeGenerateTitle(conversationId)
+        if (event.type === 'final') {
+          transcriptBufferRef.current.onTranscriptFinal(event.role, event.text)
         }
       }),
       ExpoVapiModule.addListener('onSpeechStart', (event: SpeechEvent) => {
+        transcriptBufferRef.current.onSpeechStart(event.role)
         if (event.role === 'assistant') {
           setIsThinking(false)
           soundsRef.current.stopThinking()
         }
       }),
-      ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
+      ExpoVapiModule.addListener('onSpeechEnd', async (event: SpeechEvent) => {
+        const fullText = transcriptBufferRef.current.onSpeechEnd(event.role)
+        if (fullText && conversationId) {
+          await addMessage(conversationId, event.role, fullText)
+          loadMessages()
+          maybeGenerateTitle(conversationId)
+        }
         if (event.role === 'user') {
           setIsThinking(true)
           soundsRef.current.startThinking()
@@ -385,6 +408,8 @@ export default function ChatScreen() {
     ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now() }]
     : messages
 
+  const { partials } = transcriptBuffer
+
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-background"
@@ -412,6 +437,15 @@ export default function ChatScreen() {
             <Text className="text-lg text-muted-foreground">Start a conversation</Text>
             <Text className="mt-1 text-sm text-muted-foreground">Type a message or tap the mic to speak</Text>
           </View>
+        }
+        ListFooterComponent={
+          partials.length > 0 ? (
+            <View>
+              {partials.map((p) => (
+                <PartialBubble key={p.role} role={p.role} text={p.text} />
+              ))}
+            </View>
+          ) : null
         }
       />
 
@@ -492,6 +526,23 @@ export default function ChatScreen() {
 }
 
 // --- Helper Components ---
+
+function PartialBubble({ role, text }: { role: 'user' | 'assistant', text: string }) {
+  const isUser = role === 'user'
+  return (
+    <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
+      <View
+        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+          isUser ? 'rounded-br-sm bg-primary/60' : 'rounded-bl-sm bg-muted/60'
+        }`}>
+        <Text
+          className={`text-sm italic ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+          {text}
+        </Text>
+      </View>
+    </View>
+  )
+}
 
 function ChatImage({ url }: { url: string }) {
   const [loading, setLoading] = useState(true)
