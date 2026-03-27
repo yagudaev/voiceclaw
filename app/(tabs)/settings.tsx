@@ -166,11 +166,12 @@ export default function SettingsScreen() {
 
   return (
     <KeyboardAvoidingView
+      testID="settings-screen"
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}>
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-        <Card className="gap-4 p-4">
+      <ScrollView testID="settings-scroll" contentContainerStyle={{ padding: 16, gap: 16 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+        <Card testID="voice-pipeline-card" className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">Voice Pipeline</Text>
 
           <View className="gap-2">
@@ -271,7 +272,7 @@ export default function SettingsScreen() {
         </Card>
 
         {voiceMode === 'vapi' && (
-          <Card className="gap-4 p-4">
+          <Card testID="vapi-config-card" className="gap-4 p-4">
             <Text className="text-lg font-semibold text-foreground">Vapi Configuration</Text>
 
             <View className="gap-2">
@@ -320,7 +321,7 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        <Card className="gap-4 p-4">
+        <Card testID="openclaw-config-card" className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">OpenClaw Configuration</Text>
 
           <View className="gap-2">
@@ -345,7 +346,7 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
-        <Card className="gap-4 p-4">
+        <Card testID="latency-stats-card" className="gap-4 p-4">
           <View className="flex-row items-center justify-between">
             <Text className="text-lg font-semibold text-foreground">Latency Stats</Text>
             <View className="flex-row items-center gap-2">
