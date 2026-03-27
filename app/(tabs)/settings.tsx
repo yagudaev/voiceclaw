@@ -1,12 +1,12 @@
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { getSetting, setSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
-import { EyeIcon, EyeOffIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
-import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
+import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
+import { CheckIcon, EyeIcon, EyeOffIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -21,7 +21,6 @@ export default function SettingsScreen() {
   const [openclawApiKey, setOpenclawApiKey] = useState('')
   const [openclawApiUrl, setOpenclawApiUrl] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.')
-  const [saved, setSaved] = useState(false)
 
   // Voice Pipeline state
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('vapi')
@@ -36,6 +35,10 @@ export default function SettingsScreen() {
   // Latency stats state
   const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
+
+  // Auto-save: guard against saving during initial load
+  const loadedRef = useRef(false)
+  const { saveStatus, saveImmediate, saveDebounced } = useAutoSave()
 
   const loadLatencyStats = useCallback(async () => {
     setLoadingStats(true)
@@ -83,31 +86,83 @@ export default function SettingsScreen() {
       if (oaiKey) setOpenaiTtsApiKey(oaiKey)
       const oaiVoice = await getSetting('openai_tts_voice')
       if (oaiVoice) setOpenaiTtsVoice(oaiVoice)
+
+      loadedRef.current = true
     })()
   }, [])
 
-  const handleSave = async () => {
-    await setSetting('vapi_api_key', vapiApiKey)
-    await setSetting('assistant_id', assistantId)
-    await setSetting('default_model', defaultModel)
-    await setSetting('openclaw_api_key', openclawApiKey)
-    await setSetting('openclaw_api_url', openclawApiUrl)
-    await setSetting('system_prompt', systemPrompt)
+  // --- Auto-saving wrappers ---
+  // Immediate save for toggles/dropdowns
+  const updateVoiceMode = useCallback((v: VoiceMode) => {
+    setVoiceMode(v)
+    if (loadedRef.current) saveImmediate('voice_mode', v)
+  }, [saveImmediate])
 
-    // Save voice pipeline settings
-    await setSetting('voice_mode', voiceMode)
-    await setSetting('stt_provider', sttProvider)
-    await setSetting('tts_provider', ttsProvider)
-    await setSetting('deepgram_api_key', deepgramApiKey)
-    await setSetting('elevenlabs_api_key', elevenlabsApiKey)
-    await setSetting('elevenlabs_voice_id', elevenlabsVoiceId)
-    await setSetting('openai_tts_api_key', openaiTtsApiKey)
-    await setSetting('openai_tts_voice', openaiTtsVoice)
+  const updateSttProvider = useCallback((v: STTProviderValue) => {
+    setSttProvider(v)
+    if (loadedRef.current) saveImmediate('stt_provider', v)
+  }, [saveImmediate])
 
-    setSaved(true)
-    Alert.alert('Settings Saved', 'Your settings have been saved successfully.')
-    setTimeout(() => setSaved(false), 2000)
-  }
+  const updateTtsProvider = useCallback((v: TTSProviderValue) => {
+    setTtsProvider(v)
+    if (loadedRef.current) saveImmediate('tts_provider', v)
+  }, [saveImmediate])
+
+  const updateOpenaiTtsVoice = useCallback((v: string) => {
+    setOpenaiTtsVoice(v)
+    if (loadedRef.current) saveImmediate('openai_tts_voice', v)
+  }, [saveImmediate])
+
+  // Debounced save for text inputs
+  const updateVapiApiKey = useCallback((v: string) => {
+    setVapiApiKey(v)
+    if (loadedRef.current) saveDebounced('vapi_api_key', v)
+  }, [saveDebounced])
+
+  const updateAssistantId = useCallback((v: string) => {
+    setAssistantId(v)
+    if (loadedRef.current) saveDebounced('assistant_id', v)
+  }, [saveDebounced])
+
+  const updateDefaultModel = useCallback((v: string) => {
+    setDefaultModel(v)
+    if (loadedRef.current) saveDebounced('default_model', v)
+  }, [saveDebounced])
+
+  const updateOpenclawApiKey = useCallback((v: string) => {
+    setOpenclawApiKey(v)
+    if (loadedRef.current) saveDebounced('openclaw_api_key', v)
+  }, [saveDebounced])
+
+  const updateOpenclawApiUrl = useCallback((v: string) => {
+    setOpenclawApiUrl(v)
+    if (loadedRef.current) saveDebounced('openclaw_api_url', v)
+  }, [saveDebounced])
+
+  const updateSystemPrompt = useCallback((v: string) => {
+    setSystemPrompt(v)
+    if (loadedRef.current) saveDebounced('system_prompt', v)
+  }, [saveDebounced])
+
+  const updateDeepgramApiKey = useCallback((v: string) => {
+    setDeepgramApiKey(v)
+    if (loadedRef.current) saveDebounced('deepgram_api_key', v)
+  }, [saveDebounced])
+
+  const updateElevenlabsApiKey = useCallback((v: string) => {
+    setElevenlabsApiKey(v)
+    if (loadedRef.current) saveDebounced('elevenlabs_api_key', v)
+  }, [saveDebounced])
+
+  const updateElevenlabsVoiceId = useCallback((v: string) => {
+    setElevenlabsVoiceId(v)
+    if (loadedRef.current) saveDebounced('elevenlabs_voice_id', v)
+  }, [saveDebounced])
+
+  const updateOpenaiTtsApiKey = useCallback((v: string) => {
+    setOpenaiTtsApiKey(v)
+    if (loadedRef.current) saveDebounced('openai_tts_api_key', v)
+  }, [saveDebounced])
 
   return (
     <KeyboardAvoidingView
@@ -126,7 +181,7 @@ export default function SettingsScreen() {
                 { label: 'Custom Pipeline', value: 'custom' as const },
               ]}
               value={voiceMode}
-              onChange={(v) => setVoiceMode(v)}
+              onChange={updateVoiceMode}
             />
           </View>
 
@@ -140,7 +195,7 @@ export default function SettingsScreen() {
                     { label: 'Deepgram Cloud', value: 'deepgram' as const },
                   ]}
                   value={sttProvider}
-                  onChange={(v) => setSttProvider(v)}
+                  onChange={updateSttProvider}
                 />
               </View>
 
@@ -149,7 +204,7 @@ export default function SettingsScreen() {
                   <Text className="text-sm text-muted-foreground">Deepgram API Key</Text>
                   <SecretInput
                     value={deepgramApiKey}
-                    onChangeText={setDeepgramApiKey}
+                    onChangeText={updateDeepgramApiKey}
                     placeholder="Enter your Deepgram API key"
                   />
                 </View>
@@ -164,7 +219,7 @@ export default function SettingsScreen() {
                     { label: 'OpenAI TTS Cloud', value: 'openai' as const },
                   ]}
                   value={ttsProvider}
-                  onChange={(v) => setTtsProvider(v)}
+                  onChange={updateTtsProvider}
                 />
               </View>
 
@@ -174,7 +229,7 @@ export default function SettingsScreen() {
                     <Text className="text-sm text-muted-foreground">ElevenLabs API Key</Text>
                     <SecretInput
                       value={elevenlabsApiKey}
-                      onChangeText={setElevenlabsApiKey}
+                      onChangeText={updateElevenlabsApiKey}
                       placeholder="Enter your ElevenLabs API key"
                     />
                   </View>
@@ -183,7 +238,7 @@ export default function SettingsScreen() {
                     <Input
                       placeholder="Awx8TeMHHpDzbm42nIB6"
                       value={elevenlabsVoiceId}
-                      onChangeText={setElevenlabsVoiceId}
+                      onChangeText={updateElevenlabsVoiceId}
                       autoCapitalize="none"
                       autoCorrect={false}
                     />
@@ -197,7 +252,7 @@ export default function SettingsScreen() {
                     <Text className="text-sm text-muted-foreground">OpenAI TTS API Key</Text>
                     <SecretInput
                       value={openaiTtsApiKey}
-                      onChangeText={setOpenaiTtsApiKey}
+                      onChangeText={updateOpenaiTtsApiKey}
                       placeholder="Enter your OpenAI API key"
                     />
                   </View>
@@ -206,7 +261,7 @@ export default function SettingsScreen() {
                     <OptionGroup
                       options={OPENAI_TTS_VOICES.map((v) => ({ label: v, value: v }))}
                       value={openaiTtsVoice}
-                      onChange={setOpenaiTtsVoice}
+                      onChange={updateOpenaiTtsVoice}
                     />
                   </View>
                 </>
@@ -223,7 +278,7 @@ export default function SettingsScreen() {
               <Text className="text-sm text-muted-foreground">API Key</Text>
               <SecretInput
                 value={vapiApiKey}
-                onChangeText={setVapiApiKey}
+                onChangeText={updateVapiApiKey}
                 placeholder="Enter your Vapi API key"
               />
             </View>
@@ -233,7 +288,7 @@ export default function SettingsScreen() {
               <Input
                 placeholder="Enter your Vapi Assistant ID"
                 value={assistantId}
-                onChangeText={setAssistantId}
+                onChangeText={updateAssistantId}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -244,7 +299,7 @@ export default function SettingsScreen() {
               <Input
                 placeholder="e.g. gpt-4o, claude-3-opus"
                 value={defaultModel}
-                onChangeText={setDefaultModel}
+                onChangeText={updateDefaultModel}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -257,7 +312,7 @@ export default function SettingsScreen() {
                 placeholder="Default: Keep responses concise. Use markdown for formatting and images when appropriate."
                 placeholderTextColor="#888"
                 value={systemPrompt}
-                onChangeText={setSystemPrompt}
+                onChangeText={updateSystemPrompt}
                 multiline
                 textAlignVertical="top"
               />
@@ -273,7 +328,7 @@ export default function SettingsScreen() {
             <Input
               placeholder="https://your-server.com/v1/chat/completions"
               value={openclawApiUrl}
-              onChangeText={setOpenclawApiUrl}
+              onChangeText={updateOpenclawApiUrl}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
@@ -284,7 +339,7 @@ export default function SettingsScreen() {
             <Text className="text-sm text-muted-foreground">API Key</Text>
             <SecretInput
               value={openclawApiKey}
-              onChangeText={setOpenclawApiKey}
+              onChangeText={updateOpenclawApiKey}
               placeholder="Enter your OpenClaw API key"
             />
           </View>
@@ -342,9 +397,7 @@ export default function SettingsScreen() {
           )}
         </Card>
 
-        <Button onPress={handleSave}>
-          <Text>{saved ? 'Saved!' : 'Save Settings'}</Text>
-        </Button>
+        <SavedIndicator status={saveStatus} />
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -462,6 +515,34 @@ function OptionGroup<T extends string>({
         </Pressable>
       ))}
     </View>
+  )
+}
+
+function SavedIndicator({ status }: { status: SaveStatus }) {
+  const opacity = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (status === 'saved') {
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.delay(1000),
+        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start()
+    } else if (status === 'idle') {
+      opacity.setValue(0)
+    }
+  }, [status, opacity])
+
+  if (status === 'idle') return null
+
+  return (
+    <Animated.View
+      style={{ opacity }}
+      className="flex-row items-center justify-center gap-2 py-2"
+    >
+      <Icon as={CheckIcon} size={16} className="text-primary" />
+      <Text className="text-sm text-muted-foreground">Saved</Text>
+    </Animated.View>
   )
 }
 
