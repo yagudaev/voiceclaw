@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
+import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, setSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -17,13 +17,14 @@ import type { FinalTranscriptEvent, LatencyUpdateEvent } from '@/modules/expo-cu
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, TimerIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
+import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
 const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
 const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
+const THINKING_MESSAGE_ID = -2
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \
@@ -84,6 +85,8 @@ export default function ChatScreen() {
   const [isThinking, setIsThinking] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
+  const [showLatency, setShowLatency] = useState(false)
+  const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
@@ -398,6 +401,10 @@ export default function ChatScreen() {
     })()
   }, [])
 
+  useEffect(() => {
+    getSetting('show_latency').then((v) => { if (v === 'true') setShowLatency(true) }).catch(() => {})
+  }, [])
+
   useEffect(() => { loadMessages() }, [loadMessages])
 
   const sendMessage = useCallback(async () => {
@@ -429,6 +436,7 @@ export default function ChatScreen() {
     streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, conversationId, {
       onToken: (text) => {
         setIsThinking(false)
+        setStreamingRole('assistant')
         setStreamingText(text)
       },
       onDone: async (text) => {
@@ -624,6 +632,7 @@ export default function ChatScreen() {
     if (ttsProvider === 'elevenlabs') {
       const elKey = await getSetting('elevenlabs_api_key')
       const elVoice = await getSetting('elevenlabs_voice_id')
+      console.log('[CustomPipeline] ElevenLabs config — key:', elKey ? `${elKey.substring(0, 8)}...` : 'MISSING', 'voice:', elVoice || 'default')
       if (elKey) ttsConfig.apiKey = elKey
       if (elVoice) ttsConfig.voiceId = elVoice
     } else if (ttsProvider === 'openai') {
@@ -637,21 +646,40 @@ export default function ChatScreen() {
     // Set up event listeners for custom pipeline
     customPipelineSubsRef.current.forEach((s) => s.remove())
     customPipelineSubsRef.current = []
+    console.log('[CustomPipeline] Starting listeners, conversationId:', conversationId)
     const subs = [
+      ExpoCustomPipelineModule.addListener('onPartialTranscript', (event) => {
+        if (__DEV__) console.log('[CustomPipeline] Partial:', event.text?.substring(0, 50))
+        setStreamingRole('user')
+        setStreamingText(event.text)
+      }),
       ExpoCustomPipelineModule.addListener('onFinalTranscript', (event: FinalTranscriptEvent) => {
+        console.log('[CustomPipeline] Final transcript:', event.text?.substring(0, 50))
+        setStreamingText(null)
         if (conversationId) {
           addMessage(conversationId, 'user', event.text).then(() => {
             loadMessages()
             maybeGenerateTitle(conversationId)
           })
         }
+        setIsThinking(true)
+        soundsRef.current.startThinking()
+      }),
+      ExpoCustomPipelineModule.addListener('onAssistantResponse', (event) => {
+        console.log('[CustomPipeline] Assistant response:', event.text?.substring(0, 50))
+        setIsThinking(false)
+        soundsRef.current.stopThinking()
+        if (conversationId && event.text) {
+          addMessage(conversationId, 'assistant', event.text).then(() => loadMessages())
+        }
       }),
       ExpoCustomPipelineModule.addListener('onTTSStart', () => {
+        console.log('[CustomPipeline] TTS started')
         setIsThinking(false)
         soundsRef.current.stopThinking()
       }),
       ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
-        // TTS finished speaking
+        console.log('[CustomPipeline] TTS complete')
       }),
       ExpoCustomPipelineModule.addListener('onError', (event) => {
         console.error('[CustomPipeline]', event.message)
@@ -665,6 +693,7 @@ export default function ChatScreen() {
     customPipelineSubsRef.current = subs
 
     // Start conversation
+    console.log('[CustomPipeline] Starting conversation with', { apiUrl, model, sttProvider, ttsProvider })
     ExpoCustomPipelineModule.startConversation(apiUrl, apiKey, model)
     setIsCallActive(true)
     setIsConnecting(false)
@@ -689,11 +718,20 @@ export default function ChatScreen() {
     setIsMuted(newMuted)
   }, [isMuted])
 
-  const displayMessages = streamingText !== null
-    ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
-    : messages
+  let displayMessages = messages as Message[]
+  if (streamingText !== null) {
+    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: streamingRole, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  } else if (isThinking) {
+    displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  }
 
   const { partials } = transcriptBuffer
+
+  const toggleLatencyDisplay = useCallback(async () => {
+    const next = !showLatency
+    setShowLatency(next)
+    await setSetting('show_latency', next ? 'true' : 'false')
+  }, [showLatency])
 
   return (
     <KeyboardAvoidingView
@@ -703,9 +741,14 @@ export default function ChatScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={startNewConversation} className="mr-2 p-2">
-              <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
-            </Pressable>
+            <View className="mr-2 flex-row items-center">
+              <Pressable onPress={toggleLatencyDisplay} className="p-2">
+                <TimerIcon size={20} color={showLatency ? '#f59e0b' : (colorScheme === 'dark' ? '#666' : '#999')} />
+              </Pressable>
+              <Pressable onPress={startNewConversation} className="p-2">
+                <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -717,7 +760,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <>
             <MessageBubble message={item} />
-            <LatencyBadge message={item} />
+            {showLatency && item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
           </>
         )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
@@ -742,15 +785,6 @@ export default function ChatScreen() {
           ) : null
         }
       />
-
-      {isThinking && (
-        <View className="flex-row items-center gap-2 px-4 py-2">
-          <View className="flex-row items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
-            <ActivityIndicator size="small" color="#888" />
-            <Text className="text-sm text-muted-foreground">Thinking...</Text>
-          </View>
-        </View>
-      )}
 
       {reconnectState.status === 'reconnecting' && (
         <View className="items-center gap-2 border-t border-border bg-muted/50 px-4 py-3">
@@ -838,6 +872,48 @@ function PartialBubble({ role, text }: { role: 'user' | 'assistant', text: strin
   )
 }
 
+function ThinkingDots() {
+  const dot1 = useRef(new Animated.Value(0.3)).current
+  const dot2 = useRef(new Animated.Value(0.3)).current
+  const dot3 = useRef(new Animated.Value(0.3)).current
+
+  useEffect(() => {
+    // Single loop with sequential steps prevents animation drift between dots
+    const pulse = (dot: Animated.Value) =>
+      Animated.sequence([
+        Animated.timing(dot, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0.3, duration: 200, useNativeDriver: true }),
+      ])
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        pulse(dot1),
+        pulse(dot2),
+        pulse(dot3),
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [dot1, dot2, dot3])
+
+  return (
+    <View className="flex-row items-center gap-1.5 py-0.5">
+      {[dot1, dot2, dot3].map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: '#aaa',
+            opacity: dot,
+          }}
+        />
+      ))}
+    </View>
+  )
+}
+
 function ChatImage({ url }: { url: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -871,6 +947,18 @@ function ChatImage({ url }: { url: string }) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
+  const isThinkingPlaceholder = message.id === THINKING_MESSAGE_ID
+
+  if (isThinkingPlaceholder) {
+    return (
+      <View className="mb-3 px-4 items-start">
+        <View className="max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+          <ThinkingDots />
+        </View>
+      </View>
+    )
+  }
+
   const parts = parseContent(message.content)
 
   return (
