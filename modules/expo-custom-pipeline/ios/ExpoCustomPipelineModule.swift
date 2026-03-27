@@ -11,6 +11,7 @@ public class ExpoCustomPipelineModule: Module {
         Events(
             "onPartialTranscript",
             "onFinalTranscript",
+            "onAssistantResponse",
             "onTTSStart",
             "onTTSComplete",
             "onLatencyUpdate",
@@ -41,7 +42,7 @@ public class ExpoCustomPipelineModule: Module {
 
         Function("setTTSProvider") { (name: String, config: [String: String]?) in
             self.ttsProviderName = name
-            print("[ExpoCustomPipeline] TTS provider set to: \(name)")
+            print("[ExpoCustomPipeline] TTS provider set to: \(name), config keys: \(config?.keys.joined(separator: ", ") ?? "nil")")
 
             switch name {
             case "apple":
@@ -86,6 +87,9 @@ public class ExpoCustomPipelineModule: Module {
                 },
                 onComplete: { [weak self] in
                     self?.sendEvent("onTTSComplete", [:])
+                },
+                onError: { [weak self] message in
+                    self?.sendEvent("onError", ["message": message])
                 }
             )
         }
@@ -117,6 +121,10 @@ extension ExpoCustomPipelineModule: PipelineManagerDelegate {
 
     func pipelineDidReceiveFinalTranscript(_ text: String) {
         sendEvent("onFinalTranscript", ["text": text])
+    }
+
+    func pipelineDidReceiveAssistantResponse(_ text: String) {
+        sendEvent("onAssistantResponse", ["text": text])
     }
 
     func pipelineDidStartSpeaking() {
