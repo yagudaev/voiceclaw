@@ -22,6 +22,14 @@ export type LatencyAverages = {
   avgLlm: number | null
   avgTts: number | null
   avgTotal: number | null
+  minStt: number | null
+  maxStt: number | null
+  minLlm: number | null
+  maxLlm: number | null
+  minTts: number | null
+  maxTts: number | null
+  minTotal: number | null
+  maxTotal: number | null
   turnCount: number
 }
 
@@ -68,6 +76,14 @@ export async function getLatencyAverages(): Promise<LatencyAverages> {
     avg_llm: number | null
     avg_tts: number | null
     avg_total: number | null
+    min_stt: number | null
+    max_stt: number | null
+    min_llm: number | null
+    max_llm: number | null
+    min_tts: number | null
+    max_tts: number | null
+    min_total: number | null
+    max_total: number | null
     turn_count: number
   }>(
     `SELECT
@@ -75,6 +91,14 @@ export async function getLatencyAverages(): Promise<LatencyAverages> {
       AVG(llm_latency_ms) as avg_llm,
       AVG(tts_latency_ms) as avg_tts,
       AVG(COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0)) as avg_total,
+      MIN(stt_latency_ms) as min_stt,
+      MAX(stt_latency_ms) as max_stt,
+      MIN(llm_latency_ms) as min_llm,
+      MAX(llm_latency_ms) as max_llm,
+      MIN(tts_latency_ms) as min_tts,
+      MAX(tts_latency_ms) as max_tts,
+      MIN(COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0)) as min_total,
+      MAX(COALESCE(stt_latency_ms, 0) + COALESCE(llm_latency_ms, 0) + COALESCE(tts_latency_ms, 0)) as max_total,
       COUNT(*) as turn_count
     FROM messages
     WHERE stt_latency_ms IS NOT NULL
@@ -83,7 +107,7 @@ export async function getLatencyAverages(): Promise<LatencyAverages> {
   )
 
   if (!row) {
-    return { avgStt: null, avgLlm: null, avgTts: null, avgTotal: null, turnCount: 0 }
+    return emptyLatencyAverages()
   }
 
   return {
@@ -91,6 +115,32 @@ export async function getLatencyAverages(): Promise<LatencyAverages> {
     avgLlm: row.avg_llm,
     avgTts: row.avg_tts,
     avgTotal: row.avg_total,
+    minStt: row.min_stt,
+    maxStt: row.max_stt,
+    minLlm: row.min_llm,
+    maxLlm: row.max_llm,
+    minTts: row.min_tts,
+    maxTts: row.max_tts,
+    minTotal: row.min_total,
+    maxTotal: row.max_total,
     turnCount: row.turn_count,
+  }
+}
+
+export async function clearLatencyData(): Promise<void> {
+  await db.runAsync(
+    `UPDATE messages SET stt_latency_ms = NULL, llm_latency_ms = NULL, tts_latency_ms = NULL
+    WHERE stt_latency_ms IS NOT NULL OR llm_latency_ms IS NOT NULL OR tts_latency_ms IS NOT NULL`
+  )
+}
+
+// --- Helper Functions ---
+
+function emptyLatencyAverages(): LatencyAverages {
+  return {
+    avgStt: null, avgLlm: null, avgTts: null, avgTotal: null,
+    minStt: null, maxStt: null, minLlm: null, maxLlm: null,
+    minTts: null, maxTts: null, minTotal: null, maxTotal: null,
+    turnCount: 0,
   }
 }
