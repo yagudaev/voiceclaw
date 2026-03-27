@@ -20,43 +20,14 @@ public class ExpoCustomPipelineModule: Module {
         Function("setSTTProvider") { (name: String, config: [String: String]?) in
             self.sttProviderName = name
             print("[ExpoCustomPipeline] STT provider set to: \(name)")
-
-            switch name {
-            case "apple":
-                self.sttProvider = AppleSTTProvider()
-            case "deepgram":
-                let provider = DeepgramSTTProvider()
-                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
-                    provider.configure(apiKey: apiKey)
-                }
-                self.sttProvider = provider
-            default:
-                print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
-            }
+            self.sttProvider = makeSTTProvider(name: name, config: config)
         }
 
         Function("setTTSProvider") { (name: String, config: [String: String]?) in
             self.ttsProviderName = name
-            print("[ExpoCustomPipeline] TTS provider set to: \(name), config keys: \(config?.keys.joined(separator: ", ") ?? "nil")")
-
-            switch name {
-            case "apple":
-                self.ttsProvider = AppleTTSProvider()
-            case "elevenlabs":
-                let provider = ElevenLabsTTSProvider()
-                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
-                    provider.configure(apiKey: apiKey, voiceId: config?["voiceId"])
-                }
-                self.ttsProvider = provider
-            case "openai":
-                let provider = OpenAITTSProvider()
-                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
-                    provider.configure(apiKey: apiKey, voice: config?["voice"])
-                }
-                self.ttsProvider = provider
-            default:
-                print("[ExpoCustomPipeline] Unknown TTS provider: \(name)")
-            }
+            let configKeys = config?.keys.joined(separator: ", ") ?? "nil"
+            print("[ExpoCustomPipeline] TTS provider set to: \(name), config keys: \(configKeys)")
+            self.ttsProvider = makeTTSProvider(name: name, config: config)
         }
 
         Function("startListening") { () in
@@ -92,5 +63,51 @@ public class ExpoCustomPipelineModule: Module {
         Function("stopSpeaking") { () in
             self.ttsProvider?.stop()
         }
+    }
+}
+
+// MARK: - Helpers
+
+private func makeSTTProvider(name: String, config: [String: String]?) -> STTProvider? {
+    switch name {
+    case "apple":
+        return AppleSTTProvider()
+    case "deepgram":
+        let provider = DeepgramSTTProvider()
+        if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+            provider.configure(apiKey: apiKey)
+        }
+        return provider
+    default:
+        print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
+        return nil
+    }
+}
+
+private func makeTTSProvider(name: String, config: [String: String]?) -> TTSProvider? {
+    switch name {
+    case "apple":
+        return AppleTTSProvider()
+    case "elevenlabs":
+        let provider = ElevenLabsTTSProvider()
+        if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+            provider.configure(apiKey: apiKey, voiceId: config?["voiceId"])
+        }
+        return provider
+    case "openai":
+        let provider = OpenAITTSProvider()
+        if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+            provider.configure(apiKey: apiKey, voice: config?["voice"])
+        }
+        return provider
+    case "kokoro":
+        if #available(iOS 18.0, *) {
+            return KokoroTTSProvider()
+        }
+        print("[ExpoCustomPipeline] Kokoro requires iOS 18+")
+        return nil
+    default:
+        print("[ExpoCustomPipeline] Unknown TTS provider: \(name)")
+        return nil
     }
 }

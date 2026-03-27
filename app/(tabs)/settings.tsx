@@ -10,7 +10,7 @@ import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pre
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
-type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai'
+type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
@@ -75,7 +75,7 @@ export default function SettingsScreen() {
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
-      if (tts === 'apple' || tts === 'elevenlabs' || tts === 'openai') setTtsProvider(tts)
+      if (tts === 'apple' || tts === 'elevenlabs' || tts === 'openai' || tts === 'kokoro') setTtsProvider(tts)
       const dgKey = await getSetting('deepgram_api_key')
       if (dgKey) setDeepgramApiKey(dgKey)
       const elKey = await getSetting('elevenlabs_api_key')
@@ -216,6 +216,7 @@ export default function SettingsScreen() {
                 <OptionGroup
                   options={[
                     { label: 'Apple Zoe On-Device', value: 'apple' as const },
+                    { label: 'Kokoro On-Device (iOS 18+)', value: 'kokoro' as const },
                     { label: 'ElevenLabs Cloud', value: 'elevenlabs' as const },
                     { label: 'OpenAI TTS Cloud', value: 'openai' as const },
                   ]}
