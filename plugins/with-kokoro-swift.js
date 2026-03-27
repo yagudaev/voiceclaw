@@ -31,6 +31,8 @@ const { execSync } = require('child_process')
 const KOKORO_PKG_REF_UUID = '537A5415B5E84E3AA4E7F9B2'
 const KOKORO_PRODUCT_DEP_UUID = '42251F5B356C440BB08B5070'
 const KOKORO_BUILD_FILE_UUID = 'CB07DF55B1234E0BB71AFA78'
+const KOKORO_EMBED_BUILD_FILE_UUID = '7F7A2C4B4E514E67A0D4C1E2'
+const KOKORO_EMBED_PHASE_UUID = '19B6A8F0D9B4496B8E8D4321'
 
 // Upstream repos and tags to clone
 const KOKORO_IOS_REPO = 'https://github.com/mlalma/kokoro-ios'
@@ -72,14 +74,14 @@ function withKokoroPodfile(config) {
     # Make KokoroSwift (SPM package linked to VoiceClaw app target) importable
     # from the ExpoCustomPipeline pod target. SPM dynamic frameworks are built
     # into $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/PackageFrameworks/
-    # which maps to ${PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks inside the
+    # which maps to ${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks inside the
     # pods build system.
     installer.pods_project.targets.each do |target|
       if target.name == 'ExpoCustomPipeline'
         target.build_configurations.each do |config|
           existing = config.build_settings['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
           unless existing.include?('PackageFrameworks')
-            config.build_settings['FRAMEWORK_SEARCH_PATHS'] = "#{existing} \\"${PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
+            config.build_settings['FRAMEWORK_SEARCH_PATHS'] = "#{existing} \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
           end
         end
       end
@@ -234,70 +236,76 @@ function patchPbxproj(pbxprojPath) {
   const project = xcode.project(pbxprojPath)
   project.parseSync()
 
-  // Idempotency check: skip if already patched
-  const localPkgRefs = project.hash.project.objects['XCLocalSwiftPackageReference'] || {}
-  for (const key of Object.keys(localPkgRefs)) {
-    if (typeof localPkgRefs[key] === 'object' && localPkgRefs[key].relativePath === 'LocalPackages/kokoro-ios') {
-      console.log('[with-kokoro-swift] KokoroSwift already in pbxproj, skipping pbxproj patch')
-      return
-    }
-  }
+  const pbxBuildFile = ensureSection(project, 'PBXBuildFile')
+  const localPkgRefs = ensureSection(project, 'XCLocalSwiftPackageReference')
+  const productDeps = ensureSection(project, 'XCSwiftPackageProductDependency')
 
   // 1. Add XCLocalSwiftPackageReference
-  if (!project.hash.project.objects['XCLocalSwiftPackageReference']) {
-    project.hash.project.objects['XCLocalSwiftPackageReference'] = {}
+  let hasLocalPackageRef = false
+  for (const key of Object.keys(localPkgRefs)) {
+    if (typeof localPkgRefs[key] === 'object' && localPkgRefs[key].relativePath === 'LocalPackages/kokoro-ios') {
+      hasLocalPackageRef = true
+      break
+    }
   }
-  project.hash.project.objects['XCLocalSwiftPackageReference'][KOKORO_PKG_REF_UUID] = {
-    isa: 'XCLocalSwiftPackageReference',
-    relativePath: 'LocalPackages/kokoro-ios',
+  if (!hasLocalPackageRef) {
+    localPkgRefs[KOKORO_PKG_REF_UUID] = {
+      isa: 'XCLocalSwiftPackageReference',
+      relativePath: 'LocalPackages/kokoro-ios',
+    }
+    localPkgRefs[KOKORO_PKG_REF_UUID + '_comment'] =
+      'XCLocalSwiftPackageReference "kokoro-ios"'
+    console.log('[with-kokoro-swift] Added kokoro-ios local package reference')
   }
-  project.hash.project.objects['XCLocalSwiftPackageReference'][KOKORO_PKG_REF_UUID + '_comment'] =
-    'XCLocalSwiftPackageReference "kokoro-ios"'
 
   // 2. Add XCSwiftPackageProductDependency
-  if (!project.hash.project.objects['XCSwiftPackageProductDependency']) {
-    project.hash.project.objects['XCSwiftPackageProductDependency'] = {}
+  if (!productDeps[KOKORO_PRODUCT_DEP_UUID]) {
+    productDeps[KOKORO_PRODUCT_DEP_UUID] = {
+      isa: 'XCSwiftPackageProductDependency',
+      package: KOKORO_PKG_REF_UUID,
+      package_comment: 'XCLocalSwiftPackageReference "kokoro-ios"',
+      productName: 'KokoroSwift',
+    }
+    productDeps[KOKORO_PRODUCT_DEP_UUID + '_comment'] = 'KokoroSwift'
+    console.log('[with-kokoro-swift] Added KokoroSwift package product dependency')
   }
-  project.hash.project.objects['XCSwiftPackageProductDependency'][KOKORO_PRODUCT_DEP_UUID] = {
-    isa: 'XCSwiftPackageProductDependency',
-    package: KOKORO_PKG_REF_UUID,
-    package_comment: 'XCLocalSwiftPackageReference "kokoro-ios"',
-    productName: 'KokoroSwift',
-  }
-  project.hash.project.objects['XCSwiftPackageProductDependency'][KOKORO_PRODUCT_DEP_UUID + '_comment'] = 'KokoroSwift'
 
   // 3. Add PBXBuildFile for KokoroSwift in Frameworks
-  const pbxBuildFile = project.hash.project.objects['PBXBuildFile']
-  pbxBuildFile[KOKORO_BUILD_FILE_UUID] = {
-    isa: 'PBXBuildFile',
-    productRef: KOKORO_PRODUCT_DEP_UUID,
-    productRef_comment: 'KokoroSwift',
+  if (!pbxBuildFile[KOKORO_BUILD_FILE_UUID]) {
+    pbxBuildFile[KOKORO_BUILD_FILE_UUID] = {
+      isa: 'PBXBuildFile',
+      productRef: KOKORO_PRODUCT_DEP_UUID,
+      productRef_comment: 'KokoroSwift',
+    }
+    pbxBuildFile[KOKORO_BUILD_FILE_UUID + '_comment'] = 'KokoroSwift in Frameworks'
+    console.log('[with-kokoro-swift] Added KokoroSwift frameworks build file')
   }
-  pbxBuildFile[KOKORO_BUILD_FILE_UUID + '_comment'] = 'KokoroSwift in Frameworks'
 
   // 4. Add KokoroSwift to the main app target's Frameworks build phase
   const frameworksBuildPhase = findFrameworksBuildPhase(project)
   if (frameworksBuildPhase) {
-    frameworksBuildPhase.files.push({
-      value: KOKORO_BUILD_FILE_UUID,
-      comment: 'KokoroSwift in Frameworks',
-    })
-    console.log('[with-kokoro-swift] Added KokoroSwift to Frameworks build phase')
+    ensureBuildPhaseFile(
+      frameworksBuildPhase,
+      KOKORO_BUILD_FILE_UUID,
+      'KokoroSwift in Frameworks'
+    )
   } else {
     console.warn('[with-kokoro-swift] Could not find Frameworks build phase for VoiceClaw target')
   }
 
   // 5. Add packageProductDependencies to the VoiceClaw native target
   const mainTarget = findMainTarget(project)
+  const mainTargetUuid = findMainTargetUuid(project)
   if (mainTarget) {
     if (!mainTarget.packageProductDependencies) {
       mainTarget.packageProductDependencies = []
     }
-    mainTarget.packageProductDependencies.push({
-      value: KOKORO_PRODUCT_DEP_UUID,
-      comment: 'KokoroSwift',
-    })
-    console.log('[with-kokoro-swift] Added KokoroSwift packageProductDependency to VoiceClaw target')
+    ensureBuildPhaseFile(
+      mainTarget,
+      KOKORO_PRODUCT_DEP_UUID,
+      'KokoroSwift',
+      'packageProductDependencies'
+    )
   } else {
     console.warn('[with-kokoro-swift] Could not find VoiceClaw native target')
   }
@@ -308,13 +316,36 @@ function patchPbxproj(pbxprojPath) {
   if (!projectObj.packageReferences) {
     projectObj.packageReferences = []
   }
-  projectObj.packageReferences.push({
-    value: KOKORO_PKG_REF_UUID,
-    comment: 'XCLocalSwiftPackageReference "kokoro-ios"',
-  })
-  console.log('[with-kokoro-swift] Added kokoro-ios packageReference to PBXProject')
+  ensureBuildPhaseFile(
+    projectObj,
+    KOKORO_PKG_REF_UUID,
+    'XCLocalSwiftPackageReference "kokoro-ios"',
+    'packageReferences'
+  )
 
-  // 7. Ensure CODE_SIGNING_ALLOWED = YES on VoiceClaw target build configurations
+  // 7. Ensure KokoroSwift is embedded into the app bundle.
+  if (mainTargetUuid) {
+    const embedFrameworksPhase = ensureEmbedFrameworksPhase(project, mainTargetUuid)
+    if (!pbxBuildFile[KOKORO_EMBED_BUILD_FILE_UUID]) {
+      pbxBuildFile[KOKORO_EMBED_BUILD_FILE_UUID] = {
+        isa: 'PBXBuildFile',
+        productRef: KOKORO_PRODUCT_DEP_UUID,
+        productRef_comment: 'KokoroSwift',
+        settings: {
+          ATTRIBUTES: ['CodeSignOnCopy', 'RemoveHeadersOnCopy'],
+        },
+      }
+      pbxBuildFile[KOKORO_EMBED_BUILD_FILE_UUID + '_comment'] = 'KokoroSwift in Embed Frameworks'
+      console.log('[with-kokoro-swift] Added KokoroSwift embed build file')
+    }
+    ensureBuildPhaseFile(
+      embedFrameworksPhase,
+      KOKORO_EMBED_BUILD_FILE_UUID,
+      'KokoroSwift in Embed Frameworks'
+    )
+  }
+
+  // 8. Ensure CODE_SIGNING_ALLOWED = YES on VoiceClaw target build configurations
   //    (required when SPM packages with resource bundles are linked)
   ensureCodeSigningAllowed(project, mainTarget)
 
@@ -359,6 +390,62 @@ function findFrameworksBuildPhase(project) {
     }
   }
   return null
+}
+
+function ensureEmbedFrameworksPhase(project, mainTargetUuid) {
+  const existing = project.pbxEmbedFrameworksBuildPhaseObj(mainTargetUuid)
+  if (existing) {
+    return existing
+  }
+
+  const phases = ensureSection(project, 'PBXCopyFilesBuildPhase')
+  phases[KOKORO_EMBED_PHASE_UUID] = {
+    isa: 'PBXCopyFilesBuildPhase',
+    buildActionMask: 2147483647,
+    dstPath: '""',
+    dstSubfolderSpec: 10,
+    files: [],
+    name: '"Embed Frameworks"',
+    runOnlyForDeploymentPostprocessing: 0,
+  }
+  phases[KOKORO_EMBED_PHASE_UUID + '_comment'] = 'Embed Frameworks'
+
+  const mainTarget = project.hash.project.objects['PBXNativeTarget'][mainTargetUuid]
+  if (mainTarget && Array.isArray(mainTarget.buildPhases)) {
+    ensureBuildPhaseFile(
+      mainTarget,
+      KOKORO_EMBED_PHASE_UUID,
+      'Embed Frameworks',
+      'buildPhases'
+    )
+  }
+
+  console.log('[with-kokoro-swift] Added Embed Frameworks build phase')
+  return phases[KOKORO_EMBED_PHASE_UUID]
+}
+
+function ensureBuildPhaseFile(parent, value, comment, key = 'files') {
+  if (!Array.isArray(parent[key])) {
+    parent[key] = []
+  }
+
+  const alreadyPresent = parent[key].some((entry) => {
+    if (!entry) return false
+    if (typeof entry === 'string') return entry === value
+    return entry.value === value
+  })
+
+  if (!alreadyPresent) {
+    parent[key].push({ value, comment })
+    console.log(`[with-kokoro-swift] Added ${comment} to ${key}`)
+  }
+}
+
+function ensureSection(project, sectionName) {
+  if (!project.hash.project.objects[sectionName]) {
+    project.hash.project.objects[sectionName] = {}
+  }
+  return project.hash.project.objects[sectionName]
 }
 
 function ensureCodeSigningAllowed(project, mainTarget) {

@@ -24,19 +24,32 @@ detect_device() {
     return
   fi
 
-  # Try xcrun devicectl first (Xcode 15+)
   local device_id
-  device_id=$(xcrun devicectl list devices 2>/dev/null \
-    | grep "available" \
-    | head -1 \
-    | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9-]{36}$/) print $i}')
+  device_id=$(xcrun xcdevice list 2>/dev/null | python3 -c '
+import json, sys
+try:
+    devices = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for device in devices:
+    if device.get("simulator"):
+        continue
+    if device.get("platform") != "com.apple.platform.iphoneos":
+        continue
+    if not device.get("available"):
+        continue
+    identifier = device.get("identifier", "")
+    if identifier:
+        print(identifier)
+        break
+')
 
   if [ -n "$device_id" ]; then
     echo "$device_id"
     return
   fi
 
-  # Fallback: try xctrace (older UDIDs)
+  # Fallback: try xctrace if xcdevice is unavailable
   device_id=$(xcrun xctrace list devices 2>/dev/null \
     | grep -v "Simulator" \
     | grep -v "^==" \
@@ -66,6 +79,39 @@ parse_xcodebuild_output() {
       echo "$line"
     fi
   done
+}
+
+detect_team_id() {
+  if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+    echo "$DEVELOPMENT_TEAM"
+    return
+  fi
+
+  local identity_name
+  identity_name=$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/.* "[^"]*Apple Development: \([^"]*\)"/\1/p' \
+    | head -1)
+
+  local team_id
+  if [ -n "$identity_name" ]; then
+    team_id=$(security find-certificate -a -c "Apple Development: $identity_name" -p 2>/dev/null \
+      | openssl x509 -noout -subject 2>/dev/null \
+      | sed -n 's/.*OU=\([A-Z0-9]\{10\}\).*/\1/p' \
+      | head -1)
+  fi
+
+  if [ -z "$team_id" ]; then
+    team_id=$(security find-identity -v -p codesigning 2>/dev/null \
+      | sed -n 's/.*Apple Development: .* (\([A-Z0-9]\{10\}\)).*/\1/p' \
+      | head -1)
+  fi
+
+  if [ -n "$team_id" ]; then
+    echo "$team_id"
+    return
+  fi
+
+  echo ""
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -120,6 +166,7 @@ fi
 # ─── Detect device ──────────────────────────────────────────────────────────
 
 DEVICE_UDID=$(detect_device)
+DEVELOPMENT_TEAM=$(detect_team_id)
 
 if [ -z "$DEVICE_UDID" ]; then
   echo "ERROR: No connected iOS device found."
@@ -133,7 +180,15 @@ if [ -z "$DEVICE_UDID" ]; then
   exit 1
 fi
 
+if [ -z "$DEVELOPMENT_TEAM" ]; then
+  echo "ERROR: No Apple Development team ID found from local signing identities."
+  echo ""
+  echo "Set DEVELOPMENT_TEAM explicitly or install a valid Apple Development certificate."
+  exit 1
+fi
+
 echo "==> Device: $DEVICE_UDID"
+echo "==> Team:   $DEVELOPMENT_TEAM"
 
 # ─── Validate workspace ────────────────────────────────────────────────────
 
@@ -177,7 +232,7 @@ set +e
 xcodebuild test \
   "${XCODEBUILD_ARGS[@]}" \
   -resultBundlePath "$RESULT_BUNDLE_PATH" \
-  DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-HN6T5KD4ND}" \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
   CODE_SIGN_IDENTITY="Apple Development" \
   CODE_SIGN_STYLE=Automatic \
   -allowProvisioningUpdates \
