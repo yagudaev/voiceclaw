@@ -9,11 +9,11 @@ import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
+import { usePipeline } from '@/lib/use-pipeline'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
-import type { FinalTranscriptEvent, LatencyUpdateEvent } from '@/modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
@@ -99,7 +99,8 @@ export default function ChatScreen() {
   const lastAssistantIdRef = useRef<string | null>(null)
   const pendingLatencyRef = useRef<LatencyData | null>(null)
   const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
-  const customPipelineSubsRef = useRef<Array<{ remove: () => void }>>([])
+  const conversationIdRef = useRef<number | null>(null)
+  conversationIdRef.current = conversationId
 
   // Vapi latency tracking refs
   const vapiUserSpeechEndTimeRef = useRef<number | null>(null)
@@ -107,10 +108,66 @@ export default function ChatScreen() {
   const vapiAssistantFirstTokenTimeRef = useRef<number | null>(null)
   const vapiPendingLatencyRef = useRef<LatencyData>({})
 
+  // Refs for pipeline callbacks that need fresh closure values
+  const loadMessagesRef = useRef<() => Promise<void>>(async () => {})
+
+  const pipeline = usePipeline({
+    onPartialTranscript: (text) => {
+      setStreamingRole('user')
+      setStreamingText(text)
+    },
+    onFinalTranscript: (text) => {
+      console.log('[CustomPipeline] Final transcript:', text?.substring(0, 50))
+      setStreamingText(null)
+      const convId = conversationIdRef.current
+      if (convId) {
+        addMessage(convId, 'user', text).then(() => {
+          loadMessagesRef.current()
+          maybeGenerateTitle(convId)
+        })
+      }
+      setIsThinking(true)
+      soundsRef.current.startThinking()
+    },
+    onAssistantResponse: (text) => {
+      console.log('[CustomPipeline] Assistant response:', text?.substring(0, 50))
+      setIsThinking(false)
+      soundsRef.current.stopThinking()
+      const convId = conversationIdRef.current
+      if (convId && text) {
+        addMessage(convId, 'assistant', text, pendingLatencyRef.current ?? undefined).then(() => {
+          pendingLatencyRef.current = null
+          loadMessagesRef.current()
+        })
+      }
+    },
+    onTTSStart: () => {
+      console.log('[CustomPipeline] TTS started')
+      setIsThinking(false)
+      soundsRef.current.stopThinking()
+    },
+    onTTSComplete: () => {
+      console.log('[CustomPipeline] TTS complete')
+    },
+    onError: (message) => {
+      console.error('[CustomPipeline]', message)
+      setIsThinking(false)
+      soundsRef.current.stopThinking()
+      const convId = conversationIdRef.current
+      if (convId) {
+        addMessage(convId, 'assistant', `Error: ${message}`).then(() => loadMessagesRef.current())
+      }
+    },
+    onLatencyUpdate: (latency) => {
+      pendingLatencyRef.current = latency
+    },
+  })
+
   const loadMessages = useCallback(async () => {
     if (!conversationId) return
     setMessages(await getMessages(conversationId))
   }, [conversationId])
+  loadMessagesRef.current = loadMessages
 
   const handleTranscriptFlush = useCallback(async (role: 'user' | 'assistant', text: string) => {
     if (!conversationId) return
@@ -347,21 +404,6 @@ export default function ChatScreen() {
     ]
     return () => subs.forEach((s) => s.remove())
   }, [conversationId, cancelReconnect, triggerReconnect])
-
-  // Listen for latency updates from the Custom Pipeline
-  useEffect(() => {
-    const sub = ExpoCustomPipelineModule.addListener(
-      'onLatencyUpdate',
-      (event: LatencyUpdateEvent) => {
-        pendingLatencyRef.current = {
-          sttLatencyMs: event.sttLatencyMs,
-          llmLatencyMs: event.llmLatencyMs,
-          ttsLatencyMs: event.ttsLatencyMs,
-        }
-      }
-    )
-    return () => sub.remove()
-  }, [])
 
   const startNewConversation = useCallback(async () => {
     hasScrolledRef.current = false
@@ -608,7 +650,7 @@ export default function ChatScreen() {
   const startCustomPipelineCall = useCallback(async (): Promise<boolean> => {
     if (!conversationId) return false
 
-    const { apiKey, apiUrl, model } = await getApiConfig()
+    const { apiKey, apiUrl } = await getApiConfig()
     if (!apiKey || !apiUrl) {
       await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
       await loadMessages()
@@ -625,6 +667,7 @@ export default function ChatScreen() {
       const deepgramKey = await getSetting('deepgram_api_key')
       if (deepgramKey) sttConfig.apiKey = deepgramKey
     }
+
     ExpoCustomPipelineModule.setSTTProvider(sttProvider, sttConfig)
 
     // Configure TTS provider
@@ -643,74 +686,22 @@ export default function ChatScreen() {
     }
     ExpoCustomPipelineModule.setTTSProvider(ttsProvider, ttsConfig)
 
-    // Set up event listeners for custom pipeline
-    customPipelineSubsRef.current.forEach((s) => s.remove())
-    customPipelineSubsRef.current = []
-    console.log('[CustomPipeline] Starting listeners, conversationId:', conversationId)
-    const subs = [
-      ExpoCustomPipelineModule.addListener('onPartialTranscript', (event) => {
-        if (__DEV__) console.log('[CustomPipeline] Partial:', event.text?.substring(0, 50))
-        setStreamingRole('user')
-        setStreamingText(event.text)
-      }),
-      ExpoCustomPipelineModule.addListener('onFinalTranscript', (event: FinalTranscriptEvent) => {
-        console.log('[CustomPipeline] Final transcript:', event.text?.substring(0, 50))
-        setStreamingText(null)
-        if (conversationId) {
-          addMessage(conversationId, 'user', event.text).then(() => {
-            loadMessages()
-            maybeGenerateTitle(conversationId)
-          })
-        }
-        setIsThinking(true)
-        soundsRef.current.startThinking()
-      }),
-      ExpoCustomPipelineModule.addListener('onAssistantResponse', (event) => {
-        console.log('[CustomPipeline] Assistant response:', event.text?.substring(0, 50))
-        setIsThinking(false)
-        soundsRef.current.stopThinking()
-        if (conversationId && event.text) {
-          addMessage(conversationId, 'assistant', event.text).then(() => loadMessages())
-        }
-      }),
-      ExpoCustomPipelineModule.addListener('onTTSStart', () => {
-        console.log('[CustomPipeline] TTS started')
-        setIsThinking(false)
-        soundsRef.current.stopThinking()
-      }),
-      ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
-        console.log('[CustomPipeline] TTS complete')
-      }),
-      ExpoCustomPipelineModule.addListener('onError', (event) => {
-        console.error('[CustomPipeline]', event.message)
-        setIsThinking(false)
-        soundsRef.current.stopThinking()
-        if (conversationId) {
-          addMessage(conversationId, 'assistant', `Error: ${event.message}`).then(() => loadMessages())
-        }
-      }),
-    ]
-    customPipelineSubsRef.current = subs
-
-    // Start conversation
-    console.log('[CustomPipeline] Starting conversation with', { apiUrl, model, sttProvider, ttsProvider })
-    ExpoCustomPipelineModule.startConversation(apiUrl, apiKey, model)
+    console.log('[CustomPipeline] Starting pipeline with', { apiUrl, sttProvider, ttsProvider })
+    pipeline.start()
     setIsCallActive(true)
     setIsConnecting(false)
     soundsRef.current.playJoin()
     return true
-  }, [conversationId, loadMessages])
+  }, [conversationId, loadMessages, pipeline])
 
   const stopCustomPipeline = useCallback(() => {
-    ExpoCustomPipelineModule.stopConversation()
-    customPipelineSubsRef.current.forEach((s) => s.remove())
-    customPipelineSubsRef.current = []
+    pipeline.stop()
     setIsCallActive(false)
     setIsMuted(false)
     setIsThinking(false)
     soundsRef.current.stopThinking()
     soundsRef.current.playEnd()
-  }, [])
+  }, [pipeline])
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
