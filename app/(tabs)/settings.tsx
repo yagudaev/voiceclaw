@@ -3,10 +3,10 @@ import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { getSetting, setSetting } from '@/db'
+import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
 import { EyeIcon, EyeOffIcon } from 'lucide-react-native'
-import { useEffect, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -32,6 +32,24 @@ export default function SettingsScreen() {
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState('Awx8TeMHHpDzbm42nIB6')
   const [openaiTtsApiKey, setOpenaiTtsApiKey] = useState('')
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState('alloy')
+
+  // Latency stats state
+  const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  const loadLatencyStats = useCallback(async () => {
+    setLoadingStats(true)
+    try {
+      const stats = await getLatencyAverages()
+      setLatencyStats(stats)
+    } catch (err) {
+      console.warn('[Settings] Failed to load latency stats:', err)
+    } finally {
+      setLoadingStats(false)
+    }
+  }, [])
+
+  useEffect(() => { loadLatencyStats() }, [loadLatencyStats])
 
   useEffect(() => {
     ;(async () => {
@@ -272,6 +290,27 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
+        <Card className="gap-4 p-4">
+          <Text className="text-lg font-semibold text-foreground">Latency Stats</Text>
+          {loadingStats ? (
+            <ActivityIndicator size="small" color="#888" />
+          ) : latencyStats && latencyStats.turnCount > 0 ? (
+            <View className="gap-2">
+              <LatencyStatRow label="Avg STT" value={latencyStats.avgStt} />
+              <LatencyStatRow label="Avg LLM" value={latencyStats.avgLlm} />
+              <LatencyStatRow label="Avg TTS" value={latencyStats.avgTts} />
+              <LatencyStatRow label="Avg Total" value={latencyStats.avgTotal} />
+              <Text className="text-xs text-muted-foreground/60">
+                Based on {latencyStats.turnCount} turn{latencyStats.turnCount !== 1 ? 's' : ''} with latency data
+              </Text>
+            </View>
+          ) : (
+            <Text className="text-sm text-muted-foreground">
+              No latency data yet. Use Custom Pipeline mode to collect stats.
+            </Text>
+          )}
+        </Card>
+
         <Button onPress={handleSave}>
           <Text>{saved ? 'Saved!' : 'Save Settings'}</Text>
         </Button>
@@ -389,4 +428,24 @@ function OptionGroup<T extends string>({
       ))}
     </View>
   )
+}
+
+// --- Helper Components ---
+
+function LatencyStatRow({ label, value }: { label: string, value: number | null }) {
+  return (
+    <View className="flex-row items-center justify-between">
+      <Text className="text-sm text-muted-foreground">{label}</Text>
+      <Text className="text-sm font-medium text-foreground">
+        {value != null ? formatLatencyMs(value) : '--'}
+      </Text>
+    </View>
+  )
+}
+
+// --- Helper Functions ---
+
+function formatLatencyMs(ms: number): string {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.round(ms)}ms`
 }
