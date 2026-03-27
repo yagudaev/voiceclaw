@@ -1,7 +1,8 @@
 import ExpoModulesCore
 
 public class ExpoCustomPipelineModule: Module {
-    private let pipelineManager = PipelineManager()
+    private var sttProvider: STTProvider?
+    private var ttsProvider: TTSProvider?
     private var sttProviderName: String = ""
     private var ttsProviderName: String = ""
 
@@ -11,16 +12,10 @@ public class ExpoCustomPipelineModule: Module {
         Events(
             "onPartialTranscript",
             "onFinalTranscript",
-            "onAssistantResponse",
             "onTTSStart",
             "onTTSComplete",
-            "onLatencyUpdate",
             "onError"
         )
-
-        OnCreate {
-            self.pipelineManager.delegate = self
-        }
 
         Function("setSTTProvider") { (name: String, config: [String: String]?) in
             self.sttProviderName = name
@@ -28,13 +23,13 @@ public class ExpoCustomPipelineModule: Module {
 
             switch name {
             case "apple":
-                self.pipelineManager.setSTTProvider(AppleSTTProvider())
+                self.sttProvider = AppleSTTProvider()
             case "deepgram":
                 let provider = DeepgramSTTProvider()
                 if let apiKey = config?["apiKey"], !apiKey.isEmpty {
                     provider.configure(apiKey: apiKey)
                 }
-                self.pipelineManager.setSTTProvider(provider)
+                self.sttProvider = provider
             default:
                 print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
             }
@@ -46,26 +41,26 @@ public class ExpoCustomPipelineModule: Module {
 
             switch name {
             case "apple":
-                self.pipelineManager.setTTSProvider(AppleTTSProvider())
+                self.ttsProvider = AppleTTSProvider()
             case "elevenlabs":
                 let provider = ElevenLabsTTSProvider()
                 if let apiKey = config?["apiKey"], !apiKey.isEmpty {
                     provider.configure(apiKey: apiKey, voiceId: config?["voiceId"])
                 }
-                self.pipelineManager.setTTSProvider(provider)
+                self.ttsProvider = provider
             case "openai":
                 let provider = OpenAITTSProvider()
                 if let apiKey = config?["apiKey"], !apiKey.isEmpty {
                     provider.configure(apiKey: apiKey, voice: config?["voice"])
                 }
-                self.pipelineManager.setTTSProvider(provider)
+                self.ttsProvider = provider
             default:
                 print("[ExpoCustomPipeline] Unknown TTS provider: \(name)")
             }
         }
 
         Function("startListening") { () in
-            self.pipelineManager.sttProvider?.startListening(
+            self.sttProvider?.startListening(
                 onPartialResult: { [weak self] text in
                     self?.sendEvent("onPartialTranscript", ["text": text])
                 },
@@ -76,11 +71,11 @@ public class ExpoCustomPipelineModule: Module {
         }
 
         Function("stopListening") { () in
-            self.pipelineManager.sttProvider?.stopListening()
+            self.sttProvider?.stopListening()
         }
 
         Function("speak") { (text: String) in
-            self.pipelineManager.ttsProvider?.speak(
+            self.ttsProvider?.speak(
                 text: text,
                 onStart: { [weak self] in
                     self?.sendEvent("onTTSStart", [:])
@@ -95,56 +90,7 @@ public class ExpoCustomPipelineModule: Module {
         }
 
         Function("stopSpeaking") { () in
-            self.pipelineManager.ttsProvider?.stop()
+            self.ttsProvider?.stop()
         }
-
-        Function("startConversation") { (apiUrl: String, apiKey: String, model: String) in
-            self.pipelineManager.startConversation(apiUrl: apiUrl, apiKey: apiKey, model: model)
-        }
-
-        Function("stopConversation") { () in
-            self.pipelineManager.stopConversation()
-        }
-
-        Function("getLatencyStats") { () -> [String: Double] in
-            return self.pipelineManager.getLatencyStats()
-        }
-    }
-}
-
-// MARK: - PipelineManagerDelegate
-
-extension ExpoCustomPipelineModule: PipelineManagerDelegate {
-    func pipelineDidReceivePartialTranscript(_ text: String) {
-        sendEvent("onPartialTranscript", ["text": text])
-    }
-
-    func pipelineDidReceiveFinalTranscript(_ text: String) {
-        sendEvent("onFinalTranscript", ["text": text])
-    }
-
-    func pipelineDidReceiveAssistantResponse(_ text: String) {
-        sendEvent("onAssistantResponse", ["text": text])
-    }
-
-    func pipelineDidStartSpeaking() {
-        sendEvent("onTTSStart", [:])
-    }
-
-    func pipelineDidFinishSpeaking() {
-        sendEvent("onTTSComplete", [:])
-    }
-
-    func pipelineDidUpdateLatency(stt: Double, llm: Double, tts: Double) {
-        sendEvent("onLatencyUpdate", [
-            "sttLatencyMs": stt,
-            "llmLatencyMs": llm,
-            "ttsLatencyMs": tts
-        ])
-    }
-
-    func pipelineDidEncounterError(_ message: String) {
-        print("[ExpoCustomPipeline] Error: \(message)")
-        sendEvent("onError", ["message": message])
     }
 }
