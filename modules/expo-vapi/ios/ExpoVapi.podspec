@@ -19,5 +19,6 @@ Pod::Spec.new do |s|
 
   s.source_files = "*.swift", "Vapi/**/*.swift"
   s.vendored_frameworks = "Frameworks/Daily.xcframework"
+  s.resources = "*.wav"
   s.exclude_files = "Frameworks/**/*.h", "Frameworks/**/*.modulemap"
 end
