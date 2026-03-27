@@ -21,22 +21,46 @@ public class ExpoCustomPipelineModule: Module {
             self.pipelineManager.delegate = self
         }
 
-        Function("setSTTProvider") { (name: String) in
+        Function("setSTTProvider") { (name: String, config: [String: String]?) in
             self.sttProviderName = name
             print("[ExpoCustomPipeline] STT provider set to: \(name)")
 
             switch name {
             case "apple":
                 self.pipelineManager.setSTTProvider(AppleSTTProvider())
+            case "deepgram":
+                let provider = DeepgramSTTProvider()
+                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+                    provider.configure(apiKey: apiKey)
+                }
+                self.pipelineManager.setSTTProvider(provider)
             default:
                 print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
             }
         }
 
-        Function("setTTSProvider") { (name: String) in
+        Function("setTTSProvider") { (name: String, config: [String: String]?) in
             self.ttsProviderName = name
             print("[ExpoCustomPipeline] TTS provider set to: \(name)")
-            // Provider implementations will be registered in future tickets
+
+            switch name {
+            case "apple":
+                self.pipelineManager.setTTSProvider(AppleTTSProvider())
+            case "elevenlabs":
+                let provider = ElevenLabsTTSProvider()
+                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+                    provider.configure(apiKey: apiKey, voiceId: config?["voiceId"])
+                }
+                self.pipelineManager.setTTSProvider(provider)
+            case "openai":
+                let provider = OpenAITTSProvider()
+                if let apiKey = config?["apiKey"], !apiKey.isEmpty {
+                    provider.configure(apiKey: apiKey, voice: config?["voice"])
+                }
+                self.pipelineManager.setTTSProvider(provider)
+            default:
+                print("[ExpoCustomPipeline] Unknown TTS provider: \(name)")
+            }
         }
 
         Function("startListening") { () in
