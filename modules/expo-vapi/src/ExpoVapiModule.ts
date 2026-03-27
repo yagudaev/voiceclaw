@@ -11,7 +11,7 @@ declare class ExpoVapiModule extends NativeModule<ExpoVapiModuleEvents> {
   isMuted(): boolean
   sendMessage(content: string): Promise<void>
   sendFunctionCallResult(name: string, result: string): Promise<void>
-  playSound(soundName: string, volume: number): void
+  playSound(soundName: string, volume: number, loop?: boolean): void
   stopSound(): void
 }
 
