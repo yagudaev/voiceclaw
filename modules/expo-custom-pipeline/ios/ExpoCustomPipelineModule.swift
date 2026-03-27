@@ -4,6 +4,7 @@ public class ExpoCustomPipelineModule: Module {
     private let pipelineManager = PipelineManager()
     private var sttProviderName: String = ""
     private var ttsProviderName: String = ""
+    private var deepgramSTTProvider: DeepgramSTTProvider?
 
     public func definition() -> ModuleDefinition {
         Name("ExpoCustomPipeline")
@@ -21,10 +22,21 @@ public class ExpoCustomPipelineModule: Module {
             self.pipelineManager.delegate = self
         }
 
-        Function("setSTTProvider") { (name: String) in
+        Function("setSTTProvider") { (name: String, apiKey: String?) in
             self.sttProviderName = name
             print("[ExpoCustomPipeline] STT provider set to: \(name)")
-            // Provider implementations will be registered in future tickets
+
+            switch name {
+            case "deepgram":
+                let provider = DeepgramSTTProvider()
+                if let key = apiKey, !key.isEmpty {
+                    provider.configure(apiKey: key)
+                }
+                self.deepgramSTTProvider = provider
+                self.pipelineManager.setSTTProvider(provider)
+            default:
+                print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
+            }
         }
 
         Function("setTTSProvider") { (name: String) in
