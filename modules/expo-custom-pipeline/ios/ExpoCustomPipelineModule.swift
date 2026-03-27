@@ -24,7 +24,13 @@ public class ExpoCustomPipelineModule: Module {
         Function("setSTTProvider") { (name: String) in
             self.sttProviderName = name
             print("[ExpoCustomPipeline] STT provider set to: \(name)")
-            // Provider implementations will be registered in future tickets
+
+            switch name {
+            case "apple":
+                self.pipelineManager.setSTTProvider(AppleSTTProvider())
+            default:
+                print("[ExpoCustomPipeline] Unknown STT provider: \(name)")
+            }
         }
 
         Function("setTTSProvider") { (name: String) in

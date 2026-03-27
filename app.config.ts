@@ -22,6 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: IS_DEV ? 'com.yagudaev.voiceclaw.dev' : 'com.yagudaev.voiceclaw',
     infoPlist: {
       NSMicrophoneUsageDescription: 'VoiceClaw needs microphone access for voice calls with your AI assistant.',
+      NSSpeechRecognitionUsageDescription: 'VoiceClaw uses speech recognition to transcribe your voice for the AI assistant.',
       UIBackgroundModes: ['audio', 'voip'],
     },
   },
