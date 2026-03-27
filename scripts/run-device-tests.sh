@@ -177,6 +177,10 @@ set +e
 xcodebuild test \
   "${XCODEBUILD_ARGS[@]}" \
   -resultBundlePath "$RESULT_BUNDLE_PATH" \
+  DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-HN6T5KD4ND}" \
+  CODE_SIGN_IDENTITY="Apple Development" \
+  CODE_SIGN_STYLE=Automatic \
+  -allowProvisioningUpdates \
   SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   2>&1 | tee /tmp/voiceclaw-xcodebuild.log | parse_xcodebuild_output
 
