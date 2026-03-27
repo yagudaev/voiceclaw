@@ -22,9 +22,14 @@ export type LatencyStats = {
   ttsLatencyMs: number
 }
 
+export type AssistantResponseEvent = {
+  text: string
+}
+
 export type ExpoCustomPipelineModuleEvents = {
   onPartialTranscript: (event: PartialTranscriptEvent) => void
   onFinalTranscript: (event: FinalTranscriptEvent) => void
+  onAssistantResponse: (event: AssistantResponseEvent) => void
   onTTSStart: () => void
   onTTSComplete: () => void
   onLatencyUpdate: (event: LatencyUpdateEvent) => void
