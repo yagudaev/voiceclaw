@@ -16,7 +16,10 @@ export const CREATE_TABLES = `
     conversation_id INTEGER NOT NULL REFERENCES conversations(id),
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    stt_latency_ms REAL,
+    llm_latency_ms REAL,
+    tts_latency_ms REAL
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);

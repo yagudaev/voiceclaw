@@ -1,8 +1,9 @@
+import { LatencyBadge } from '@/components/latency-badge'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, updateConversationVapi, type Message } from '@/db'
+import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -11,10 +12,10 @@ import { useCallSounds } from '@/lib/sounds'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
-import ExpoVapiModule from '@/modules/expo-vapi'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
+import type { FinalTranscriptEvent, LatencyUpdateEvent } from '@/modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
+import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
-import type { FinalTranscriptEvent } from '@/modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
 import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
@@ -93,6 +94,7 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
+  const pendingLatencyRef = useRef<LatencyData | null>(null)
   const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
   const customPipelineSubsRef = useRef<Array<{ remove: () => void }>>([])
 
@@ -105,7 +107,10 @@ export default function ChatScreen() {
     if (!conversationId) return
     if (__DEV__) console.log('[Chat] Transcript flush:', role, text.substring(0, 50))
     try {
-      await addMessage(conversationId, role, text)
+      // Attach latency data to assistant messages from Custom Pipeline
+      const latency = role === 'assistant' ? pendingLatencyRef.current ?? undefined : undefined
+      if (role === 'assistant') pendingLatencyRef.current = null
+      await addMessage(conversationId, role, text, latency)
       await loadMessages()
       maybeGenerateTitle(conversationId)
     } catch (err) {
@@ -275,6 +280,21 @@ export default function ChatScreen() {
     ]
     return () => subs.forEach((s) => s.remove())
   }, [conversationId, cancelReconnect, triggerReconnect])
+
+  // Listen for latency updates from the Custom Pipeline
+  useEffect(() => {
+    const sub = ExpoCustomPipelineModule.addListener(
+      'onLatencyUpdate',
+      (event: LatencyUpdateEvent) => {
+        pendingLatencyRef.current = {
+          sttLatencyMs: event.sttLatencyMs,
+          llmLatencyMs: event.llmLatencyMs,
+          ttsLatencyMs: event.ttsLatencyMs,
+        }
+      }
+    )
+    return () => sub.remove()
+  }, [])
 
   const startNewConversation = useCallback(async () => {
     hasScrolledRef.current = false
@@ -606,7 +626,7 @@ export default function ChatScreen() {
   }, [isMuted])
 
   const displayMessages = streamingText !== null
-    ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now() }]
+    ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
     : messages
 
   const { partials } = transcriptBuffer
@@ -630,7 +650,12 @@ export default function ChatScreen() {
         ref={flatListRef}
         data={displayMessages}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => <MessageBubble message={item} />}
+        renderItem={({ item }) => (
+          <>
+            <MessageBubble message={item} />
+            <LatencyBadge message={item} />
+          </>
+        )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
         onContentSizeChange={() => {
           const animated = hasScrolledRef.current
