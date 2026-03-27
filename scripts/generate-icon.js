@@ -12,6 +12,8 @@
  *   assets/images/icon.png          — 1024x1024 (App Store / iOS)
  *   assets/images/adaptive-icon.png — 1024x1024 (Android adaptive foreground)
  *   assets/images/favicon.png       — 48x48     (web)
+ *   assets/images/splash.png        — 1284x2778 (splash screen)
+ *   assets/images/ios/              — All iOS icon sizes + Contents.json
  */
 
 const { createCanvas } = require('canvas')
@@ -26,6 +28,10 @@ const BG_DARK = '#0F0B1E'
 
 const SIZE = 1024
 const OUTPUT_DIR = path.join(__dirname, '..', 'assets', 'images')
+const IOS_OUTPUT_DIR = path.join(OUTPUT_DIR, 'ios')
+
+// iOS icon sizes required for App Store and devices
+const IOS_ICON_SIZES = [1024, 180, 167, 152, 120, 87, 80, 60, 58, 40, 29]
 
 // -------------------------------------------------------
 // Entry points
@@ -210,8 +216,92 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
+function generateSplash() {
+  const width = 1284
+  const height = 2778
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext('2d')
+
+  // Dark background matching brand
+  ctx.fillStyle = BG_DARK
+  ctx.fillRect(0, 0, width, height)
+
+  // Subtle radial gradient behind the icon
+  const cx = width / 2
+  const cy = height / 2
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, width * 0.6)
+  grad.addColorStop(0, '#2D1B69')
+  grad.addColorStop(0.4, '#1A0F40')
+  grad.addColorStop(1, BG_DARK)
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, width, height)
+
+  // Draw the icon in the centre at ~400px
+  const iconSize = 400
+  ctx.save()
+  ctx.translate(cx - iconSize / 2, cy - iconSize / 2)
+  ctx.scale(iconSize / SIZE, iconSize / SIZE)
+  drawClawWaveform(ctx, SIZE)
+  drawCenterGlow(ctx, SIZE)
+  ctx.restore()
+
+  const buf = canvas.toBuffer('image/png')
+  const out = path.join(OUTPUT_DIR, 'splash.png')
+  fs.writeFileSync(out, buf)
+  console.log(`Written: ${out} (${(buf.length / 1024).toFixed(1)} KB)`)
+}
+
+function generateIOSIcons() {
+  if (!fs.existsSync(IOS_OUTPUT_DIR)) {
+    fs.mkdirSync(IOS_OUTPUT_DIR, { recursive: true })
+  }
+
+  for (const size of IOS_ICON_SIZES) {
+    const canvas = createCanvas(size, size)
+    const ctx = canvas.getContext('2d')
+
+    drawBackground(ctx, size)
+    drawClawWaveform(ctx, size)
+    if (size >= 80) drawCenterGlow(ctx, size)
+
+    const buf = canvas.toBuffer('image/png')
+    const out = path.join(IOS_OUTPUT_DIR, `icon-${size}x${size}.png`)
+    fs.writeFileSync(out, buf)
+    console.log(`Written: ${out} (${(buf.length / 1024).toFixed(1)} KB)`)
+  }
+
+  // Write Contents.json for Xcode asset catalog
+  const contents = {
+    images: [
+      { filename: 'icon-40x40.png', idiom: 'iphone', scale: '2x', size: '20x20' },
+      { filename: 'icon-60x60.png', idiom: 'iphone', scale: '3x', size: '20x20' },
+      { filename: 'icon-29x29.png', idiom: 'iphone', scale: '1x', size: '29x29' },
+      { filename: 'icon-58x58.png', idiom: 'iphone', scale: '2x', size: '29x29' },
+      { filename: 'icon-87x87.png', idiom: 'iphone', scale: '3x', size: '29x29' },
+      { filename: 'icon-80x80.png', idiom: 'iphone', scale: '2x', size: '40x40' },
+      { filename: 'icon-120x120.png', idiom: 'iphone', scale: '3x', size: '40x40' },
+      { filename: 'icon-120x120.png', idiom: 'iphone', scale: '2x', size: '60x60' },
+      { filename: 'icon-180x180.png', idiom: 'iphone', scale: '3x', size: '60x60' },
+      { filename: 'icon-40x40.png', idiom: 'ipad', scale: '2x', size: '20x20' },
+      { filename: 'icon-29x29.png', idiom: 'ipad', scale: '1x', size: '29x29' },
+      { filename: 'icon-58x58.png', idiom: 'ipad', scale: '2x', size: '29x29' },
+      { filename: 'icon-80x80.png', idiom: 'ipad', scale: '2x', size: '40x40' },
+      { filename: 'icon-152x152.png', idiom: 'ipad', scale: '2x', size: '76x76' },
+      { filename: 'icon-167x167.png', idiom: 'ipad', scale: '2x', size: '83.5x83.5' },
+      { filename: 'icon-1024x1024.png', idiom: 'ios-marketing', scale: '1x', size: '1024x1024' },
+    ],
+    info: { author: 'xcode', version: 1 },
+  }
+
+  const contentsOut = path.join(IOS_OUTPUT_DIR, 'Contents.json')
+  fs.writeFileSync(contentsOut, JSON.stringify(contents, null, 2) + '\n')
+  console.log(`Written: ${contentsOut}`)
+}
+
 // --- Run ---
 generateMainIcon()
 generateAdaptiveIcon()
 generateFavicon()
+generateSplash()
+generateIOSIcons()
 console.log('\nAll icons generated!')
