@@ -20,10 +20,11 @@ import { Stack } from 'expo-router'
 import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
+import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 
 const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
 const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
+const THINKING_MESSAGE_ID = -2
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \
@@ -689,9 +690,12 @@ export default function ChatScreen() {
     setIsMuted(newMuted)
   }, [isMuted])
 
-  const displayMessages = streamingText !== null
-    ? [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
-    : messages
+  let displayMessages = messages as Message[]
+  if (streamingText !== null) {
+    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  } else if (isThinking) {
+    displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+  }
 
   const { partials } = transcriptBuffer
 
@@ -717,7 +721,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <>
             <MessageBubble message={item} />
-            <LatencyBadge message={item} />
+            {item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
           </>
         )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
@@ -742,15 +746,6 @@ export default function ChatScreen() {
           ) : null
         }
       />
-
-      {isThinking && (
-        <View className="flex-row items-center gap-2 px-4 py-2">
-          <View className="flex-row items-center gap-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
-            <ActivityIndicator size="small" color="#888" />
-            <Text className="text-sm text-muted-foreground">Thinking...</Text>
-          </View>
-        </View>
-      )}
 
       {reconnectState.status === 'reconnecting' && (
         <View className="items-center gap-2 border-t border-border bg-muted/50 px-4 py-3">
@@ -838,6 +833,48 @@ function PartialBubble({ role, text }: { role: 'user' | 'assistant', text: strin
   )
 }
 
+function ThinkingDots() {
+  const dot1 = useRef(new Animated.Value(0.3)).current
+  const dot2 = useRef(new Animated.Value(0.3)).current
+  const dot3 = useRef(new Animated.Value(0.3)).current
+
+  useEffect(() => {
+    // Single loop with sequential steps prevents animation drift between dots
+    const pulse = (dot: Animated.Value) =>
+      Animated.sequence([
+        Animated.timing(dot, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0.3, duration: 200, useNativeDriver: true }),
+      ])
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        pulse(dot1),
+        pulse(dot2),
+        pulse(dot3),
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [dot1, dot2, dot3])
+
+  return (
+    <View className="flex-row items-center gap-1.5 py-0.5">
+      {[dot1, dot2, dot3].map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: '#aaa',
+            opacity: dot,
+          }}
+        />
+      ))}
+    </View>
+  )
+}
+
 function ChatImage({ url }: { url: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -871,6 +908,18 @@ function ChatImage({ url }: { url: string }) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
+  const isThinkingPlaceholder = message.id === THINKING_MESSAGE_ID
+
+  if (isThinkingPlaceholder) {
+    return (
+      <View className="mb-3 px-4 items-start">
+        <View className="max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+          <ThinkingDots />
+        </View>
+      </View>
+    )
+  }
+
   const parts = parseContent(message.content)
 
   return (
