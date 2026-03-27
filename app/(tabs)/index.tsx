@@ -339,9 +339,13 @@ export default function ChatScreen() {
       return
     }
 
+    // Disable the button immediately to prevent double-tap
+    setIsConnecting(true)
+
     const assistantId = await getSetting('assistant_id')
     const ready = await ensureVapiReady()
     if (!assistantId || !ready) {
+      setIsConnecting(false)
       await addMessage(conversationId!, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
       await loadMessages()
       return
@@ -406,7 +410,6 @@ export default function ChatScreen() {
     lastCallOverridesRef.current = callOverrides ?? null
 
     try {
-      setIsConnecting(true)
       await ExpoVapiModule.startCall(assistantId, callOverrides)
     } catch (e: any) {
       setIsConnecting(false)
