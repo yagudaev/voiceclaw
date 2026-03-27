@@ -86,6 +86,7 @@ export default function ChatScreen() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
   const [showLatency, setShowLatency] = useState(false)
+  const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
@@ -435,6 +436,7 @@ export default function ChatScreen() {
     streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, conversationId, {
       onToken: (text) => {
         setIsThinking(false)
+        setStreamingRole('assistant')
         setStreamingText(text)
       },
       onDone: async (text) => {
@@ -630,6 +632,7 @@ export default function ChatScreen() {
     if (ttsProvider === 'elevenlabs') {
       const elKey = await getSetting('elevenlabs_api_key')
       const elVoice = await getSetting('elevenlabs_voice_id')
+      console.log('[CustomPipeline] ElevenLabs config — key:', elKey ? `${elKey.substring(0, 8)}...` : 'MISSING', 'voice:', elVoice || 'default')
       if (elKey) ttsConfig.apiKey = elKey
       if (elVoice) ttsConfig.voiceId = elVoice
     } else if (ttsProvider === 'openai') {
@@ -643,21 +646,40 @@ export default function ChatScreen() {
     // Set up event listeners for custom pipeline
     customPipelineSubsRef.current.forEach((s) => s.remove())
     customPipelineSubsRef.current = []
+    console.log('[CustomPipeline] Starting listeners, conversationId:', conversationId)
     const subs = [
+      ExpoCustomPipelineModule.addListener('onPartialTranscript', (event) => {
+        if (__DEV__) console.log('[CustomPipeline] Partial:', event.text?.substring(0, 50))
+        setStreamingRole('user')
+        setStreamingText(event.text)
+      }),
       ExpoCustomPipelineModule.addListener('onFinalTranscript', (event: FinalTranscriptEvent) => {
+        console.log('[CustomPipeline] Final transcript:', event.text?.substring(0, 50))
+        setStreamingText(null)
         if (conversationId) {
           addMessage(conversationId, 'user', event.text).then(() => {
             loadMessages()
             maybeGenerateTitle(conversationId)
           })
         }
+        setIsThinking(true)
+        soundsRef.current.startThinking()
+      }),
+      ExpoCustomPipelineModule.addListener('onAssistantResponse', (event) => {
+        console.log('[CustomPipeline] Assistant response:', event.text?.substring(0, 50))
+        setIsThinking(false)
+        soundsRef.current.stopThinking()
+        if (conversationId && event.text) {
+          addMessage(conversationId, 'assistant', event.text).then(() => loadMessages())
+        }
       }),
       ExpoCustomPipelineModule.addListener('onTTSStart', () => {
+        console.log('[CustomPipeline] TTS started')
         setIsThinking(false)
         soundsRef.current.stopThinking()
       }),
       ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
-        // TTS finished speaking
+        console.log('[CustomPipeline] TTS complete')
       }),
       ExpoCustomPipelineModule.addListener('onError', (event) => {
         console.error('[CustomPipeline]', event.message)
@@ -671,6 +693,7 @@ export default function ChatScreen() {
     customPipelineSubsRef.current = subs
 
     // Start conversation
+    console.log('[CustomPipeline] Starting conversation with', { apiUrl, model, sttProvider, ttsProvider })
     ExpoCustomPipelineModule.startConversation(apiUrl, apiKey, model)
     setIsCallActive(true)
     setIsConnecting(false)
@@ -697,7 +720,7 @@ export default function ChatScreen() {
 
   let displayMessages = messages as Message[]
   if (streamingText !== null) {
-    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: streamingRole, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
   } else if (isThinking) {
     displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
   }

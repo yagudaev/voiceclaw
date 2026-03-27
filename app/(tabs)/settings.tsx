@@ -366,18 +366,22 @@ function SecretInput({
   return (
     <View className="flex-row items-center rounded-md border border-input bg-background dark:bg-input/30">
       <TextInput
-        className="h-10 min-w-0 flex-1 px-3 text-base text-foreground"
+        className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
         placeholder={placeholder}
         placeholderTextColor="#888"
-        value={visible ? value : value ? '\u2022'.repeat(Math.min(value.length, 30)) : ''}
-        onChangeText={visible ? onChangeText : undefined}
-        editable={visible}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={!visible}
         autoCapitalize="none"
         autoCorrect={false}
         numberOfLines={1}
         scrollEnabled
       />
-      <Pressable onPress={() => setVisible((prev) => !prev)} className="shrink-0 px-3">
+      <Pressable
+        onPress={() => setVisible((prev) => !prev)}
+        className="h-10 shrink-0 items-center justify-center px-3"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
         <Icon
           as={visible ? EyeOffIcon : EyeIcon}
           size={20}

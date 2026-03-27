@@ -9,7 +9,7 @@ class KokoroTTSProvider: TTSProvider {
 
     // MARK: - TTSProvider
 
-    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void) {
+    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void, onError: @escaping (String) -> Void) {
         print("[Kokoro] Not yet implemented")
         onComplete()
     }
