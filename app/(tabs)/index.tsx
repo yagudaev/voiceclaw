@@ -91,7 +91,19 @@ export default function ChatScreen() {
   const wasCallActiveRef = useRef(false)
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
-  const transcriptBuffer = useTranscriptBuffer()
+  const conversationIdRef = useRef(conversationId)
+  conversationIdRef.current = conversationId
+
+  const handleTranscriptFlush = useCallback(async (role: 'user' | 'assistant', text: string) => {
+    const convId = conversationIdRef.current
+    if (!convId) return
+    console.log('[Chat] Transcript flush:', role, text.substring(0, 50))
+    await addMessage(convId, role, text)
+    setMessages(await getMessages(convId))
+    maybeGenerateTitle(convId)
+  }, [])
+
+  const transcriptBuffer = useTranscriptBuffer({ onFlush: handleTranscriptFlush })
   const transcriptBufferRef = useRef(transcriptBuffer)
   transcriptBufferRef.current = transcriptBuffer
 
@@ -189,13 +201,8 @@ export default function ChatScreen() {
           soundsRef.current.stopThinking()
         }
       }),
-      ExpoVapiModule.addListener('onSpeechEnd', async (event: SpeechEvent) => {
-        const fullText = transcriptBufferRef.current.onSpeechEnd(event.role)
-        if (fullText && conversationId) {
-          await addMessage(conversationId, event.role, fullText)
-          loadMessages()
-          maybeGenerateTitle(conversationId)
-        }
+      ExpoVapiModule.addListener('onSpeechEnd', (event: SpeechEvent) => {
+        transcriptBufferRef.current.onSpeechEnd(event.role)
         if (event.role === 'user') {
           setIsThinking(true)
           soundsRef.current.startThinking()
