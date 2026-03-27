@@ -63,6 +63,27 @@ public class ExpoCustomPipelineModule: Module {
         Function("stopSpeaking") { () in
             self.ttsProvider?.stop()
         }
+
+        Function("isKokoroModelReady") { () -> Bool in
+            if #available(iOS 18.0, *) {
+                return KokoroTTSProvider.isModelCached()
+            }
+            return false
+        }
+
+        AsyncFunction("prepareKokoroModel") { (promise: Promise) in
+            guard #available(iOS 18.0, *) else {
+                promise.resolve(false)
+                return
+            }
+            let provider = KokoroTTSProvider()
+            provider.downloadModel { result in
+                switch result {
+                case .success: promise.resolve(true)
+                case .failure(let err): promise.reject(err)
+                }
+            }
+        }
     }
 }
 

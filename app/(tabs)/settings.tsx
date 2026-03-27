@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
+import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import { CheckIcon, EyeIcon, EyeOffIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
@@ -30,7 +31,10 @@ export default function SettingsScreen() {
   const [elevenlabsApiKey, setElevenlabsApiKey] = useState('')
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState('Awx8TeMHHpDzbm42nIB6')
   const [openaiTtsApiKey, setOpenaiTtsApiKey] = useState('')
-  const [openaiTtsVoice, setOpenaiTtsVoice] = useState('alloy')
+  const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
+
+  // Kokoro model download state
+  const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error'>('checking')
 
   // Latency stats state
   const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
@@ -39,6 +43,31 @@ export default function SettingsScreen() {
   // Auto-save: guard against saving during initial load
   const loadedRef = useRef(false)
   const { saveStatus, saveImmediate, saveDebounced } = useAutoSave()
+
+  const checkKokoroStatus = useCallback(() => {
+    setKokoroStatus('checking')
+    try {
+      const ready = ExpoCustomPipelineModule.isKokoroModelReady()
+      setKokoroStatus(ready ? 'ready' : 'not-downloaded')
+    } catch {
+      setKokoroStatus('not-downloaded')
+    }
+  }, [])
+
+  const downloadKokoroModel = useCallback(async () => {
+    setKokoroStatus('downloading')
+    try {
+      await ExpoCustomPipelineModule.prepareKokoroModel()
+      setKokoroStatus('ready')
+    } catch (err) {
+      console.warn('[Settings] Kokoro download failed:', err)
+      setKokoroStatus('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (ttsProvider === 'kokoro') checkKokoroStatus()
+  }, [ttsProvider, checkKokoroStatus])
 
   const loadLatencyStats = useCallback(async () => {
     setLoadingStats(true)
@@ -85,7 +114,9 @@ export default function SettingsScreen() {
       const oaiKey = await getSetting('openai_tts_api_key')
       if (oaiKey) setOpenaiTtsApiKey(oaiKey)
       const oaiVoice = await getSetting('openai_tts_voice')
-      if (oaiVoice) setOpenaiTtsVoice(oaiVoice)
+      if (oaiVoice && (OPENAI_TTS_VOICES as readonly string[]).includes(oaiVoice)) {
+        setOpenaiTtsVoice(oaiVoice as typeof OPENAI_TTS_VOICES[number])
+      }
 
       loadedRef.current = true
     })()
@@ -108,7 +139,7 @@ export default function SettingsScreen() {
     if (loadedRef.current) saveImmediate('tts_provider', v)
   }, [saveImmediate])
 
-  const updateOpenaiTtsVoice = useCallback((v: string) => {
+  const updateOpenaiTtsVoice = useCallback((v: typeof OPENAI_TTS_VOICES[number]) => {
     setOpenaiTtsVoice(v)
     if (loadedRef.current) saveImmediate('openai_tts_voice', v)
   }, [saveImmediate])
@@ -224,6 +255,10 @@ export default function SettingsScreen() {
                   onChange={updateTtsProvider}
                 />
               </View>
+
+              {ttsProvider === 'kokoro' && (
+                <KokoroModelStatus status={kokoroStatus} onDownload={downloadKokoroModel} onRetry={checkKokoroStatus} />
+              )}
 
               {ttsProvider === 'elevenlabs' && (
                 <>
@@ -517,6 +552,65 @@ function OptionGroup<T extends string>({
         </Pressable>
       ))}
     </View>
+  )
+}
+
+function KokoroModelStatus({
+  status,
+  onDownload,
+  onRetry,
+}: {
+  status: 'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error'
+  onDownload: () => void
+  onRetry: () => void
+}) {
+  if (status === 'checking') {
+    return (
+      <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
+        <ActivityIndicator size="small" color="#888" />
+        <Text className="text-sm text-muted-foreground">Checking model...</Text>
+      </View>
+    )
+  }
+
+  if (status === 'ready') {
+    return (
+      <View className="flex-row items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+        <Icon as={CheckIcon} size={16} className="text-primary" />
+        <Text className="text-sm text-primary">Model ready (~327 MB cached)</Text>
+      </View>
+    )
+  }
+
+  if (status === 'downloading') {
+    return (
+      <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
+        <ActivityIndicator size="small" color="#888" />
+        <Text className="text-sm text-muted-foreground">Downloading model (~327 MB)...</Text>
+      </View>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <Pressable
+        onPress={onRetry}
+        className="flex-row items-center justify-between rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2"
+      >
+        <Text className="text-sm text-destructive">Download failed — tap to retry</Text>
+      </Pressable>
+    )
+  }
+
+  // not-downloaded
+  return (
+    <Pressable
+      onPress={onDownload}
+      className="flex-row items-center justify-between rounded-lg border border-input bg-background px-3 py-2 active:opacity-70 dark:bg-input/30"
+    >
+      <Text className="text-sm text-muted-foreground">Model not downloaded</Text>
+      <Text className="text-sm font-medium text-primary">Download (~327 MB)</Text>
+    </Pressable>
   )
 }
 
