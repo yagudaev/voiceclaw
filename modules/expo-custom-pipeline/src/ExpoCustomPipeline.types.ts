@@ -16,4 +16,5 @@ export type ExpoCustomPipelineModuleEvents = {
   onTTSStart: () => void
   onTTSComplete: () => void
   onError: (event: PipelineErrorEvent) => void
+  onBargeIn: () => void
 }

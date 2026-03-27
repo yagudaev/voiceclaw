@@ -11,7 +11,7 @@ class AppleSTTProvider: STTProvider {
     private let speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
-    private var audioEngine = AVAudioEngine()
+    private var audioEngine: AVAudioEngine?
     private var listenStartTime: CFAbsoluteTime = 0
     private var hasReceivedFirstResult = false
     private var silenceTimer: Timer?
@@ -30,7 +30,8 @@ class AppleSTTProvider: STTProvider {
         onPartialResult: @escaping (String) -> Void,
         onFinalResult: @escaping (String) -> Void
     ) {
-        guard !isListening else { return }
+        print("[AppleSTTProvider] startListening called — isListening: \(isListening), audioEngine: \(audioEngine != nil)")
+        guard !isListening else { print("[AppleSTTProvider] BLOCKED: already listening"); return }
 
         requestAuthorizationIfNeeded { [weak self] authorized in
             guard let self = self else { return }
@@ -49,19 +50,27 @@ class AppleSTTProvider: STTProvider {
     }
 
     func stopListening() {
-        guard isListening else { return }
+        print("[AppleSTTProvider] stopListening called — isListening: \(isListening)")
+        guard isListening else { print("[AppleSTTProvider] stopListening: not listening, skipping"); return }
 
         silenceTimer?.invalidate()
         silenceTimer = nil
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if let engine = audioEngine {
+            print("[AppleSTTProvider] stopListening: engine isRunning=\(engine.isRunning)")
+            if engine.isRunning {
+                engine.stop()
+                engine.inputNode.removeTap(onBus: 0)
+            }
+        }
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
 
+        audioEngine = nil
         recognitionRequest = nil
         recognitionTask = nil
         isListening = false
         lastPartialText = ""
+        print("[AppleSTTProvider] stopListening complete — cleaned up")
     }
 
     // MARK: - Helpers
@@ -76,7 +85,17 @@ class AppleSTTProvider: STTProvider {
         }
 
         // Clean up any previous session
+        print("[AppleSTTProvider] beginRecognition — cleaning up previous session")
         stopListening()
+
+        // Configure audio session BEFORE creating recognition task
+        print("[AppleSTTProvider] beginRecognition — configuring audio session")
+        configureAudioSession()
+
+        // Create a fresh AVAudioEngine each time — reusing after stop() is unreliable
+        print("[AppleSTTProvider] beginRecognition — creating fresh AVAudioEngine")
+        let engine = AVAudioEngine()
+        audioEngine = engine
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -129,13 +148,12 @@ class AppleSTTProvider: STTProvider {
             }
         }
 
-        configureAudioSession()
         installAudioTap(for: request)
 
-        audioEngine.prepare()
+        engine.prepare()
 
         do {
-            try audioEngine.start()
+            try engine.start()
             isListening = true
             print("[AppleSTTProvider] Audio engine started, listening...")
         } catch {
@@ -163,12 +181,14 @@ class AppleSTTProvider: STTProvider {
 
     private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
+        print("[AppleSTTProvider] Audio session BEFORE config — category: \(audioSession.category.rawValue), mode: \(audioSession.mode.rawValue), sampleRate: \(audioSession.sampleRate), isOtherAudioPlaying: \(audioSession.isOtherAudioPlaying)")
         do {
             try audioSession.setCategory(
                 .playAndRecord, mode: .voiceChat,
                 options: [.defaultToSpeaker, .allowBluetooth]
             )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            print("[AppleSTTProvider] Audio session configured OK — category: \(audioSession.category.rawValue), mode: \(audioSession.mode.rawValue)")
         } catch {
             print("[AppleSTTProvider] Failed to configure audio session: \(error.localizedDescription)")
         }
@@ -191,6 +211,7 @@ class AppleSTTProvider: STTProvider {
     }
 
     private func installAudioTap(for request: SFSpeechAudioBufferRecognitionRequest) {
+        guard let audioEngine = audioEngine else { return }
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
