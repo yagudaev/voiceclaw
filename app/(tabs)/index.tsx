@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
+import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, setSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -17,7 +17,7 @@ import type { FinalTranscriptEvent, LatencyUpdateEvent } from '@/modules/expo-cu
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, TimerIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
@@ -85,6 +85,7 @@ export default function ChatScreen() {
   const [isThinking, setIsThinking] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
+  const [showLatency, setShowLatency] = useState(false)
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
@@ -399,6 +400,10 @@ export default function ChatScreen() {
     })()
   }, [])
 
+  useEffect(() => {
+    getSetting('show_latency').then((v) => { if (v === 'true') setShowLatency(true) })
+  }, [])
+
   useEffect(() => { loadMessages() }, [loadMessages])
 
   const sendMessage = useCallback(async () => {
@@ -699,6 +704,12 @@ export default function ChatScreen() {
 
   const { partials } = transcriptBuffer
 
+  const toggleLatencyDisplay = useCallback(async () => {
+    const next = !showLatency
+    setShowLatency(next)
+    await setSetting('show_latency', next ? 'true' : 'false')
+  }, [showLatency])
+
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-background"
@@ -707,9 +718,14 @@ export default function ChatScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={startNewConversation} className="mr-2 p-2">
-              <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
-            </Pressable>
+            <View className="mr-2 flex-row items-center">
+              <Pressable onPress={toggleLatencyDisplay} className="p-2">
+                <TimerIcon size={20} color={showLatency ? '#f59e0b' : (colorScheme === 'dark' ? '#666' : '#999')} />
+              </Pressable>
+              <Pressable onPress={startNewConversation} className="p-2">
+                <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -721,7 +737,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <>
             <MessageBubble message={item} />
-            {item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
+            {showLatency && item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
           </>
         )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}

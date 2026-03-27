@@ -9,7 +9,7 @@ export {
   deleteAllConversations,
   updateConversationVapi,
 } from './conversations'
-export { addMessage, getMessages, getLatencyAverages } from './messages'
+export { addMessage, getMessages, getLatencyAverages, clearLatencyData } from './messages'
 export { getSetting, setSetting, getAllSettings } from './settings'
 export { getSummary, saveSummary, deleteSummaries } from './summaries'
 export { runMigrations } from './migrations'
