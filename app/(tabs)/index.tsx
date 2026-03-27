@@ -360,6 +360,15 @@ export default function ChatScreen() {
 
   const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    return () => {
+      if (connectingTimeoutRef.current) {
+        clearTimeout(connectingTimeoutRef.current)
+        connectingTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   const toggleCall = useCallback(async () => {
     if (isCallActive) {
       userInitiatedEndRef.current = true
@@ -480,7 +489,7 @@ export default function ChatScreen() {
         }
       }
     }
-  }, [isCallActive, ensureVapiReady, conversationId, loadMessages, cancelReconnect])
+  }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
