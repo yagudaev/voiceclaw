@@ -19,7 +19,7 @@ class AppleTTSProvider: NSObject, TTSProvider {
 
     // MARK: - TTSProvider
 
-    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void) {
+    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void, onError: @escaping (String) -> Void) {
         onStartCallback = onStart
         onCompleteCallback = onComplete
 

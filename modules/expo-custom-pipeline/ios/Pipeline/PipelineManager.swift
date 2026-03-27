@@ -3,6 +3,7 @@ import Foundation
 protocol PipelineManagerDelegate: AnyObject {
     func pipelineDidReceivePartialTranscript(_ text: String)
     func pipelineDidReceiveFinalTranscript(_ text: String)
+    func pipelineDidReceiveAssistantResponse(_ text: String)
     func pipelineDidStartSpeaking()
     func pipelineDidFinishSpeaking()
     func pipelineDidUpdateLatency(stt: Double, llm: Double, tts: Double)
@@ -28,6 +29,9 @@ class PipelineManager {
     private var ttsStartTime: CFAbsoluteTime = 0
     private var urlSession: URLSession?
     private var activeTask: URLSessionDataTask?
+    private var pendingTTSCount: Int = 0
+    private var isStreamComplete: Bool = false
+    private var fullResponse: String = ""
 
     // MARK: - Public Interface
 
@@ -45,6 +49,7 @@ class PipelineManager {
         self.model = model
         isConversationActive = true
 
+        print("[PipelineManager] Starting conversation, STT: \(sttProvider?.name ?? "none"), TTS: \(ttsProvider?.name ?? "none")")
         startListening()
     }
 
@@ -55,6 +60,9 @@ class PipelineManager {
         activeTask?.cancel()
         activeTask = nil
         sentenceBuffer = ""
+        pendingTTSCount = 0
+        isStreamComplete = false
+        fullResponse = ""
     }
 
     func getLatencyStats() -> [String: Double] {
@@ -73,11 +81,14 @@ class PipelineManager {
             return
         }
 
+        print("[PipelineManager] Starting STT provider: \(stt.name)")
         stt.startListening(
             onPartialResult: { [weak self] text in
+                print("[PipelineManager] Partial transcript: \(text.prefix(50))")
                 self?.delegate?.pipelineDidReceivePartialTranscript(text)
             },
             onFinalResult: { [weak self] text in
+                print("[PipelineManager] Final transcript: \(text.prefix(50))")
                 guard let self = self, self.isConversationActive else { return }
                 self.sttLatencyMs = stt.latencyMs
                 self.delegate?.pipelineDidReceiveFinalTranscript(text)
@@ -120,6 +131,9 @@ class PipelineManager {
 
         llmStartTime = CFAbsoluteTimeGetCurrent()
         sentenceBuffer = ""
+        pendingTTSCount = 0
+        isStreamComplete = false
+        fullResponse = ""
 
         let session = URLSession(configuration: .default, delegate: SSEDelegate(manager: self), delegateQueue: nil)
         urlSession = session
@@ -154,6 +168,7 @@ class PipelineManager {
                 notifyLatencyUpdate()
             }
 
+            fullResponse += content
             sentenceBuffer += content
             trySpeakCompleteSentences()
         }
@@ -165,10 +180,15 @@ class PipelineManager {
     }
 
     fileprivate func handleSSEComplete() {
+        isStreamComplete = true
         flushSentenceBuffer()
-        if isConversationActive {
-            startListening()
+        // Emit the full assistant response so JS can save it
+        let response = fullResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !response.isEmpty {
+            delegate?.pipelineDidReceiveAssistantResponse(response)
         }
+        // If no TTS is pending (e.g. empty response), restart STT now
+        restartSTTIfReady()
     }
 
     private func trySpeakCompleteSentences() {
@@ -199,6 +219,8 @@ class PipelineManager {
             return
         }
 
+        pendingTTSCount += 1
+        print("[PipelineManager] Speaking text (pending: \(pendingTTSCount)): \(text.prefix(50))")
         ttsStartTime = CFAbsoluteTimeGetCurrent()
         tts.speak(
             text: text,
@@ -209,9 +231,22 @@ class PipelineManager {
                 self.delegate?.pipelineDidStartSpeaking()
             },
             onComplete: { [weak self] in
-                self?.delegate?.pipelineDidFinishSpeaking()
+                guard let self = self else { return }
+                self.pendingTTSCount -= 1
+                print("[PipelineManager] TTS chunk complete (pending: \(self.pendingTTSCount), stream done: \(self.isStreamComplete))")
+                self.delegate?.pipelineDidFinishSpeaking()
+                self.restartSTTIfReady()
+            },
+            onError: { [weak self] message in
+                self?.delegate?.pipelineDidEncounterError(message)
             }
         )
+    }
+
+    private func restartSTTIfReady() {
+        guard isConversationActive, isStreamComplete, pendingTTSCount <= 0 else { return }
+        print("[PipelineManager] All TTS complete, restarting STT")
+        startListening()
     }
 
     private func notifyLatencyUpdate() {

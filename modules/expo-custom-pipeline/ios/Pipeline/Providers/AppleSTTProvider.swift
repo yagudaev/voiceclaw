@@ -14,6 +14,11 @@ class AppleSTTProvider: STTProvider {
     private var audioEngine = AVAudioEngine()
     private var listenStartTime: CFAbsoluteTime = 0
     private var hasReceivedFirstResult = false
+    private var silenceTimer: Timer?
+    private var lastPartialText: String = ""
+    private let silenceTimeoutSeconds: TimeInterval = 1.5
+    private var activeOnPartial: ((String) -> Void)?
+    private var activeOnFinal: ((String) -> Void)?
 
     init(locale: Locale = Locale(identifier: "en-US")) {
         speechRecognizer = SFSpeechRecognizer(locale: locale)
@@ -36,6 +41,8 @@ class AppleSTTProvider: STTProvider {
             }
 
             DispatchQueue.main.async {
+                self.activeOnPartial = onPartialResult
+                self.activeOnFinal = onFinalResult
                 self.beginRecognition(onPartialResult: onPartialResult, onFinalResult: onFinalResult)
             }
         }
@@ -44,6 +51,8 @@ class AppleSTTProvider: STTProvider {
     func stopListening() {
         guard isListening else { return }
 
+        silenceTimer?.invalidate()
+        silenceTimer = nil
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
@@ -52,6 +61,7 @@ class AppleSTTProvider: STTProvider {
         recognitionRequest = nil
         recognitionTask = nil
         isListening = false
+        lastPartialText = ""
     }
 
     // MARK: - Helpers
@@ -73,6 +83,9 @@ class AppleSTTProvider: STTProvider {
 
         if speechRecognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true
+            print("[AppleSTTProvider] Using on-device recognition")
+        } else {
+            print("[AppleSTTProvider] On-device not available, using server")
         }
 
         recognitionRequest = request
@@ -92,10 +105,16 @@ class AppleSTTProvider: STTProvider {
                 }
 
                 if result.isFinal {
+                    print("[AppleSTTProvider] Final: \(text.prefix(50))")
+                    self.silenceTimer?.invalidate()
+                    self.silenceTimer = nil
                     onFinalResult(text)
-                    self.stopListening()
+                    self.lastPartialText = ""
                 } else {
+                    print("[AppleSTTProvider] Partial: \(text.prefix(50))")
+                    self.lastPartialText = text
                     onPartialResult(text)
+                    self.resetSilenceTimer(onFinalResult: onFinalResult)
                 }
             }
 
@@ -118,6 +137,7 @@ class AppleSTTProvider: STTProvider {
         do {
             try audioEngine.start()
             isListening = true
+            print("[AppleSTTProvider] Audio engine started, listening...")
         } catch {
             print("[AppleSTTProvider] Audio engine failed to start: \(error.localizedDescription)")
             stopListening()
@@ -144,16 +164,40 @@ class AppleSTTProvider: STTProvider {
     private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audioSession.setCategory(
+                .playAndRecord, mode: .voiceChat,
+                options: [.defaultToSpeaker, .allowBluetooth]
+            )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             print("[AppleSTTProvider] Failed to configure audio session: \(error.localizedDescription)")
         }
     }
 
+    private func resetSilenceTimer(onFinalResult: @escaping (String) -> Void) {
+        silenceTimer?.invalidate()
+        silenceTimer = Timer.scheduledTimer(
+            withTimeInterval: silenceTimeoutSeconds,
+            repeats: false
+        ) { [weak self] _ in
+            guard let self = self, self.isListening else { return }
+            let text = self.lastPartialText
+            guard !text.isEmpty else { return }
+            print("[AppleSTTProvider] Silence timeout — emitting final: \(text.prefix(50))")
+            self.lastPartialText = ""
+            onFinalResult(text)
+            self.stopListening()
+        }
+    }
+
     private func installAudioTap(for request: SFSpeechAudioBufferRecognitionRequest) {
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        guard recordingFormat.sampleRate > 0 else {
+            print("[AppleSTTProvider] Invalid audio format — no microphone available")
+            return
+        }
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             request.append(buffer)

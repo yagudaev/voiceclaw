@@ -24,9 +24,9 @@ class OpenAITTSProvider: NSObject, TTSProvider {
 
     // MARK: - TTSProvider
 
-    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void) {
+    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void, onError: @escaping (String) -> Void) {
         guard !apiKey.isEmpty else {
-            print("[OpenAI TTS] API key not configured")
+            onError("OpenAI TTS: API key not configured")
             onComplete()
             return
         }
