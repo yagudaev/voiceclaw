@@ -1,5 +1,6 @@
 export {
   createConversation,
+  getLatestConversation,
   getConversations,
   getConversationsWithPreview,
   getConversation,

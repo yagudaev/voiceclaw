@@ -30,6 +30,10 @@ export type ConversationWithPreview = Conversation & {
   message_count: number
 }
 
+export async function getLatestConversation(): Promise<Conversation | null> {
+  return db.getFirstAsync<Conversation>('SELECT * FROM conversations ORDER BY updated_at DESC LIMIT 1')
+}
+
 export async function getConversations(): Promise<Conversation[]> {
   return db.getAllAsync<Conversation>('SELECT * FROM conversations ORDER BY updated_at DESC')
 }
