@@ -735,6 +735,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
+      testID="chat-screen"
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}>
@@ -742,10 +743,10 @@ export default function ChatScreen() {
         options={{
           headerRight: () => (
             <View className="mr-2 flex-row items-center">
-              <Pressable onPress={toggleLatencyDisplay} className="p-2">
+              <Pressable testID="latency-toggle-button" onPress={toggleLatencyDisplay} className="p-2">
                 <TimerIcon size={20} color={showLatency ? '#f59e0b' : (colorScheme === 'dark' ? '#666' : '#999')} />
               </Pressable>
-              <Pressable onPress={startNewConversation} className="p-2">
+              <Pressable testID="new-conversation-button" onPress={startNewConversation} className="p-2">
                 <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
               </Pressable>
             </View>
@@ -754,6 +755,7 @@ export default function ChatScreen() {
       />
 
       <FlatList
+        testID="messages-list"
         ref={flatListRef}
         data={displayMessages}
         keyExtractor={(item) => item.id.toString()}
@@ -770,7 +772,7 @@ export default function ChatScreen() {
           flatListRef.current?.scrollToEnd({ animated })
         }}
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center pt-40">
+          <View testID="empty-chat-placeholder" className="flex-1 items-center justify-center pt-40">
             <Text className="text-lg text-muted-foreground">Start a conversation</Text>
             <Text className="mt-1 text-sm text-muted-foreground">Type a message or tap the mic to speak</Text>
           </View>
@@ -818,26 +820,27 @@ export default function ChatScreen() {
       )}
 
       {isCallActive && (
-        <View className="flex-row items-center justify-center gap-4 border-t border-border bg-muted/50 px-4 py-3">
-          <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
+        <View testID="call-controls" className="flex-row items-center justify-center gap-4 border-t border-border bg-muted/50 px-4 py-3">
+          <Button testID="mute-button" variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
             <Icon as={isMuted ? MicOffIcon : MicIcon} size={20} className="text-foreground" />
           </Button>
-          <Button variant="destructive" className="rounded-full px-6" onPress={toggleCall}>
+          <Button testID="end-call-button" variant="destructive" className="rounded-full px-6" onPress={toggleCall}>
             <Icon as={PhoneOffIcon} size={20} className="text-destructive-foreground" />
             <Text className="ml-2 text-destructive-foreground">End Call</Text>
           </Button>
         </View>
       )}
 
-      <View className="flex-row items-center gap-2 border-t border-border px-4 py-3">
+      <View testID="input-bar" className="flex-row items-center gap-2 border-t border-border px-4 py-3">
         {!isCallActive && (
-          <Button variant="secondary" size="icon" className="rounded-full" onPress={toggleCall} disabled={isConnecting}>
+          <Button testID="call-button" variant="secondary" size="icon" className="rounded-full" onPress={toggleCall} disabled={isConnecting}>
             {isConnecting
               ? <ActivityIndicator size="small" color="#888" />
               : <Icon as={MicIcon} size={20} className="text-foreground" />}
           </Button>
         )}
         <Input
+          testID="chat-input"
           className="flex-1"
           placeholder="Type a message..."
           value={inputText}
@@ -845,7 +848,7 @@ export default function ChatScreen() {
           onSubmitEditing={sendMessage}
           returnKeyType="send"
         />
-        <Button size="icon" className="rounded-full" onPress={sendMessage} disabled={!inputText.trim()}>
+        <Button testID="send-button" size="icon" className="rounded-full" onPress={sendMessage} disabled={!inputText.trim()}>
           <Icon as={SendIcon} size={20} className="text-primary-foreground" />
         </Button>
       </View>
@@ -951,7 +954,7 @@ function MessageBubble({ message }: { message: Message }) {
 
   if (isThinkingPlaceholder) {
     return (
-      <View className="mb-3 px-4 items-start">
+      <View testID="thinking-indicator" className="mb-3 px-4 items-start">
         <View className="max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
           <ThinkingDots />
         </View>
@@ -962,7 +965,7 @@ function MessageBubble({ message }: { message: Message }) {
   const parts = parseContent(message.content)
 
   return (
-    <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
+    <View testID={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
         className={`max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
