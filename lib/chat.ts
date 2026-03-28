@@ -39,17 +39,19 @@ async function fetchCompletionFallback(
   apiUrl: string,
   conversationId: number
 ): Promise<string> {
+  const sessionKey = `voiceclaw:${conversationId}`
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      'x-openclaw-session-key': sessionKey,
     },
     body: JSON.stringify({
       model,
       messages: chatMessages,
       stream: false,
-      user: `voiceclaw:${conversationId}`,
+      user: sessionKey,
     }),
   })
 
@@ -84,13 +86,15 @@ export function streamCompletion(
     ...messages,
   ]
 
+  const sessionKey = `voiceclaw:${conversationId}`
   const es = new EventSource(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      'x-openclaw-session-key': sessionKey,
     },
-    body: JSON.stringify({ model, messages: chatMessages, stream: true, user: `voiceclaw:${conversationId}` }),
+    body: JSON.stringify({ model, messages: chatMessages, stream: true, user: sessionKey }),
     pollingInterval: 0,
     timeoutBeforeConnection: 0,
   })
