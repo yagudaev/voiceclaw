@@ -143,9 +143,9 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
 
       stopCompletionRef.current = unifiedStreamCompletion(
         requestMessages,
-        apiKey,
+        apiKey ?? '',
         model,
-        apiUrl,
+        apiUrl ?? '',
         '',
         conversationId,
         connectionMode,
