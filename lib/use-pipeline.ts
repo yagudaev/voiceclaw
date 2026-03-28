@@ -44,8 +44,18 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   const isActiveRef = useRef(false)
   const bargeInActiveRef = useRef(false)
 
-  // Latency tracking
-  const finalTranscriptTimeRef = useRef<number | null>(null)
+  // ── Latency tracking ──────────────────────────────────────────────
+  //
+  // STT latency:  time from startListening() call → onFinalTranscript event
+  //               (mic opens → user utterance fully recognised)
+  //
+  // LLM latency:  time from API request sent → first streamed token received
+  //               (network + model time-to-first-token)
+  //
+  // TTS latency:  time from speak() call → onTTSStart event
+  //               (synthesis request → first audio begins playing)
+  // ────────────────────────────────────────────────────────────────────
+  const listenStartTimeRef = useRef<number | null>(null)
   const firstTokenTimeRef = useRef<number | null>(null)
   const speakStartTimesRef = useRef<number[]>([])
   const sttLatencyMsRef = useRef<number>(0)
@@ -75,6 +85,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
 
   const speakSentence = useCallback((sentence: string) => {
     pendingTTSCountRef.current += 1
+    // TTS latency start: record the moment we call speak()
     speakStartTimesRef.current.push(Date.now())
     callbacksRef.current.onSpeakRequested?.(sentence)
     ExpoCustomPipelineModule.speak(sentence)
@@ -126,6 +137,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         : [{ role: 'user', content: userText }]
 
       let fullResponse = ''
+      // LLM latency start: right before the streaming request is sent
       const llmStartTime = Date.now()
 
       stopCompletionRef.current = streamCompletion(
@@ -139,7 +151,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
           onToken: (text) => {
             if (!isActiveRef.current) return
 
-            // Track LLM latency (time to first token)
+            // LLM latency end: first streamed token received
             if (firstTokenTimeRef.current === null) {
               llmLatencyMsRef.current = Date.now() - llmStartTime
               firstTokenTimeRef.current = Date.now()
@@ -178,12 +190,14 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
     console.log('[Pipeline] startListening called — isActive:', isActiveRef.current)
     if (!isActiveRef.current) { console.log('[Pipeline] startListening BLOCKED: not active'); return }
 
-    // Reset latency for new turn
-    finalTranscriptTimeRef.current = null
+    // Reset latency accumulators for the new turn
     firstTokenTimeRef.current = null
     sttLatencyMsRef.current = 0
     llmLatencyMsRef.current = 0
     ttsLatencyMsRef.current = 0
+
+    // STT latency start: record the moment we open the mic
+    listenStartTimeRef.current = Date.now()
 
     console.log('[Pipeline] Calling ExpoCustomPipelineModule.startListening()')
     ExpoCustomPipelineModule.startListening()
@@ -208,11 +222,17 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
       ExpoCustomPipelineModule.addListener(
         'onFinalTranscript',
         (event: FinalTranscriptEvent) => {
+          // STT latency end: final transcript has arrived
           const now = Date.now()
-          if (finalTranscriptTimeRef.current != null) {
-            sttLatencyMsRef.current = now - finalTranscriptTimeRef.current
+          if (listenStartTimeRef.current != null) {
+            sttLatencyMsRef.current = now - listenStartTimeRef.current
           }
-          finalTranscriptTimeRef.current = now
+          listenStartTimeRef.current = null
+
+          // Final transcripts end the current listen turn. Stop the active
+          // recognizer explicitly so the next restart is never blocked on
+          // lingering native STT state.
+          ExpoCustomPipelineModule.stopListening()
 
           // Barge-in: cancel any in-progress LLM stream and TTS playback
           console.log('[Pipeline] onFinalTranscript — cancelling pending LLM/TTS for barge-in')
@@ -232,7 +252,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         }
       ),
       ExpoCustomPipelineModule.addListener('onTTSStart', () => {
-        // TTS latency: time from speak() call to onTTSStart
+        // TTS latency end: first audio begins playing
         const speakTime = speakStartTimesRef.current.shift()
         if (speakTime != null) {
           ttsLatencyMsRef.current = Date.now() - speakTime
@@ -287,8 +307,8 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
       }),
     ]
 
-    // Mark the start-listening time for STT latency
-    finalTranscriptTimeRef.current = Date.now()
+    // STT latency start: record the moment we open the mic for the first turn
+    listenStartTimeRef.current = Date.now()
     ExpoCustomPipelineModule.startListening()
   }, [callAPI, restartSTTIfReady])
 

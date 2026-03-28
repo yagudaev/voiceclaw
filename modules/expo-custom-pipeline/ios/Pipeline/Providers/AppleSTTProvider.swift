@@ -2,6 +2,14 @@ import Foundation
 import Speech
 import AVFoundation
 
+/// Apple on-device Speech-to-Text provider using SFSpeechRecognizer.
+///
+/// Latency measurement (native-side, informational):
+///   Start  – recognition task created (`listenStartTime`)
+///   End    – first partial result received (`hasReceivedFirstResult`)
+/// The authoritative STT latency is measured in use-pipeline.ts:
+///   Start  – `startListening()` call (mic opens)
+///   End    – `onFinalTranscript` event (complete utterance recognised)
 class AppleSTTProvider: STTProvider {
     let name = "apple"
 
@@ -129,6 +137,7 @@ class AppleSTTProvider: STTProvider {
                     self.silenceTimer = nil
                     onFinalResult(text)
                     self.lastPartialText = ""
+                    self.stopListening()
                 } else {
                     print("[AppleSTTProvider] Partial: \(text.prefix(50))")
                     self.lastPartialText = text
