@@ -1,5 +1,13 @@
 import AVFoundation
 
+/// Apple AVSpeechSynthesizer TTS provider.
+///
+/// Latency measurement (native-side, informational):
+///   Start  – `speak()` called (`speakStartTime`)
+///   End    – `didStart` delegate callback (first audio frame playing)
+/// The authoritative TTS latency is measured in use-pipeline.ts:
+///   Start  – `speakSentence()` records `Date.now()` into `speakStartTimesRef`
+///   End    – `onTTSStart` event fires (maps to the native `didStart` callback)
 class AppleTTSProvider: NSObject, TTSProvider {
     let name = "Apple TTS"
     private(set) var isSpeaking = false
