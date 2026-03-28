@@ -867,9 +867,9 @@ function LatencyBreakdownBar({ avgStt, avgLlm, avgTts }: {
         )}
       </View>
       <View className="flex-row justify-center gap-4">
-        <BarLegendItem color={STAGE_COLORS.stt} label="STT" pct={sttPct} />
-        <BarLegendItem color={STAGE_COLORS.llm} label="LLM" pct={llmPct} />
-        <BarLegendItem color={STAGE_COLORS.tts} label="TTS" pct={ttsPct} />
+        {stt > 0 && <BarLegendItem color={STAGE_COLORS.stt} label="STT" pct={sttPct} />}
+        {llm > 0 && <BarLegendItem color={STAGE_COLORS.llm} label="LLM" pct={llmPct} />}
+        {tts > 0 && <BarLegendItem color={STAGE_COLORS.tts} label="TTS" pct={ttsPct} />}
       </View>
     </View>
   )
