@@ -87,6 +87,14 @@ class KokoroTTSProvider: TTSProvider {
         if engine?.isRunning == true {
             engine?.stop()
         }
+
+        // Recreate the TTS engine to avoid reusing corrupted Misaki/NLTagger
+        // state from an interrupted synthesis. The old generateAudio() may still
+        // be running on synthesisQueue but will bail out via speechID check.
+        // The new engine is independent so no state corruption occurs.
+        if isModelReady {
+            reloadEngine()
+        }
     }
 
     // MARK: - Public helpers
@@ -230,28 +238,44 @@ private extension KokoroTTSProvider {
     func loadModel(completion: @escaping (Result<Void, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            do {
-                self.ttsEngine = KokoroTTS(modelPath: self.cachedModelURL, g2p: .misaki)
-                if FileManager.default.fileExists(atPath: self.cachedVoiceURL.path) {
-                    self.voiceEmbedding = VoiceEmbeddingLoader.loadVoice(
-                        from: self.cachedVoiceURL
-                    )
-                } else {
-                    self.voiceEmbedding = VoiceEmbeddingLoader.loadVoices(
-                        from: self.cachedVoicesURL
-                    )?["\(self.defaultVoiceName).npy"]
-                    ?? VoiceEmbeddingLoader.loadVoices(from: self.cachedVoicesURL)?[self.defaultVoiceName]
-                }
-                guard self.voiceEmbedding != nil else {
-                    throw KokoroError.voiceLoadFailed("Could not load voice embedding for \(self.defaultVoiceName)")
-                }
-                self.isModelReady = true
-                print("[Kokoro] Model loaded successfully")
+            self.loadEngineSync()
+            if self.isModelReady {
                 completion(.success(()))
-            } catch {
-                print("[Kokoro] Failed to load model: \(error)")
-                completion(.failure(error))
+            } else {
+                completion(.failure(KokoroError.voiceLoadFailed("Failed to load Kokoro model")))
             }
+        }
+    }
+
+    /// Synchronously (re)create the KokoroTTS engine and load voice embedding.
+    /// Safe to call multiple times — used after interrupt to get a fresh engine
+    /// since Misaki/NLTagger state can be corrupted by concurrent access.
+    func reloadEngine() {
+        print("[Kokoro] Reloading engine after interrupt")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.loadEngineSync()
+        }
+    }
+
+    private func loadEngineSync() {
+        do {
+            ttsEngine = KokoroTTS(modelPath: cachedModelURL, g2p: .misaki)
+            if FileManager.default.fileExists(atPath: cachedVoiceURL.path) {
+                voiceEmbedding = VoiceEmbeddingLoader.loadVoice(from: cachedVoiceURL)
+            } else {
+                voiceEmbedding = VoiceEmbeddingLoader.loadVoices(
+                    from: cachedVoicesURL
+                )?["\(defaultVoiceName).npy"]
+                ?? VoiceEmbeddingLoader.loadVoices(from: cachedVoicesURL)?[defaultVoiceName]
+            }
+            guard voiceEmbedding != nil else {
+                throw KokoroError.voiceLoadFailed("Could not load voice embedding for \(defaultVoiceName)")
+            }
+            isModelReady = true
+            print("[Kokoro] Engine loaded successfully")
+        } catch {
+            print("[Kokoro] Failed to load engine: \(error)")
+            isModelReady = false
         }
     }
 }
