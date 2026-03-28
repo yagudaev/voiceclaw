@@ -1,8 +1,7 @@
 import { useCallback, useRef } from 'react'
 
 import type { LatencyData } from '@/db'
-import { getApiConfig } from '@/lib/chat'
-import { streamCompletion } from '@/lib/chat'
+import { getApiConfig, unifiedStreamCompletion } from '@/lib/chat'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import type {
   FinalTranscriptEvent,
@@ -128,8 +127,8 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
     isStreamCompleteRef.current = false
 
     const doCall = async () => {
-      const { apiKey, apiUrl, model } = await getApiConfig()
-      if (!apiKey || !apiUrl) {
+      const { apiKey, apiUrl, model, connectionMode } = await getApiConfig()
+      if (connectionMode !== 'plugin' && (!apiKey || !apiUrl)) {
         callbacksRef.current.onError?.('API not configured')
         return
       }
@@ -142,13 +141,14 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
       // LLM latency start: right before the streaming request is sent
       const llmStartTime = Date.now()
 
-      stopCompletionRef.current = streamCompletion(
+      stopCompletionRef.current = unifiedStreamCompletion(
         requestMessages,
         apiKey,
         model,
         apiUrl,
         '',
         conversationId,
+        connectionMode,
         {
           onToken: (text) => {
             if (turnId !== activeTurnIdRef.current) return
