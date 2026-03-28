@@ -63,21 +63,27 @@ class KokoroTTSProvider: TTSProvider {
     }
 
     func stop() {
-        downloadTask?.cancel()
-        downloadTask = nil
+        // Invalidate all in-flight and queued work first
         activeSpeechID = UUID()
         queuedRequests = []
         currentRequest = nil
         pendingChunks = []
-        playerNode?.stop()
-        playerNode?.reset()
-        if audioEngine?.isRunning == true {
-            audioEngine?.stop()
-        }
-        audioEngine = nil
-        playerNode = nil
-        isSpeaking = false
         didStartCurrentSpeech = false
+        isSpeaking = false
+
+        downloadTask?.cancel()
+        downloadTask = nil
+
+        // Stop player before engine to prevent completion handler reentrancy
+        let player = playerNode
+        let engine = audioEngine
+        playerNode = nil
+        audioEngine = nil
+
+        player?.stop()
+        if engine?.isRunning == true {
+            engine?.stop()
+        }
     }
 
     // MARK: - Public helpers
@@ -265,29 +271,41 @@ private extension KokoroTTSProvider {
         let startTime = CFAbsoluteTimeGetCurrent()
         isSpeaking = true
 
+        // Capture speechID on main thread to avoid data race with stop()
+        let speechID = activeSpeechID
+        let isFinalChunk = pendingChunks.isEmpty
+
         synthesisQueue.async { [weak self] in
             guard let self = self else { return }
+
+            // Bail early if stop() was called — skip the heavy MLX synthesis
+            if speechID != self.activeSpeechID { return }
+
             do {
                 let (audio, _) = try engine.generateAudio(
                     voice: voice,
                     language: .enUS,
                     text: text
                 )
+
+                // Check again after synthesis (could have been cancelled during)
+                if speechID != self.activeSpeechID { return }
+
                 guard let buffer = self.makePCMBuffer(from: audio) else {
                     DispatchQueue.main.async {
+                        guard speechID == self.activeSpeechID else { return }
                         self.failCurrentRequest(message: "Kokoro: Failed to create audio buffer")
                     }
                     return
                 }
                 self.latencyMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-                let speechID = self.activeSpeechID
-                let isFinalChunk = self.pendingChunks.isEmpty
                 DispatchQueue.main.async {
                     self.playAudioBuffer(buffer, speechID: speechID, isFinalChunk: isFinalChunk)
                 }
             } catch {
                 print("[Kokoro] Synthesis error: \(error)")
                 DispatchQueue.main.async {
+                    guard speechID == self.activeSpeechID else { return }
                     self.failCurrentRequest(message: "Kokoro synthesis error: \(error.localizedDescription)")
                 }
             }
