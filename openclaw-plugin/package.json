@@ -1,18 +1,31 @@
 {
   "name": "@voiceclaw/openclaw-plugin",
   "version": "0.1.0",
-  "description": "OpenClaw plugin for VoiceClaw — enables WebSocket-based LLM communication through an OpenClaw gateway",
-  "main": "index.ts",
+  "description": "OpenClaw plugin for VoiceClaw using the native OpenClaw Plugin SDK",
+  "type": "module",
   "private": true,
+  "packageManager": "yarn@4.9.2",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "scripts": {
-    "start": "echo 'See openclaw.plugin.json for gateway configuration'"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "openclaw": "^2026.3.24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
   },
   "keywords": [
     "openclaw",
     "voiceclaw",
     "plugin",
-    "websocket",
-    "llm"
+    "sdk",
+    "agent"
   ],
   "license": "MIT"
 }

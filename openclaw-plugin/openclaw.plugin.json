@@ -1,16 +1,23 @@
 {
-  "name": "voiceclaw-agent",
+  "id": "openclaw-plugin",
+  "name": "VoiceClaw Plugin",
   "version": "0.1.0",
-  "description": "VoiceClaw agent plugin — streams LLM completions to the VoiceClaw mobile app over WebSocket",
-  "channels": [
-    {
-      "name": "agent",
-      "direction": "bidirectional",
-      "description": "Handles req:agent requests and emits event:agent streaming responses"
+  "description": "VoiceClaw bridge plugin that exposes a VoiceClaw-compatible streaming endpoint backed by OpenClaw agent runs",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "authToken": {
+        "type": "string"
+      }
     }
-  ],
-  "config": {
-    "gateway_url": "ws://localhost:8080/ws",
-    "auth_required": false
+  },
+  "uiHints": {
+    "authToken": {
+      "label": "VoiceClaw auth token",
+      "help": "Optional shared secret required from the VoiceClaw app via Authorization: Bearer <token>.",
+      "placeholder": "optional shared secret",
+      "sensitive": true
+    }
   }
 }

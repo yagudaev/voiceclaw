@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
 import type { OpenClawConnectionMode } from '@/lib/chat'
+import { connectPlugin, disconnectPlugin, getPluginStatus, addPluginStatusListener, type PluginConnectionStatus } from '@/lib/plugin-completion'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
-import { connectWs, disconnectWs, getWsStatus, addWsStatusListener, type WsConnectionStatus } from '@/lib/ws-completion'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, WifiIcon, WifiOffIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -38,7 +38,7 @@ export default function SettingsScreen() {
   const [connectionMode, setConnectionMode] = useState<OpenClawConnectionMode>('http')
   const [gatewayUrl, setGatewayUrl] = useState('')
   const [authToken, setAuthToken] = useState('')
-  const [wsStatus, setWsStatus] = useState<WsConnectionStatus>('disconnected')
+  const [pluginStatus, setPluginStatus] = useState<PluginConnectionStatus>('disconnected')
 
   // Voice Pipeline state
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('vapi')
@@ -132,10 +132,10 @@ export default function SettingsScreen() {
 
   useEffect(() => { loadLatencyStats() }, [loadLatencyStats])
 
-  // Subscribe to WebSocket status updates
+  // Subscribe to plugin connection status updates
   useEffect(() => {
-    setWsStatus(getWsStatus())
-    const unsubscribe = addWsStatusListener((status) => setWsStatus(status))
+    setPluginStatus(getPluginStatus())
+    const unsubscribe = addPluginStatusListener((status) => setPluginStatus(status))
     return unsubscribe
   }, [])
 
@@ -487,7 +487,7 @@ export default function SettingsScreen() {
             <SegmentedControl
               options={[
                 { label: 'HTTP', value: 'http' as const },
-                { label: 'Plugin (WebSocket)', value: 'plugin' as const },
+                { label: 'Plugin', value: 'plugin' as const },
               ]}
               value={connectionMode}
               onChange={updateConnectionMode}
@@ -538,9 +538,9 @@ export default function SettingsScreen() {
           {connectionMode === 'plugin' && (
             <>
               <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">Gateway URL</Text>
+                <Text className="text-sm text-muted-foreground">Gateway Base URL</Text>
                 <Input
-                  placeholder="ws://localhost:8080/ws"
+                  placeholder="http://your-mac.local:8080"
                   value={gatewayUrl}
                   onChangeText={updateGatewayUrl}
                   autoCapitalize="none"
@@ -550,27 +550,27 @@ export default function SettingsScreen() {
               </View>
 
               <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">Auth Token (optional)</Text>
+                <Text className="text-sm text-muted-foreground">Plugin Auth Token (optional)</Text>
                 <SecretInput
                   value={authToken}
                   onChangeText={updateAuthToken}
-                  placeholder="Enter gateway auth token"
+                  placeholder="Enter plugin auth token"
                 />
               </View>
 
-              <WsConnectionStatusBar
-                status={wsStatus}
-                onConnect={() => connectWs(gatewayUrl, authToken)}
-                onDisconnect={disconnectWs}
+              <PluginConnectionStatusBar
+                status={pluginStatus}
+                onConnect={() => connectPlugin(gatewayUrl, authToken)}
+                onDisconnect={disconnectPlugin}
               />
 
               <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
                 <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup Instructions</Text>
                 <Text className="text-xs leading-5 text-muted-foreground">
                   1. Install the OpenClaw plugin: see openclaw-plugin/ in the repo{'\n'}
-                  2. Start the gateway server on your machine{'\n'}
-                  3. Enter the gateway URL above (e.g. ws://your-ip:8080/ws){'\n'}
-                  4. Tap Connect to establish the WebSocket connection
+                  2. Start the OpenClaw gateway on your machine with the plugin enabled{'\n'}
+                  3. Enter the gateway base URL above (e.g. http://your-ip:8080){'\n'}
+                  4. Tap Connect to verify the plugin health endpoint
                 </Text>
               </View>
             </>
@@ -908,12 +908,12 @@ function KokoroModelStatus({
   )
 }
 
-function WsConnectionStatusBar({
+function PluginConnectionStatusBar({
   status,
   onConnect,
   onDisconnect,
 }: {
-  status: WsConnectionStatus
+  status: PluginConnectionStatus
   onConnect: () => void
   onDisconnect: () => void
 }) {

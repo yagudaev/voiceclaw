@@ -1,5 +1,5 @@
 import { getSetting } from '@/db'
-import { getWsStatus, wsStreamCompletion } from '@/lib/ws-completion'
+import { pluginStreamCompletion } from '@/lib/plugin-completion'
 import EventSource from 'react-native-sse'
 
 export type OpenClawConnectionMode = 'http' | 'plugin'
@@ -157,7 +157,7 @@ export async function getApiConfig() {
 /**
  * Unified streaming completion that checks the connection mode setting.
  * - HTTP mode: uses SSE-based streamCompletion (existing behaviour)
- * - Plugin mode: uses WebSocket-based wsStreamCompletion
+ * - Plugin mode: uses plugin-backed HTTP/SSE streaming
  *
  * Both paths use the same callback interface (onToken, onDone, onError)
  * and return a cancel function.
@@ -177,11 +177,7 @@ export function unifiedStreamCompletion(
   },
 ): () => void {
   if (connectionMode === 'plugin') {
-    if (getWsStatus() !== 'connected') {
-      callbacks.onError('WebSocket not connected. Check Plugin settings and reconnect.')
-      return () => {}
-    }
-    return wsStreamCompletion(messages, model, systemPrompt, conversationId, callbacks)
+    return pluginStreamCompletion(messages, model, systemPrompt, conversationId, callbacks)
   }
 
   // Default: HTTP/SSE path
