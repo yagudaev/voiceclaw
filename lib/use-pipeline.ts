@@ -240,11 +240,6 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
           // lingering native STT state.
           ExpoCustomPipelineModule.stopListening()
 
-          // Final transcripts end the current listen turn. Stop the active
-          // recognizer explicitly so the next restart is never blocked on
-          // lingering native STT state.
-          ExpoCustomPipelineModule.stopListening()
-
           // Barge-in: cancel any in-progress LLM stream and TTS playback
           console.log('[Pipeline] onFinalTranscript — cancelling pending LLM/TTS for barge-in')
           activeTurnIdRef.current += 1
