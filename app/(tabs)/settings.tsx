@@ -378,9 +378,6 @@ export default function SettingsScreen() {
                 value={vapiPublicKey}
                 onChangeText={updateVapiPublicKey}
                 placeholder="Enter your Vapi public key"
-                validationStatus={validationStatus.vapi}
-                validationError={validationErrors.vapi}
-                onTest={() => testApiKey('vapi', vapiPublicKey)}
               />
             </View>
 
