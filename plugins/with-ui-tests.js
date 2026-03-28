@@ -216,7 +216,7 @@ function withUITests(config) {
         CLANG_ENABLE_MODULES: 'YES',
         CODE_SIGN_STYLE: 'Automatic',
         INFOPLIST_FILE: `${UI_TEST_TARGET_NAME}/Info.plist`,
-        IPHONEOS_DEPLOYMENT_TARGET: '15.1',
+        IPHONEOS_DEPLOYMENT_TARGET: '18.0',
         LD_RUNPATH_SEARCH_PATHS: [
           '"$(inherited)"',
           '"@executable_path/Frameworks"',

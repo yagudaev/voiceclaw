@@ -11,6 +11,7 @@ declare class ExpoCustomPipelineModule extends NativeModule<ExpoCustomPipelineMo
   stopSpeaking(): void
   startBargeInDetection(): void
   stopBargeInDetection(): void
+  simulateFinalTranscript(text: string): void
   isKokoroAvailable(): boolean
   isKokoroModelReady(): boolean
   prepareKokoroModel(): Promise<boolean>

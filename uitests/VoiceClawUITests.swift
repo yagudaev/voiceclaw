@@ -120,4 +120,103 @@ class VoiceClawUITests: XCTestCase {
     default: return 1
     }
   }
+
+  // MARK: - Pipeline Helpers
+
+  func enableCustomPipelineMode() {
+    navigateToTab("Settings")
+
+    let customPipeline = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@", "Custom Pipeline"))
+      .firstMatch
+
+    XCTAssertTrue(
+      customPipeline.waitForExistence(timeout: 10),
+      "Custom Pipeline option not found"
+    )
+    customPipeline.tap()
+
+    navigateToTab("Chat")
+    assertExists(testID: "chat-screen")
+    tap(testID: "new-conversation-button")
+  }
+
+  func startCustomPipelineCall() {
+    let interruptButton = element(withTestID: "interrupt-button")
+    if !interruptButton.exists {
+      tap(testID: "call-button", timeout: 10)
+    }
+    assertExists(testID: "interrupt-button", timeout: 20)
+    assertExists(testID: "pipeline-debug-panel", timeout: 20)
+    waitForLabel(
+      testID: "pipeline-debug-phase",
+      toContain: "phase:listening",
+      timeout: 20
+    )
+  }
+
+  func waitForLabel(
+    testID: String,
+    toContain expected: String,
+    timeout: TimeInterval
+  ) {
+    let element = waitForElement(withTestID: testID, timeout: timeout)
+    let deadline = Date().addingTimeInterval(timeout)
+
+    repeat {
+      if element.label.contains(expected) {
+        return
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    } while Date() < deadline
+
+    XCTFail(
+      "Element \(testID) never contained '\(expected)'. Last label: \(element.label). Diagnostics: \(pipelineDiagnostics())"
+    )
+  }
+
+  func waitForLabel(
+    testID: String,
+    toNotContain unexpected: String,
+    timeout: TimeInterval
+  ) {
+    let element = waitForElement(withTestID: testID, timeout: timeout)
+    let deadline = Date().addingTimeInterval(timeout)
+
+    repeat {
+      if !element.label.contains(unexpected) {
+        return
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    } while Date() < deadline
+
+    XCTFail(
+      "Element \(testID) still contained '\(unexpected)'. Last label: \(element.label). Diagnostics: \(pipelineDiagnostics())"
+    )
+  }
+
+  func pipelineDiagnostics() -> String {
+    let ids = [
+      "pipeline-debug-phase",
+      "pipeline-debug-transcript-count",
+      "pipeline-debug-llm-token-count",
+      "pipeline-debug-llm-complete-count",
+      "pipeline-debug-assistant-count",
+      "pipeline-debug-speak-count",
+      "pipeline-debug-tts-count",
+      "pipeline-debug-error-count",
+      "pipeline-debug-last-user",
+      "pipeline-debug-last-llm",
+      "pipeline-debug-last-assistant",
+      "pipeline-debug-last-speak",
+      "pipeline-debug-last-error",
+      "pipeline-debug-tts-provider",
+    ]
+
+    return ids.compactMap { id in
+      let element = self.element(withTestID: id)
+      guard element.exists else { return nil }
+      return "\(id)=\(element.label)"
+    }.joined(separator: " | ")
+  }
 }

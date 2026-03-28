@@ -76,6 +76,12 @@ public class ExpoCustomPipelineModule: Module {
             self.bargeInDetector.stopMonitoring()
         }
 
+        Function("simulateFinalTranscript") { (text: String) in
+            print("[ExpoCustomPipeline] simulateFinalTranscript: \(text.prefix(50))")
+            self.sttProvider?.stopListening()
+            self.sendEvent("onFinalTranscript", ["text": text])
+        }
+
         Function("isKokoroModelReady") { () -> Bool in
             if #available(iOS 18.0, *) {
                 return KokoroTTSProvider.isModelCached()
