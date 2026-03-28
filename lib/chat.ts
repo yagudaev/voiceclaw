@@ -8,6 +8,60 @@ defined in your system files.`
 
 type ChatMessage = { role: string, content: string }
 
+function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === 'string') return part
+      if (part && typeof part === 'object') {
+        const text = (part as { text?: unknown }).text
+        if (typeof text === 'string') return text
+      }
+      return ''
+    }).join('')
+  }
+  return ''
+}
+
+function extractChoiceText(payload: any): string {
+  const choice = payload?.choices?.[0]
+  return extractTextContent(
+    choice?.delta?.content
+      ?? choice?.message?.content
+      ?? choice?.text
+  )
+}
+
+async function fetchCompletionFallback(
+  chatMessages: ChatMessage[],
+  apiKey: string,
+  model: string,
+  apiUrl: string,
+  conversationId: number
+): Promise<string> {
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: chatMessages,
+      stream: false,
+      user: `voiceclaw:${conversationId}`,
+    }),
+  })
+
+  const raw = await response.text()
+  if (!response.ok) {
+    throw new Error(`Fallback HTTP ${response.status}: ${raw.slice(0, 200)}`)
+  }
+
+  const payload = JSON.parse(raw)
+  return extractChoiceText(payload)
+}
+
 export function streamCompletion(
   messages: ChatMessage[],
   apiKey: string,
@@ -37,27 +91,47 @@ export function streamCompletion(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ model, messages: chatMessages, stream: true, user: `voiceclaw:${conversationId}` }),
+    pollingInterval: 0,
+    timeoutBeforeConnection: 0,
   })
 
   let fullText = ''
+  let didFinish = false
 
   es.addEventListener('message', (event: any) => {
     if (event.data === '[DONE]') {
       es.close()
-      onDone(fullText)
+      if (didFinish) return
+      didFinish = true
+      if (fullText.trim()) {
+        onDone(fullText)
+        return
+      }
+      fetchCompletionFallback(chatMessages, apiKey, model, apiUrl, conversationId)
+        .then((fallbackText) => {
+          onDone(fallbackText)
+        })
+        .catch((error) => {
+          onError(error instanceof Error ? error.message : 'Fallback completion failed')
+        })
       return
     }
 
     try {
-      const delta = JSON.parse(event.data).choices?.[0]?.delta?.content
+      const payload = JSON.parse(event.data)
+      const delta = extractChoiceText(payload)
       if (delta) {
         fullText += delta
         onToken(fullText)
       }
-    } catch {}
+    } catch (error) {
+      console.warn('[streamCompletion] Failed to parse SSE chunk:', event?.data, error)
+    }
   })
 
   es.addEventListener('error', (event: any) => {
+    if (didFinish) return
+    didFinish = true
     es.close()
     onError(event?.message || 'Stream failed')
   })

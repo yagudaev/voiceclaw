@@ -5,15 +5,19 @@ class BargeInDetector {
     private var isMonitoring = false
     private var onBargeIn: (() -> Void)?
 
-    // Tunable thresholds
-    private let powerThresholdDb: Float = -25.0
-    private let sustainedDuration: TimeInterval = 0.15
+    // Tunable thresholds — -18 dB is high enough to avoid TTS echo
+    // but low enough to catch normal speech at arm's length
+    private let powerThresholdDb: Float = -18.0
+    private let sustainedDuration: TimeInterval = 0.2
     private var aboveThresholdSince: CFAbsoluteTime?
 
     func startMonitoring(onBargeIn: @escaping () -> Void) {
         guard !isMonitoring else { return }
 
         self.onBargeIn = onBargeIn
+
+        // Ensure audio session has echo cancellation enabled
+        configureAudioSession()
 
         let engine = AVAudioEngine()
         audioEngine = engine
@@ -48,6 +52,18 @@ class BargeInDetector {
     }
 
     // MARK: - Helpers
+
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // voiceChat mode enables AEC so TTS echo is suppressed
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            print("[BargeInDetector] Audio session configured with AEC (voiceChat mode)")
+        } catch {
+            print("[BargeInDetector] Failed to configure audio session: \(error.localizedDescription)")
+        }
+    }
 
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {
         let db = rmsDb(buffer)

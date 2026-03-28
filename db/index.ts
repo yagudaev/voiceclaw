@@ -7,7 +7,6 @@ export {
   deleteConversation,
   updateConversationTitle,
   deleteAllConversations,
-  updateConversationVapi,
 } from './conversations'
 export { addMessage, getMessages, getLatencyAverages, clearLatencyData } from './messages'
 export { getSetting, setSetting, getAllSettings } from './settings'

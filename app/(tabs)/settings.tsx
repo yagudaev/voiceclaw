@@ -1,11 +1,13 @@
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
+import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
-import { CheckIcon, EyeIcon, EyeOffIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
+import { CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
 
@@ -16,7 +18,7 @@ type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
 export default function SettingsScreen() {
-  const [vapiApiKey, setVapiApiKey] = useState('')
+  const [vapiPublicKey, setVapiPublicKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [defaultModel, setDefaultModel] = useState('openclaw:voice')
   const [openclawApiKey, setOpenclawApiKey] = useState('')
@@ -35,6 +37,11 @@ export default function SettingsScreen() {
 
   // Kokoro model download state
   const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
+
+  // Pipeline test state
+  const [testRunning, setTestRunning] = useState(false)
+  const [testProgress, setTestProgress] = useState('')
+  const [testResults, setTestResults] = useState<TestResult[]>([])
 
   // Latency stats state
   const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
@@ -88,14 +95,15 @@ export default function SettingsScreen() {
 
   useEffect(() => { loadLatencyStats() }, [loadLatencyStats])
 
+
   useEffect(() => {
     ;(async () => {
-      const key = await getSetting('vapi_api_key')
+      const key = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
       const assistant = await getSetting('assistant_id')
       const model = await getSetting('default_model')
       const ocKey = await getSetting('openclaw_api_key')
       const ocUrl = await getSetting('openclaw_api_url')
-      if (key) setVapiApiKey(key)
+      if (key) setVapiPublicKey(key)
       if (assistant) setAssistantId(assistant)
       if (model) setDefaultModel(model)
       if (ocKey) setOpenclawApiKey(ocKey)
@@ -150,9 +158,9 @@ export default function SettingsScreen() {
   }, [saveImmediate])
 
   // Debounced save for text inputs
-  const updateVapiApiKey = useCallback((v: string) => {
-    setVapiApiKey(v)
-    if (loadedRef.current) saveDebounced('vapi_api_key', v)
+  const updateVapiPublicKey = useCallback((v: string) => {
+    setVapiPublicKey(v)
+    if (loadedRef.current) saveDebounced('vapi_public_key', v)
   }, [saveDebounced])
 
   const updateAssistantId = useCallback((v: string) => {
@@ -317,11 +325,11 @@ export default function SettingsScreen() {
             <Text className="text-lg font-semibold text-foreground">Vapi Configuration</Text>
 
             <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">API Key</Text>
+              <Text className="text-sm text-muted-foreground">Public Key</Text>
               <SecretInput
-                value={vapiApiKey}
-                onChangeText={updateVapiApiKey}
-                placeholder="Enter your Vapi API key"
+                value={vapiPublicKey}
+                onChangeText={updateVapiPublicKey}
+                placeholder="Enter your Vapi public key"
               />
             </View>
 
@@ -385,6 +393,47 @@ export default function SettingsScreen() {
               placeholder="Enter your OpenClaw API key"
             />
           </View>
+        </Card>
+
+        <Card testID="pipeline-test-card" className="gap-4 p-4">
+          <Text className="text-lg font-semibold text-foreground">Pipeline Tests</Text>
+          <Button
+            testID="run-pipeline-tests"
+            variant="secondary"
+            disabled={testRunning}
+            onPress={async () => {
+              setTestRunning(true)
+              setTestResults([])
+              setTestProgress('Starting...')
+              try {
+                const results = await runPipelineTests((msg) => setTestProgress(msg))
+                setTestResults(results)
+                setTestProgress('')
+              } catch (e: any) {
+                setTestProgress(`Error: ${e.message}`)
+              } finally {
+                setTestRunning(false)
+              }
+            }}
+          >
+            {testRunning
+              ? <ActivityIndicator size="small" color="#888" />
+              : <Icon as={PlayIcon} size={16} className="text-foreground" />}
+            <Text className="ml-2 text-foreground">{testRunning ? 'Running...' : 'Run Pipeline Tests'}</Text>
+          </Button>
+          {testProgress ? (
+            <Text className="text-sm text-muted-foreground">{testProgress}</Text>
+          ) : null}
+          {testResults.map((r, i) => (
+            <View key={i} className="flex-row items-center gap-2">
+              <Text className={r.passed ? 'text-green-500' : 'text-red-500'}>
+                {r.passed ? 'PASS' : 'FAIL'}
+              </Text>
+              <Text className="flex-1 text-sm text-foreground">{r.name}</Text>
+              <Text className="text-xs text-muted-foreground">{(r.durationMs / 1000).toFixed(1)}s</Text>
+              {r.error ? <Text className="text-xs text-red-400">{r.error}</Text> : null}
+            </View>
+          ))}
         </Card>
 
         <Card testID="latency-stats-card" className="gap-4 p-4">
