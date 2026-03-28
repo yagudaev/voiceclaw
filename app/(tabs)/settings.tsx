@@ -3,14 +3,14 @@ import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
+import { getSetting, setSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -35,6 +35,9 @@ export default function SettingsScreen() {
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState('Awx8TeMHHpDzbm42nIB6')
   const [openaiTtsApiKey, setOpenaiTtsApiKey] = useState('')
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
+
+  // Debug mode
+  const [debugMode, setDebugMode] = useState(false)
 
   // Kokoro model download state
   const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
@@ -147,6 +150,8 @@ export default function SettingsScreen() {
       if (oaiVoice && (OPENAI_TTS_VOICES as readonly string[]).includes(oaiVoice)) {
         setOpenaiTtsVoice(oaiVoice as typeof OPENAI_TTS_VOICES[number])
       }
+      const dm = await getSetting('debug_mode')
+      if (dm === 'true') setDebugMode(true)
 
       loadedRef.current = true
     })()
@@ -246,6 +251,11 @@ export default function SettingsScreen() {
     resetValidation('openai_tts')
     if (loadedRef.current) saveDebounced('openai_tts_api_key', v)
   }, [saveDebounced, resetValidation])
+
+  const toggleDebugMode = useCallback((v: boolean) => {
+    setDebugMode(v)
+    setSetting('debug_mode', v ? 'true' : 'false')
+  }, [])
 
   return (
     <KeyboardAvoidingView
@@ -442,6 +452,22 @@ export default function SettingsScreen() {
               validationStatus={validationStatus.openclaw}
               validationError={validationErrors.openclaw}
               onTest={() => testApiKey('openclaw', openclawApiKey, openclawApiUrl)}
+            />
+          </View>
+        </Card>
+
+        <Card testID="debug-mode-card" className="gap-2 p-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1">
+              <Text className="text-lg font-semibold text-foreground">Debug Mode</Text>
+              <Text className="text-sm text-muted-foreground">
+                Show pipeline debug panel and event counters during calls
+              </Text>
+            </View>
+            <Switch
+              testID="debug-mode-toggle"
+              value={debugMode}
+              onValueChange={toggleDebugMode}
             />
           </View>
         </Card>

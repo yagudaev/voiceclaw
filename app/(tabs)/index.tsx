@@ -104,6 +104,7 @@ export default function ChatScreen() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
   const [showLatency, setShowLatency] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
@@ -545,6 +546,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     getSetting('show_latency').then((v) => { if (v === 'true') setShowLatency(true) }).catch(() => {})
+    getSetting('debug_mode').then((v) => { if (v === 'true') setDebugMode(true) }).catch(() => {})
   }, [])
 
   useEffect(() => { loadMessages() }, [loadMessages])
@@ -940,7 +942,7 @@ export default function ChatScreen() {
         </View>
       )}
 
-      {__DEV__ && isCallActive && activeVoiceModeRef.current === 'custom' && (
+      {debugMode && isCallActive && activeVoiceModeRef.current === 'custom' && (
         <View testID="pipeline-debug-panel" className="gap-2 border-t border-dashed border-border bg-background px-4 py-3">
           <Text testID="pipeline-debug-phase" className="text-xs text-muted-foreground">
             phase:{pipelineDebugState.phase}
