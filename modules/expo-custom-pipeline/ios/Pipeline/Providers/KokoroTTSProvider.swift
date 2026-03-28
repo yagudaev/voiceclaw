@@ -88,13 +88,11 @@ class KokoroTTSProvider: TTSProvider {
             engine?.stop()
         }
 
-        // Recreate the TTS engine to avoid reusing corrupted Misaki/NLTagger
-        // state from an interrupted synthesis. The old generateAudio() may still
-        // be running on synthesisQueue but will bail out via speechID check.
-        // The new engine is independent so no state corruption occurs.
-        if isModelReady {
-            reloadEngine()
-        }
+        // Do NOT recreate the engine here. The old synthesis may still be
+        // running on synthesisQueue and shares NLTagger/Misaki state that
+        // crashes if a new engine is created concurrently. Instead, let the
+        // old synthesis finish (it will bail via speechID check) and reuse
+        // the existing engine for the next request.
     }
 
     // MARK: - Public helpers
