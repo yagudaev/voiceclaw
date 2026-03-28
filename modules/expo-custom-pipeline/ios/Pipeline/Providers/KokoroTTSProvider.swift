@@ -29,6 +29,7 @@ class KokoroTTSProvider: TTSProvider {
     private var pendingChunks: [String] = []
     private var didStartCurrentSpeech = false
     private var activeSpeechID = UUID()
+    private let speechIDLock = NSLock()
     private let synthesisQueue = DispatchQueue(label: "com.yagudaev.voiceclaw.kokoro-tts")
     private var queuedRequests: [SpeechRequest] = []
     private var currentRequest: SpeechRequest?
@@ -63,8 +64,10 @@ class KokoroTTSProvider: TTSProvider {
     }
 
     func stop() {
-        // Invalidate all in-flight and queued work first
+        // Invalidate all in-flight and queued work first (thread-safe)
+        speechIDLock.lock()
         activeSpeechID = UUID()
+        speechIDLock.unlock()
         queuedRequests = []
         currentRequest = nil
         pendingChunks = []
@@ -278,8 +281,11 @@ private extension KokoroTTSProvider {
         synthesisQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // Bail early if stop() was called — skip the heavy MLX synthesis
-            if speechID != self.activeSpeechID { return }
+            // Bail early if stop() was called — thread-safe read
+            self.speechIDLock.lock()
+            let currentID = self.activeSpeechID
+            self.speechIDLock.unlock()
+            if speechID != currentID { return }
 
             do {
                 let (audio, _) = try engine.generateAudio(
@@ -289,7 +295,10 @@ private extension KokoroTTSProvider {
                 )
 
                 // Check again after synthesis (could have been cancelled during)
-                if speechID != self.activeSpeechID { return }
+                self.speechIDLock.lock()
+                let postSynthID = self.activeSpeechID
+                self.speechIDLock.unlock()
+                if speechID != postSynthID { return }
 
                 guard let buffer = self.makePCMBuffer(from: audio) else {
                     DispatchQueue.main.async {
@@ -402,7 +411,9 @@ private extension KokoroTTSProvider {
         currentRequest = request
         pendingChunks = request.chunks
         didStartCurrentSpeech = false
+        speechIDLock.lock()
         activeSpeechID = request.id
+        speechIDLock.unlock()
 
         if isModelReady {
             synthesizeNextChunk(for: request.id)
