@@ -42,20 +42,19 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   const sentenceBufferRef = useRef('')
   const stopCompletionRef = useRef<(() => void) | null>(null)
   const isActiveRef = useRef(false)
-  const bargeInActiveRef = useRef(false)
   const activeTurnIdRef = useRef(0)
 
-  // ── Latency tracking ──────────────────────────────────────────────
+  // -- Latency tracking --------------------------------------------------
   //
-  // STT latency:  time from startListening() call → onFinalTranscript event
-  //               (mic opens → user utterance fully recognised)
+  // STT latency:  time from startListening() call -> onFinalTranscript event
+  //               (mic opens -> user utterance fully recognised)
   //
-  // LLM latency:  time from API request sent → first streamed token received
+  // LLM latency:  time from API request sent -> first streamed token received
   //               (network + model time-to-first-token)
   //
-  // TTS latency:  time from speak() call → onTTSStart event
-  //               (synthesis request → first audio begins playing)
-  // ────────────────────────────────────────────────────────────────────
+  // TTS latency:  time from speak() call -> onTTSStart event
+  //               (synthesis request -> first audio begins playing)
+  // --------------------------------------------------------------------
   const listenStartTimeRef = useRef<number | null>(null)
   const firstTokenTimeRef = useRef<number | null>(null)
   const speakStartTimesRef = useRef<number[]>([])
@@ -67,13 +66,13 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   callbacksRef.current = callbacks
 
   const restartSTTIfReady = useCallback(() => {
-    console.log('[Pipeline] restartSTTIfReady called — isActive:', isActiveRef.current, 'isStreamComplete:', isStreamCompleteRef.current, 'pendingTTS:', pendingTTSCountRef.current)
+    console.log('[Pipeline] restartSTTIfReady called -- isActive:', isActiveRef.current, 'isStreamComplete:', isStreamCompleteRef.current, 'pendingTTS:', pendingTTSCountRef.current)
     if (!isActiveRef.current) { console.log('[Pipeline] restartSTT BLOCKED: not active'); return }
     if (!isStreamCompleteRef.current) { console.log('[Pipeline] restartSTT BLOCKED: stream not complete'); return }
 
     if (pendingTTSCountRef.current > 0) { console.log('[Pipeline] restartSTT BLOCKED: pending TTS:', pendingTTSCountRef.current); return }
 
-    console.log('[Pipeline] restartSTT — ALL CONDITIONS MET, restarting STT')
+    console.log('[Pipeline] restartSTT -- ALL CONDITIONS MET, restarting STT')
     isStreamCompleteRef.current = false
     sentenceBufferRef.current = ''
     callbacksRef.current.onLatencyUpdate?.({
@@ -169,7 +168,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
           },
           onDone: (text) => {
             if (turnId !== activeTurnIdRef.current) return
-            console.log('[Pipeline] LLM onDone — pendingTTS:', pendingTTSCountRef.current, 'isActive:', isActiveRef.current)
+            console.log('[Pipeline] LLM onDone -- pendingTTS:', pendingTTSCountRef.current, 'isActive:', isActiveRef.current)
             if (!isActiveRef.current) return
             callbacksRef.current.onLLMComplete?.(text)
             // Emit latency with STT+LLM data BEFORE onAssistantResponse
@@ -183,7 +182,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
             callbacksRef.current.onAssistantResponse?.(text)
             isStreamCompleteRef.current = true
             flushSentenceBuffer()
-            console.log('[Pipeline] After flushSentenceBuffer — pendingTTS:', pendingTTSCountRef.current)
+            console.log('[Pipeline] After flushSentenceBuffer -- pendingTTS:', pendingTTSCountRef.current)
             restartSTTIfReady()
           },
           onError: (error) => {
@@ -201,7 +200,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   }, [trySpeakCompleteSentences, flushSentenceBuffer, restartSTTIfReady])
 
   const startListening = useCallback(() => {
-    console.log('[Pipeline] startListening called — isActive:', isActiveRef.current)
+    console.log('[Pipeline] startListening called -- isActive:', isActiveRef.current)
     if (!isActiveRef.current) { console.log('[Pipeline] startListening BLOCKED: not active'); return }
 
     // Reset latency accumulators for the new turn
@@ -249,15 +248,12 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
           ExpoCustomPipelineModule.stopListening()
 
           // Barge-in: cancel any in-progress LLM stream and TTS playback
-          console.log('[Pipeline] onFinalTranscript — cancelling pending LLM/TTS for barge-in')
+          console.log('[Pipeline] onFinalTranscript -- cancelling pending LLM/TTS for barge-in')
           activeTurnIdRef.current += 1
           stopCompletionRef.current?.()
           stopCompletionRef.current = null
           ExpoCustomPipelineModule.stopSpeaking()
-          if (bargeInActiveRef.current) {
-            bargeInActiveRef.current = false
-            ExpoCustomPipelineModule.stopBargeInDetection()
-          }
+          ExpoCustomPipelineModule.setBargeInEnabled(false)
           pendingTTSCountRef.current = 0
           sentenceBufferRef.current = ''
           speakStartTimesRef.current = []
@@ -272,23 +268,17 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         if (speakTime != null) {
           ttsLatencyMsRef.current = Date.now() - speakTime
         }
-        // Start VAD once per response (not per sentence)
-        if (!bargeInActiveRef.current) {
-          bargeInActiveRef.current = true
-          ExpoCustomPipelineModule.startBargeInDetection()
-        }
+        // Enable barge-in for this response (native handles VAD start/stop)
+        ExpoCustomPipelineModule.setBargeInEnabled(true)
         callbacksRef.current.onTTSStart?.()
       }),
       ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
         pendingTTSCountRef.current = Math.max(0, pendingTTSCountRef.current - 1)
-        console.log('[Pipeline] onTTSComplete — pendingTTS now:', pendingTTSCountRef.current, 'isStreamComplete:', isStreamCompleteRef.current)
+        console.log('[Pipeline] onTTSComplete -- pendingTTS now:', pendingTTSCountRef.current, 'isStreamComplete:', isStreamCompleteRef.current)
         callbacksRef.current.onTTSComplete?.()
         if (pendingTTSCountRef.current === 0) {
-          // Stop VAD when all TTS finished — STT will take over
-          if (bargeInActiveRef.current) {
-            bargeInActiveRef.current = false
-            ExpoCustomPipelineModule.stopBargeInDetection()
-          }
+          // Disable barge-in when all TTS finished -- STT will take over
+          ExpoCustomPipelineModule.setBargeInEnabled(false)
           if (isStreamCompleteRef.current) {
             callbacksRef.current.onLatencyUpdate?.({
               sttLatencyMs: sttLatencyMsRef.current,
@@ -300,24 +290,27 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         restartSTTIfReady()
       }),
       ExpoCustomPipelineModule.addListener('onBargeIn', () => {
-        console.log('[Pipeline] onBargeIn — user voice detected, interrupting')
-        bargeInActiveRef.current = false
-        ExpoCustomPipelineModule.stopBargeInDetection()
-        // Cancel in-progress LLM and TTS
+        // Native AudioCoordinator already: stopped TTS, stopped VAD, started STT.
+        // JS only needs to cancel the in-progress LLM stream and reset state.
+        console.log('[Pipeline] onBargeIn -- user voice detected, native handled audio swap')
         activeTurnIdRef.current += 1
         stopCompletionRef.current?.()
         stopCompletionRef.current = null
-        ExpoCustomPipelineModule.stopSpeaking()
         pendingTTSCountRef.current = 0
         sentenceBufferRef.current = ''
         speakStartTimesRef.current = []
         isStreamCompleteRef.current = false
-        // Start listening for the user's speech
-        startListening()
+
+        // Reset STT latency tracking since native already started listening
+        firstTokenTimeRef.current = null
+        sttLatencyMsRef.current = 0
+        llmLatencyMsRef.current = 0
+        ttsLatencyMsRef.current = 0
+        listenStartTimeRef.current = Date.now()
       }),
       ExpoCustomPipelineModule.addListener('onError', (event) => {
         pendingTTSCountRef.current = Math.max(0, pendingTTSCountRef.current - 1)
-        console.log('[Pipeline] onError:', event.message, '— pendingTTS now:', pendingTTSCountRef.current)
+        console.log('[Pipeline] onError:', event.message, '-- pendingTTS now:', pendingTTSCountRef.current)
         callbacksRef.current.onError?.(event.message)
         restartSTTIfReady()
       }),
@@ -335,8 +328,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
     stopCompletionRef.current = null
     ExpoCustomPipelineModule.stopListening()
     ExpoCustomPipelineModule.stopSpeaking()
-    bargeInActiveRef.current = false
-    ExpoCustomPipelineModule.stopBargeInDetection()
+    ExpoCustomPipelineModule.setBargeInEnabled(false)
     subsRef.current.forEach((s) => s.remove())
     subsRef.current = []
     pendingTTSCountRef.current = 0
@@ -347,8 +339,8 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
 
   const interrupt = useCallback(() => {
     if (!isActiveRef.current) return
-    console.log('[Pipeline] interrupt — user tapped to interrupt')
-    ExpoCustomPipelineModule.stopBargeInDetection()
+    console.log('[Pipeline] interrupt -- user tapped to interrupt')
+    ExpoCustomPipelineModule.setBargeInEnabled(false)
     activeTurnIdRef.current += 1
     stopCompletionRef.current?.()
     stopCompletionRef.current = null
