@@ -1,11 +1,9 @@
 import ExpoModulesCore
 
 public class ExpoCustomPipelineModule: Module {
-    private var sttProvider: STTProvider?
-    private var ttsProvider: TTSProvider?
+    private let coordinator = AudioCoordinator()
     private var sttProviderName: String = ""
     private var ttsProviderName: String = ""
-    private let bargeInDetector = BargeInDetector()
 
     public func definition() -> ModuleDefinition {
         Name("ExpoCustomPipeline")
@@ -19,67 +17,45 @@ public class ExpoCustomPipelineModule: Module {
             "onBargeIn"
         )
 
+        OnCreate {
+            self.coordinator.delegate = self
+        }
+
         Function("setSTTProvider") { (name: String, config: [String: String]?) in
             self.sttProviderName = name
             print("[ExpoCustomPipeline] STT provider set to: \(name)")
-            self.sttProvider = makeSTTProvider(name: name, config: config)
+            self.coordinator.setSTTProvider(makeSTTProvider(name: name, config: config))
         }
 
         Function("setTTSProvider") { (name: String, config: [String: String]?) in
             self.ttsProviderName = name
             let configKeys = config?.keys.joined(separator: ", ") ?? "nil"
             print("[ExpoCustomPipeline] TTS provider set to: \(name), config keys: \(configKeys)")
-            self.ttsProvider = makeTTSProvider(name: name, config: config)
+            self.coordinator.setTTSProvider(makeTTSProvider(name: name, config: config))
         }
 
         Function("startListening") { () in
-            self.sttProvider?.startListening(
-                onPartialResult: { [weak self] text in
-                    self?.sendEvent("onPartialTranscript", ["text": text])
-                },
-                onFinalResult: { [weak self] text in
-                    self?.sendEvent("onFinalTranscript", ["text": text])
-                }
-            )
+            self.coordinator.startListening()
         }
 
         Function("stopListening") { () in
-            self.sttProvider?.stopListening()
+            self.coordinator.stopListening()
         }
 
         Function("speak") { (text: String) in
-            self.ttsProvider?.speak(
-                text: text,
-                onStart: { [weak self] in
-                    self?.sendEvent("onTTSStart", [:])
-                },
-                onComplete: { [weak self] in
-                    self?.sendEvent("onTTSComplete", [:])
-                },
-                onError: { [weak self] message in
-                    self?.sendEvent("onError", ["message": message])
-                }
-            )
+            self.coordinator.speak(text: text)
         }
 
         Function("stopSpeaking") { () in
-            self.ttsProvider?.stop()
+            self.coordinator.stopSpeaking()
         }
 
-        Function("startBargeInDetection") { () in
-            self.bargeInDetector.startMonitoring { [weak self] in
-                self?.sendEvent("onBargeIn", [:])
-            }
-        }
-
-        Function("stopBargeInDetection") { () in
-            self.bargeInDetector.stopMonitoring()
+        Function("setBargeInEnabled") { (enabled: Bool) in
+            self.coordinator.setBargeInEnabled(enabled)
         }
 
         Function("simulateFinalTranscript") { (text: String) in
-            print("[ExpoCustomPipeline] simulateFinalTranscript: \(text.prefix(50))")
-            self.sttProvider?.stopListening()
-            self.sendEvent("onFinalTranscript", ["text": text])
+            self.coordinator.simulateFinalTranscript(text)
         }
 
         Function("isKokoroModelReady") { () -> Bool in
@@ -117,6 +93,34 @@ public class ExpoCustomPipelineModule: Module {
                 userInfo: [NSLocalizedDescriptionKey: "Kokoro TTS is not available in this build. The KokoroSwift package needs to be added to the project."]))
             #endif
         }
+    }
+}
+
+// MARK: - AudioCoordinatorDelegate
+
+extension ExpoCustomPipelineModule: AudioCoordinatorDelegate {
+    func audioCoordinatorDidReceivePartialTranscript(_ text: String) {
+        sendEvent("onPartialTranscript", ["text": text])
+    }
+
+    func audioCoordinatorDidReceiveFinalTranscript(_ text: String) {
+        sendEvent("onFinalTranscript", ["text": text])
+    }
+
+    func audioCoordinatorDidStartTTS() {
+        sendEvent("onTTSStart", [:])
+    }
+
+    func audioCoordinatorDidCompleteTTS() {
+        sendEvent("onTTSComplete", [:])
+    }
+
+    func audioCoordinatorDidError(_ message: String) {
+        sendEvent("onError", ["message": message])
+    }
+
+    func audioCoordinatorDidBargeIn() {
+        sendEvent("onBargeIn", [:])
     }
 }
 

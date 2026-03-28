@@ -61,7 +61,7 @@ export async function runPipelineTests(
   // Cleanup
   ExpoCustomPipelineModule.stopListening()
   ExpoCustomPipelineModule.stopSpeaking()
-  ExpoCustomPipelineModule.stopBargeInDetection()
+  ExpoCustomPipelineModule.setBargeInEnabled(false)
 
   return results
 }
