@@ -4,11 +4,13 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
+import type { OpenClawConnectionMode } from '@/lib/chat'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
+import { connectWs, disconnectWs, getWsStatus, addWsStatusListener, type WsConnectionStatus } from '@/lib/ws-completion'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
-import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon } from 'lucide-react-native'
+import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, WifiIcon, WifiOffIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
 
@@ -31,6 +33,12 @@ export default function SettingsScreen() {
   const [openclawApiKey, setOpenclawApiKey] = useState('')
   const [openclawApiUrl, setOpenclawApiUrl] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.')
+
+  // OpenClaw connection mode
+  const [connectionMode, setConnectionMode] = useState<OpenClawConnectionMode>('http')
+  const [gatewayUrl, setGatewayUrl] = useState('')
+  const [authToken, setAuthToken] = useState('')
+  const [wsStatus, setWsStatus] = useState<WsConnectionStatus>('disconnected')
 
   // Voice Pipeline state
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('vapi')
@@ -124,6 +132,12 @@ export default function SettingsScreen() {
 
   useEffect(() => { loadLatencyStats() }, [loadLatencyStats])
 
+  // Subscribe to WebSocket status updates
+  useEffect(() => {
+    setWsStatus(getWsStatus())
+    const unsubscribe = addWsStatusListener((status) => setWsStatus(status))
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     ;(async () => {
@@ -137,6 +151,12 @@ export default function SettingsScreen() {
       if (model) setDefaultModel(model)
       if (ocKey) setOpenclawApiKey(ocKey)
       if (ocUrl) setOpenclawApiUrl(ocUrl)
+      const cm = await getSetting('openclaw_connection_mode')
+      if (cm === 'http' || cm === 'plugin') setConnectionMode(cm)
+      const gw = await getSetting('openclaw_gateway_url')
+      if (gw) setGatewayUrl(gw)
+      const at = await getSetting('openclaw_auth_token')
+      if (at) setAuthToken(at)
       const sp = await getSetting('system_prompt')
       if (sp) setSystemPrompt(sp)
 
@@ -234,6 +254,21 @@ export default function SettingsScreen() {
     resetValidation('openclaw')
     if (loadedRef.current) saveDebounced('openclaw_api_url', v)
   }, [saveDebounced, resetValidation])
+
+  const updateConnectionMode = useCallback((v: OpenClawConnectionMode) => {
+    setConnectionMode(v)
+    if (loadedRef.current) saveImmediate('openclaw_connection_mode', v)
+  }, [saveImmediate])
+
+  const updateGatewayUrl = useCallback((v: string) => {
+    setGatewayUrl(v)
+    if (loadedRef.current) saveDebounced('openclaw_gateway_url', v)
+  }, [saveDebounced])
+
+  const updateAuthToken = useCallback((v: string) => {
+    setAuthToken(v)
+    if (loadedRef.current) saveDebounced('openclaw_auth_token', v)
+  }, [saveDebounced])
 
   const updateSystemPrompt = useCallback((v: string) => {
     setSystemPrompt(v)
@@ -448,28 +483,98 @@ export default function SettingsScreen() {
           <Text className="text-lg font-semibold text-foreground">OpenClaw Configuration</Text>
 
           <View className="gap-2">
-            <Text className="text-sm text-muted-foreground">API URL</Text>
-            <Input
-              placeholder="https://your-server.com/v1/chat/completions"
-              value={openclawApiUrl}
-              onChangeText={updateOpenclawApiUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
+            <Text className="text-sm text-muted-foreground">Connection Mode</Text>
+            <SegmentedControl
+              options={[
+                { label: 'HTTP', value: 'http' as const },
+                { label: 'Plugin (WebSocket)', value: 'plugin' as const },
+              ]}
+              value={connectionMode}
+              onChange={updateConnectionMode}
             />
           </View>
 
-          <View className="gap-2">
-            <Text className="text-sm text-muted-foreground">API Key</Text>
-            <SecretInput
-              value={openclawApiKey}
-              onChangeText={updateOpenclawApiKey}
-              placeholder="Enter your OpenClaw API key"
-              validationStatus={validationStatus.openclaw}
-              validationError={validationErrors.openclaw}
-              onTest={() => testApiKey('openclaw', openclawApiKey, openclawApiUrl)}
-            />
-          </View>
+          {connectionMode === 'http' && (
+            <>
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">API URL</Text>
+                <Input
+                  placeholder="https://your-server.com/v1/chat/completions"
+                  value={openclawApiUrl}
+                  onChangeText={updateOpenclawApiUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">API Key</Text>
+                <SecretInput
+                  value={openclawApiKey}
+                  onChangeText={updateOpenclawApiKey}
+                  placeholder="Enter your OpenClaw API key"
+                  validationStatus={validationStatus.openclaw}
+                  validationError={validationErrors.openclaw}
+                  onTest={() => testApiKey('openclaw', openclawApiKey, openclawApiUrl)}
+                />
+              </View>
+            </>
+          )}
+
+          {connectionMode === 'http' && (
+            <View className="gap-2">
+              <Text className="text-sm text-muted-foreground">Model</Text>
+              <Input
+                placeholder="e.g. openclaw:voice"
+                value={defaultModel}
+                onChangeText={updateDefaultModel}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          )}
+
+          {connectionMode === 'plugin' && (
+            <>
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Gateway URL</Text>
+                <Input
+                  placeholder="ws://localhost:8080/ws"
+                  value={gatewayUrl}
+                  onChangeText={updateGatewayUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Auth Token (optional)</Text>
+                <SecretInput
+                  value={authToken}
+                  onChangeText={updateAuthToken}
+                  placeholder="Enter gateway auth token"
+                />
+              </View>
+
+              <WsConnectionStatusBar
+                status={wsStatus}
+                onConnect={() => connectWs(gatewayUrl, authToken)}
+                onDisconnect={disconnectWs}
+              />
+
+              <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
+                <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup Instructions</Text>
+                <Text className="text-xs leading-5 text-muted-foreground">
+                  1. Install the OpenClaw plugin: see openclaw-plugin/ in the repo{'\n'}
+                  2. Start the gateway server on your machine{'\n'}
+                  3. Enter the gateway URL above (e.g. ws://your-ip:8080/ws){'\n'}
+                  4. Tap Connect to establish the WebSocket connection
+                </Text>
+              </View>
+            </>
+          )}
         </Card>
 
         <Card testID="debug-mode-card" className="gap-2 p-4">
@@ -800,6 +905,67 @@ function KokoroModelStatus({
       <Text className="text-sm text-muted-foreground">Model not downloaded</Text>
       <Text className="text-sm font-medium text-primary">Download (~327 MB)</Text>
     </Pressable>
+  )
+}
+
+function WsConnectionStatusBar({
+  status,
+  onConnect,
+  onDisconnect,
+}: {
+  status: WsConnectionStatus
+  onConnect: () => void
+  onDisconnect: () => void
+}) {
+  const isConnected = status === 'connected'
+  const isConnecting = status === 'connecting'
+
+  const statusColor = isConnected
+    ? 'border-green-500/30 bg-green-500/5'
+    : status === 'error'
+      ? 'border-destructive/50 bg-destructive/5'
+      : 'border-input'
+
+  const statusLabel = isConnected
+    ? 'Connected'
+    : isConnecting
+      ? 'Connecting...'
+      : status === 'error'
+        ? 'Connection failed'
+        : 'Disconnected'
+
+  const statusTextColor = isConnected
+    ? 'text-green-500'
+    : status === 'error'
+      ? 'text-destructive'
+      : 'text-muted-foreground'
+
+  return (
+    <View className={`flex-row items-center justify-between rounded-lg border px-3 py-2 ${statusColor}`}>
+      <View className="flex-row items-center gap-2">
+        {isConnecting ? (
+          <ActivityIndicator size="small" color="#888" />
+        ) : (
+          <Icon
+            as={isConnected ? WifiIcon : WifiOffIcon}
+            size={16}
+            className={statusTextColor}
+          />
+        )}
+        <Text className={`text-sm ${statusTextColor}`}>{statusLabel}</Text>
+      </View>
+      <Pressable
+        onPress={isConnected ? onDisconnect : onConnect}
+        disabled={isConnecting}
+        className={`rounded-md px-3 py-1 ${isConnecting ? 'opacity-50' : ''} ${
+          isConnected ? 'bg-destructive/10' : 'bg-primary/10'
+        }`}
+      >
+        <Text className={`text-sm font-medium ${isConnected ? 'text-destructive' : 'text-primary'}`}>
+          {isConnected ? 'Disconnect' : 'Connect'}
+        </Text>
+      </Pressable>
+    </View>
   )
 }
 
