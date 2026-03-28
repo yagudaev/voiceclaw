@@ -14,5 +14,5 @@ export { getSummary, saveSummary, deleteSummaries } from './summaries'
 export { runMigrations } from './migrations'
 
 export type { Conversation, ConversationWithPreview } from './conversations'
-export type { Message, LatencyData, LatencyAverages } from './messages'
+export type { Message, LatencyData, LatencyAverages, ProviderInfo } from './messages'
 export type { ConversationSummary } from './summaries'

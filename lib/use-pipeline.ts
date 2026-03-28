@@ -172,6 +172,14 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
             console.log('[Pipeline] LLM onDone — pendingTTS:', pendingTTSCountRef.current, 'isActive:', isActiveRef.current)
             if (!isActiveRef.current) return
             callbacksRef.current.onLLMComplete?.(text)
+            // Emit latency with STT+LLM data BEFORE onAssistantResponse
+            // so the message is saved with latency attached. TTS latency
+            // may still be zero here; a second update fires when TTS completes.
+            callbacksRef.current.onLatencyUpdate?.({
+              sttLatencyMs: sttLatencyMsRef.current,
+              llmLatencyMs: llmLatencyMsRef.current,
+              ttsLatencyMs: ttsLatencyMsRef.current,
+            })
             callbacksRef.current.onAssistantResponse?.(text)
             isStreamCompleteRef.current = true
             flushSentenceBuffer()

@@ -5,6 +5,7 @@ export async function runMigrations() {
   await db.execAsync(CREATE_TABLES)
   await addVapiColumns()
   await addLatencyColumns()
+  await addProviderColumns()
 }
 
 // --- Migration Helpers ---
@@ -14,6 +15,17 @@ async function addLatencyColumns() {
   for (const col of columns) {
     try {
       await db.execAsync(`ALTER TABLE messages ADD COLUMN ${col} REAL`)
+    } catch {
+      // Column already exists
+    }
+  }
+}
+
+async function addProviderColumns() {
+  const columns = ['stt_provider', 'llm_provider', 'tts_provider']
+  for (const col of columns) {
+    try {
+      await db.execAsync(`ALTER TABLE messages ADD COLUMN ${col} TEXT`)
     } catch {
       // Column already exists
     }
