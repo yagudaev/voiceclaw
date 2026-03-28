@@ -560,7 +560,7 @@ export default function SettingsScreen() {
 
               <WsConnectionStatusBar
                 status={wsStatus}
-                onConnect={connectWs}
+                onConnect={() => connectWs(gatewayUrl, authToken)}
                 onDisconnect={disconnectWs}
               />
 

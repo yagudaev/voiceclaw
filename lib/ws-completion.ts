@@ -40,13 +40,13 @@ export function addWsStatusListener(listener: WsStatusListener): () => void {
   }
 }
 
-export async function connectWs(): Promise<void> {
+export async function connectWs(url?: string, token?: string): Promise<void> {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return
   }
 
-  const gatewayUrl = await getSetting('openclaw_gateway_url')
-  const authToken = await getSetting('openclaw_auth_token')
+  const gatewayUrl = url ?? await getSetting('openclaw_gateway_url')
+  const authToken = token ?? await getSetting('openclaw_auth_token')
 
   if (!gatewayUrl) {
     setStatus('error')
