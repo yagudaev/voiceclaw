@@ -9,10 +9,20 @@ import type {
   PartialTranscriptEvent,
 } from '@/modules/expo-custom-pipeline/src/ExpoCustomPipeline.types'
 
+type PipelineMessage = {
+  role: string
+  content: string
+}
+
 export type PipelineCallbacks = {
+  getConversationId?: () => number | null
+  buildMessages?: (userText: string) => Promise<PipelineMessage[]>
   onPartialTranscript?: (text: string) => void
   onFinalTranscript?: (text: string) => void
+  onLLMToken?: (text: string) => void
+  onLLMComplete?: (text: string) => void
   onAssistantResponse?: (text: string) => void
+  onSpeakRequested?: (text: string) => void
   onTTSStart?: () => void
   onTTSComplete?: () => void
   onError?: (message: string) => void
@@ -32,6 +42,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   const sentenceBufferRef = useRef('')
   const stopCompletionRef = useRef<(() => void) | null>(null)
   const isActiveRef = useRef(false)
+  const bargeInActiveRef = useRef(false)
 
   // Latency tracking
   const finalTranscriptTimeRef = useRef<number | null>(null)
@@ -65,6 +76,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
   const speakSentence = useCallback((sentence: string) => {
     pendingTTSCountRef.current += 1
     speakStartTimesRef.current.push(Date.now())
+    callbacksRef.current.onSpeakRequested?.(sentence)
     ExpoCustomPipelineModule.speak(sentence)
   }, [])
 
@@ -108,17 +120,21 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         callbacksRef.current.onError?.('API not configured')
         return
       }
+      const conversationId = callbacksRef.current.getConversationId?.() ?? 0
+      const requestMessages = callbacksRef.current.buildMessages
+        ? await callbacksRef.current.buildMessages(userText)
+        : [{ role: 'user', content: userText }]
 
       let fullResponse = ''
       const llmStartTime = Date.now()
 
       stopCompletionRef.current = streamCompletion(
-        [{ role: 'user', content: userText }],
+        requestMessages,
         apiKey,
         model,
         apiUrl,
         '',
-        0,
+        conversationId,
         {
           onToken: (text) => {
             if (!isActiveRef.current) return
@@ -131,12 +147,14 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
 
             const newChars = text.slice(fullResponse.length)
             fullResponse = text
+            callbacksRef.current.onLLMToken?.(text)
             sentenceBufferRef.current += newChars
             trySpeakCompleteSentences()
           },
           onDone: (text) => {
             console.log('[Pipeline] LLM onDone — pendingTTS:', pendingTTSCountRef.current, 'isActive:', isActiveRef.current)
             if (!isActiveRef.current) return
+            callbacksRef.current.onLLMComplete?.(text)
             callbacksRef.current.onAssistantResponse?.(text)
             isStreamCompleteRef.current = true
             flushSentenceBuffer()
@@ -201,6 +219,10 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
           stopCompletionRef.current?.()
           stopCompletionRef.current = null
           ExpoCustomPipelineModule.stopSpeaking()
+          if (bargeInActiveRef.current) {
+            bargeInActiveRef.current = false
+            ExpoCustomPipelineModule.stopBargeInDetection()
+          }
           pendingTTSCountRef.current = 0
           sentenceBufferRef.current = ''
           speakStartTimesRef.current = []
@@ -215,17 +237,23 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
         if (speakTime != null) {
           ttsLatencyMsRef.current = Date.now() - speakTime
         }
-        // Start VAD while TTS is playing so we can detect barge-in
-        ExpoCustomPipelineModule.startBargeInDetection()
+        // Start VAD once per response (not per sentence)
+        if (!bargeInActiveRef.current) {
+          bargeInActiveRef.current = true
+          ExpoCustomPipelineModule.startBargeInDetection()
+        }
         callbacksRef.current.onTTSStart?.()
       }),
       ExpoCustomPipelineModule.addListener('onTTSComplete', () => {
         pendingTTSCountRef.current = Math.max(0, pendingTTSCountRef.current - 1)
         console.log('[Pipeline] onTTSComplete — pendingTTS now:', pendingTTSCountRef.current, 'isStreamComplete:', isStreamCompleteRef.current)
         callbacksRef.current.onTTSComplete?.()
-        // Stop VAD when all TTS finished — STT will take over
         if (pendingTTSCountRef.current === 0) {
-          ExpoCustomPipelineModule.stopBargeInDetection()
+          // Stop VAD when all TTS finished — STT will take over
+          if (bargeInActiveRef.current) {
+            bargeInActiveRef.current = false
+            ExpoCustomPipelineModule.stopBargeInDetection()
+          }
           if (isStreamCompleteRef.current) {
             callbacksRef.current.onLatencyUpdate?.({
               sttLatencyMs: sttLatencyMsRef.current,
@@ -238,6 +266,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
       }),
       ExpoCustomPipelineModule.addListener('onBargeIn', () => {
         console.log('[Pipeline] onBargeIn — user voice detected, interrupting')
+        bargeInActiveRef.current = false
         ExpoCustomPipelineModule.stopBargeInDetection()
         // Cancel in-progress LLM and TTS
         stopCompletionRef.current?.()
@@ -269,6 +298,7 @@ export function usePipeline(callbacks: PipelineCallbacks): PipelineControls {
     stopCompletionRef.current = null
     ExpoCustomPipelineModule.stopListening()
     ExpoCustomPipelineModule.stopSpeaking()
+    bargeInActiveRef.current = false
     ExpoCustomPipelineModule.stopBargeInDetection()
     subsRef.current.forEach((s) => s.remove())
     subsRef.current = []

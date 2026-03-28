@@ -3,7 +3,6 @@ import AVFoundation
 import Foundation
 import KokoroSwift
 import MLX
-import MLXUtilsLibrary
 
 // MARK: - KokoroTTSProvider
 
@@ -16,12 +15,16 @@ class KokoroTTSProvider: TTSProvider {
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var ttsEngine: KokoroTTS?
-    private var voices: [String: MLXArray] = [:]
+    private var voiceEmbedding: MLXArray?
 
     private var onStartCallback: (() -> Void)?
     private var onCompleteCallback: (() -> Void)?
     private var onErrorCallback: ((String) -> Void)?
     private var downloadTask: URLSessionDownloadTask?
+    private var pendingChunks: [String] = []
+    private var didStartCurrentSpeech = false
+    private var activeSpeechID = UUID()
+    private let synthesisQueue = DispatchQueue(label: "com.yagudaev.voiceclaw.kokoro-tts")
 
     private var isModelReady = false
 
@@ -36,15 +39,23 @@ class KokoroTTSProvider: TTSProvider {
         onStartCallback = onStart
         onCompleteCallback = onComplete
         onErrorCallback = onError
+        pendingChunks = makeSpeechChunks(from: text)
+        didStartCurrentSpeech = false
+        activeSpeechID = UUID()
+
+        guard !pendingChunks.isEmpty else {
+            onComplete()
+            return
+        }
 
         if isModelReady {
-            synthesizeAndPlay(text: text)
+            synthesizeNextChunk(for: activeSpeechID)
         } else {
             prepareModel { [weak self] result in
                 guard let self = self else { return }
                 switch result {
                 case .success:
-                    self.synthesizeAndPlay(text: text)
+                    self.synthesizeNextChunk(for: self.activeSpeechID)
                 case .failure(let error):
                     print("[Kokoro] Model preparation failed: \(error)")
                     DispatchQueue.main.async {
@@ -60,11 +71,14 @@ class KokoroTTSProvider: TTSProvider {
     func stop() {
         downloadTask?.cancel()
         downloadTask = nil
+        activeSpeechID = UUID()
+        pendingChunks = []
         playerNode?.stop()
         if audioEngine?.isRunning == true {
             audioEngine?.stop()
         }
         isSpeaking = false
+        didStartCurrentSpeech = false
         onStartCallback = nil
         onCompleteCallback = nil
         onErrorCallback = nil
@@ -76,9 +90,13 @@ class KokoroTTSProvider: TTSProvider {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("KokoroTTS", isDirectory: true)
         let model = cache.appendingPathComponent("kokoro-v1_0.safetensors")
-        let voices = cache.appendingPathComponent("voices.npz")
+        let voice = cache.appendingPathComponent("af_heart.safetensors")
+        let legacyVoices = cache.appendingPathComponent("voices.npz")
         return FileManager.default.fileExists(atPath: model.path)
-            && FileManager.default.fileExists(atPath: voices.path)
+            && (
+                FileManager.default.fileExists(atPath: voice.path)
+                    || FileManager.default.fileExists(atPath: legacyVoices.path)
+            )
     }
 
     func downloadModel(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -105,8 +123,12 @@ private extension KokoroTTSProvider {
         cacheDirectory.appendingPathComponent("voices.npz")
     }
 
+    var cachedVoiceURL: URL {
+        cacheDirectory.appendingPathComponent("af_heart.safetensors")
+    }
+
     // Default voice: af_heart (American female, 'a' prefix = US English)
-    var defaultVoiceKey: String { "af_heart.npy" }
+    var defaultVoiceName: String { "af_heart" }
 
     func prepareModel(completion: @escaping (Result<Void, Error>) -> Void) {
         do {
@@ -120,9 +142,10 @@ private extension KokoroTTSProvider {
         }
 
         let needsModel = !FileManager.default.fileExists(atPath: cachedModelURL.path)
-        let needsVoices = !FileManager.default.fileExists(atPath: cachedVoicesURL.path)
+        let hasLegacyVoices = FileManager.default.fileExists(atPath: cachedVoicesURL.path)
+        let needsVoice = !FileManager.default.fileExists(atPath: cachedVoiceURL.path) && !hasLegacyVoices
 
-        if !needsModel && !needsVoices {
+        if !needsModel && !needsVoice {
             loadModel(completion: completion)
             return
         }
@@ -134,11 +157,11 @@ private extension KokoroTTSProvider {
             )!
             filesToDownload.append((modelURL, cachedModelURL))
         }
-        if needsVoices {
-            let voicesURL = URL(
-                string: "https://huggingface.co/prince-canuma/Kokoro-82M/resolve/main/voices.npz"
+        if needsVoice {
+            let voiceURL = URL(
+                string: "https://huggingface.co/prince-canuma/Kokoro-82M/resolve/main/voices/\(defaultVoiceName).safetensors"
             )!
-            filesToDownload.append((voicesURL, cachedVoicesURL))
+            filesToDownload.append((voiceURL, cachedVoiceURL))
         }
 
         downloadFiles(filesToDownload, index: 0) { [weak self] result in
@@ -204,9 +227,19 @@ private extension KokoroTTSProvider {
             guard let self = self else { return }
             do {
                 self.ttsEngine = KokoroTTS(modelPath: self.cachedModelURL, g2p: .misaki)
-                self.voices = NpyzReader.read(
-                    fileFromPath: self.cachedVoicesURL
-                ) ?? [:]
+                if FileManager.default.fileExists(atPath: self.cachedVoiceURL.path) {
+                    self.voiceEmbedding = VoiceEmbeddingLoader.loadVoice(
+                        from: self.cachedVoiceURL
+                    )
+                } else {
+                    self.voiceEmbedding = VoiceEmbeddingLoader.loadVoices(
+                        from: self.cachedVoicesURL
+                    )?["\(self.defaultVoiceName).npy"]
+                    ?? VoiceEmbeddingLoader.loadVoices(from: self.cachedVoicesURL)?[self.defaultVoiceName]
+                }
+                guard self.voiceEmbedding != nil else {
+                    throw KokoroError.voiceLoadFailed("Could not load voice embedding for \(self.defaultVoiceName)")
+                }
                 self.isModelReady = true
                 print("[Kokoro] Model loaded successfully")
                 completion(.success(()))
@@ -229,10 +262,8 @@ private extension KokoroTTSProvider {
             return
         }
 
-        // Try both with and without .npy extension — NPZ key format varies
-        let voiceKey = defaultVoiceKey
-        guard let voice = voices[voiceKey] ?? voices[String(voiceKey.dropLast(4))] else {
-            onErrorCallback?("Kokoro: voice '\(voiceKey)' not found in voices.npz")
+        guard let voice = voiceEmbedding else {
+            onErrorCallback?("Kokoro: voice '\(defaultVoiceName)' is not loaded")
             onCompleteCallback?()
             return
         }
@@ -240,7 +271,7 @@ private extension KokoroTTSProvider {
         let startTime = CFAbsoluteTimeGetCurrent()
         isSpeaking = true
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        synthesisQueue.async { [weak self] in
             guard let self = self else { return }
             do {
                 let (audio, _) = try engine.generateAudio(
@@ -249,7 +280,11 @@ private extension KokoroTTSProvider {
                     text: text
                 )
                 self.latencyMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-                DispatchQueue.main.async { self.playAudioSamples(audio) }
+                let speechID = self.activeSpeechID
+                let isFinalChunk = self.pendingChunks.isEmpty
+                DispatchQueue.main.async {
+                    self.playAudioSamples(audio, speechID: speechID, isFinalChunk: isFinalChunk)
+                }
             } catch {
                 print("[Kokoro] Synthesis error: \(error)")
                 DispatchQueue.main.async {
@@ -261,7 +296,9 @@ private extension KokoroTTSProvider {
         }
     }
 
-    func playAudioSamples(_ samples: [Float]) {
+    func playAudioSamples(_ samples: [Float], speechID: UUID, isFinalChunk: Bool) {
+        guard speechID == activeSpeechID else { return }
+
         let format = AVAudioFormat(
             standardFormatWithSampleRate: KokoroTTSProvider.samplingRate,
             channels: 1
@@ -314,16 +351,95 @@ private extension KokoroTTSProvider {
             }
         }
 
-        onStartCallback?()
+        if !didStartCurrentSpeech {
+            didStartCurrentSpeech = true
+            onStartCallback?()
+        }
 
         player.scheduleBuffer(buffer, at: nil, options: .interrupts) { [weak self] in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.isSpeaking = false
-                self.onCompleteCallback?()
+                guard speechID == self.activeSpeechID else { return }
+                if isFinalChunk {
+                    self.isSpeaking = false
+                    self.didStartCurrentSpeech = false
+                    self.onCompleteCallback?()
+                } else {
+                    self.synthesizeNextChunk(for: speechID)
+                }
             }
         }
         player.play()
+    }
+
+    func synthesizeNextChunk(for speechID: UUID) {
+        guard speechID == activeSpeechID else { return }
+
+        guard !pendingChunks.isEmpty else {
+            isSpeaking = false
+            didStartCurrentSpeech = false
+            onCompleteCallback?()
+            return
+        }
+
+        let chunk = pendingChunks.removeFirst()
+        synthesizeAndPlay(text: chunk)
+    }
+
+    func makeSpeechChunks(from text: String, maxChunkLength: Int = 180) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var sentences: [String] = []
+        let nsText = trimmed as NSString
+        nsText.enumerateSubstrings(
+            in: NSRange(location: 0, length: nsText.length),
+            options: [.bySentences, .substringNotRequired]
+        ) { _, range, _, _ in
+            let sentence = nsText.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sentence.isEmpty {
+                sentences.append(sentence)
+            }
+        }
+
+        if sentences.isEmpty {
+            sentences = [trimmed]
+        }
+
+        var chunks: [String] = []
+        var current = ""
+
+        for sentence in sentences {
+            if current.isEmpty {
+                current = sentence
+                continue
+            }
+
+            let candidate = "\(current) \(sentence)"
+            if candidate.count <= maxChunkLength {
+                current = candidate
+            } else {
+                chunks.append(current)
+                current = sentence
+            }
+        }
+
+        if !current.isEmpty {
+            chunks.append(current)
+        }
+
+        return chunks.flatMap { chunk in
+            guard chunk.count > maxChunkLength else { return [chunk] }
+
+            var subchunks: [String] = []
+            var start = chunk.startIndex
+            while start < chunk.endIndex {
+                let end = chunk.index(start, offsetBy: maxChunkLength, limitedBy: chunk.endIndex) ?? chunk.endIndex
+                subchunks.append(String(chunk[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines))
+                start = end
+            }
+            return subchunks.filter { !$0.isEmpty }
+        }
     }
 }
 
@@ -332,11 +448,13 @@ private extension KokoroTTSProvider {
 enum KokoroError: LocalizedError {
     case notAvailable(String)
     case downloadFailed(String)
+    case voiceLoadFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .notAvailable(let msg): return msg
         case .downloadFailed(let msg): return msg
+        case .voiceLoadFailed(let msg): return msg
         }
     }
 }

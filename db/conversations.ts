@@ -70,14 +70,3 @@ export async function deleteAllConversations() {
   await db.runAsync('DELETE FROM messages')
   await db.runAsync('DELETE FROM conversations')
 }
-
-export async function updateConversationVapi(
-  id: number,
-  vapiSessionId: string | null,
-  vapiLastChatId: string | null
-) {
-  await db.runAsync(
-    'UPDATE conversations SET vapi_session_id = ?, vapi_last_chat_id = ?, updated_at = ? WHERE id = ?',
-    [vapiSessionId, vapiLastChatId, Date.now(), id]
-  )
-}

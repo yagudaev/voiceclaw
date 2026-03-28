@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getConversation, getLatestConversation, getMessages, getSetting, setSetting, updateConversationVapi, type Message, type LatencyData } from '@/db'
+import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, setSetting, type Message, type LatencyData } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -12,7 +12,6 @@ import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
-import { sendVapiChat, syncMessagesToVapi } from '@/lib/vapi-chat'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
@@ -73,6 +72,25 @@ const DISPLAY_TEXT_FUNCTION = {
 }
 
 type ContentPart = { type: 'text', text: string } | { type: 'image', url: string, alt: string }
+type PipelineDebugPhase = 'idle' | 'listening' | 'thinking' | 'speaking'
+
+const INITIAL_PIPELINE_DEBUG_STATE = {
+  phase: 'idle' as PipelineDebugPhase,
+  transcriptCount: 0,
+  llmTokenCount: 0,
+  llmCompleteCount: 0,
+  assistantResponseCount: 0,
+  speakRequestCount: 0,
+  ttsStartCount: 0,
+  errorCount: 0,
+  interruptCount: 0,
+  ttsProvider: 'unknown',
+  lastUserTranscript: 'none',
+  lastLLMText: 'none',
+  lastAssistantResponse: 'none',
+  lastSpeakRequest: 'none',
+  lastError: 'none',
+}
 
 export default function ChatScreen() {
   const { colorScheme } = useColorScheme()
@@ -99,6 +117,7 @@ export default function ChatScreen() {
   const lastAssistantIdRef = useRef<string | null>(null)
   const pendingLatencyRef = useRef<LatencyData | null>(null)
   const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
+  const [pipelineDebugState, setPipelineDebugState] = useState(INITIAL_PIPELINE_DEBUG_STATE)
   const conversationIdRef = useRef<number | null>(null)
   conversationIdRef.current = conversationId
 
@@ -111,14 +130,55 @@ export default function ChatScreen() {
   // Refs for pipeline callbacks that need fresh closure values
   const loadMessagesRef = useRef<() => Promise<void>>(async () => {})
 
+  const resetPipelineDebugState = useCallback(() => {
+    setPipelineDebugState(INITIAL_PIPELINE_DEBUG_STATE)
+  }, [])
+
+  const setPipelineDebugPhase = useCallback((phase: PipelineDebugPhase) => {
+    setPipelineDebugState((current) => ({ ...current, phase }))
+  }, [])
+
+  const simulatePipelineTranscript = useCallback((text: string) => {
+    if (!isCallActive || activeVoiceModeRef.current !== 'custom') return
+    ExpoCustomPipelineModule.simulateFinalTranscript(text)
+  }, [isCallActive])
+
   const pipeline = usePipeline({
+    getConversationId: () => conversationIdRef.current,
+    buildMessages: async (userText) => {
+      const convId = conversationIdRef.current
+      if (!convId) return [{ role: 'user', content: userText }]
+
+      const { apiKey, apiUrl, model } = await getApiConfig()
+      if (!apiKey || !apiUrl) return [{ role: 'user', content: userText }]
+
+      const dbMessages = await getMessages(convId)
+      const compacted = await compactMessages(convId, dbMessages, apiKey, model, apiUrl)
+      const llmMessages = compacted
+        .filter((message) => message.role === 'user' || message.role === 'assistant')
+        .map((message) => ({ role: message.role, content: message.content }))
+
+      const lastMessage = llmMessages[llmMessages.length - 1]
+      if (lastMessage?.role === 'user' && lastMessage.content === userText) {
+        return llmMessages
+      }
+
+      return [...llmMessages, { role: 'user', content: userText }]
+    },
     onPartialTranscript: (text) => {
       setStreamingRole('user')
       setStreamingText(text)
+      setPipelineDebugPhase('listening')
     },
     onFinalTranscript: (text) => {
       console.log('[CustomPipeline] Final transcript:', text?.substring(0, 50))
       setStreamingText(null)
+      setPipelineDebugState((current) => ({
+        ...current,
+        phase: 'thinking',
+        transcriptCount: current.transcriptCount + 1,
+        lastUserTranscript: text,
+      }))
       const convId = conversationIdRef.current
       if (convId) {
         addMessage(convId, 'user', text).then(() => {
@@ -129,10 +189,29 @@ export default function ChatScreen() {
       setIsThinking(true)
       soundsRef.current.startThinking()
     },
+    onLLMToken: (text) => {
+      setPipelineDebugState((current) => ({
+        ...current,
+        llmTokenCount: current.llmTokenCount + 1,
+        lastLLMText: text,
+      }))
+    },
+    onLLMComplete: (text) => {
+      setPipelineDebugState((current) => ({
+        ...current,
+        llmCompleteCount: current.llmCompleteCount + 1,
+        lastLLMText: text || '<empty>',
+      }))
+    },
     onAssistantResponse: (text) => {
       console.log('[CustomPipeline] Assistant response:', text?.substring(0, 50))
       setIsThinking(false)
       soundsRef.current.stopThinking()
+      setPipelineDebugState((current) => ({
+        ...current,
+        assistantResponseCount: current.assistantResponseCount + 1,
+        lastAssistantResponse: text || '<empty>',
+      }))
       const convId = conversationIdRef.current
       if (convId && text) {
         addMessage(convId, 'assistant', text, pendingLatencyRef.current ?? undefined).then(() => {
@@ -141,10 +220,22 @@ export default function ChatScreen() {
         })
       }
     },
+    onSpeakRequested: (text) => {
+      setPipelineDebugState((current) => ({
+        ...current,
+        speakRequestCount: current.speakRequestCount + 1,
+        lastSpeakRequest: text,
+      }))
+    },
     onTTSStart: () => {
       console.log('[CustomPipeline] TTS started')
       setIsThinking(false)
       soundsRef.current.stopThinking()
+      setPipelineDebugState((current) => ({
+        ...current,
+        phase: 'speaking',
+        ttsStartCount: current.ttsStartCount + 1,
+      }))
     },
     onTTSComplete: () => {
       console.log('[CustomPipeline] TTS complete')
@@ -153,6 +244,12 @@ export default function ChatScreen() {
       console.error('[CustomPipeline]', message)
       setIsThinking(false)
       soundsRef.current.stopThinking()
+      setPipelineDebugPhase('idle')
+      setPipelineDebugState((current) => ({
+        ...current,
+        errorCount: current.errorCount + 1,
+        lastError: message,
+      }))
       const convId = conversationIdRef.current
       if (convId) {
         addMessage(convId, 'assistant', `Error: ${message}`).then(() => loadMessagesRef.current())
@@ -223,7 +320,7 @@ export default function ChatScreen() {
 
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
-    const apiKey = await getSetting('vapi_api_key')
+    const apiKey = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
     if (!apiKey) return false
     try {
       await ExpoVapiModule.initialize(apiKey)
@@ -300,9 +397,6 @@ export default function ChatScreen() {
         } else {
           // User-initiated end -- normal cleanup
           soundsRef.current.playEnd()
-          if (conversationId) {
-            syncConversationToVapi(conversationId)
-          }
         }
       }),
       ExpoVapiModule.addListener('onTranscript', (event: TranscriptEvent) => {
@@ -486,7 +580,6 @@ export default function ChatScreen() {
         await addMessage(conversationId, 'assistant', text || 'No response received.')
         await loadMessages()
         maybeGenerateTitle(conversationId)
-        syncTextMessageToVapi(conversationId, userInput)
       },
       onError: async (error) => {
         setStreamingText(null)
@@ -561,7 +654,7 @@ export default function ChatScreen() {
     const assistantId = await getSetting('assistant_id')
     if (!assistantId) {
       if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
         await loadMessages()
       }
       return false
@@ -570,7 +663,7 @@ export default function ChatScreen() {
     const ready = await ensureVapiReady()
     if (!ready) {
       if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi API key and Assistant ID in Settings first.')
+        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
         await loadMessages()
       }
       return false
@@ -687,20 +780,33 @@ export default function ChatScreen() {
     ExpoCustomPipelineModule.setTTSProvider(ttsProvider, ttsConfig)
 
     console.log('[CustomPipeline] Starting pipeline with', { apiUrl, sttProvider, ttsProvider })
+    resetPipelineDebugState()
+    setPipelineDebugState((current) => ({ ...current, ttsProvider }))
     pipeline.start()
     setIsCallActive(true)
     setIsConnecting(false)
+    setPipelineDebugPhase('listening')
     soundsRef.current.playJoin()
     return true
-  }, [conversationId, loadMessages, pipeline])
+  }, [conversationId, loadMessages, pipeline, resetPipelineDebugState, setPipelineDebugPhase])
 
   const stopCustomPipeline = useCallback(() => {
     pipeline.stop()
     setIsCallActive(false)
     setIsMuted(false)
     setIsThinking(false)
+    setPipelineDebugPhase('idle')
     soundsRef.current.stopThinking()
     soundsRef.current.playEnd()
+  }, [pipeline, setPipelineDebugPhase])
+
+  const handlePipelineInterrupt = useCallback(() => {
+    setPipelineDebugState((current) => ({
+      ...current,
+      phase: 'listening',
+      interruptCount: current.interruptCount + 1,
+    }))
+    pipeline.interrupt()
   }, [pipeline])
 
   const toggleMute = useCallback(async () => {
@@ -813,7 +919,7 @@ export default function ChatScreen() {
       {isCallActive && (
         <View testID="call-controls" className="flex-row items-center justify-center gap-4 border-t border-border bg-muted/50 px-4 py-3">
           {activeVoiceModeRef.current === 'custom' ? (
-            <Button testID="interrupt-button" variant="secondary" size="icon" className="rounded-full" onPress={pipeline.interrupt}>
+            <Button testID="interrupt-button" variant="secondary" size="icon" className="rounded-full" onPress={handlePipelineInterrupt}>
               <Icon as={MicIcon} size={20} className="text-foreground" />
             </Button>
           ) : (
@@ -825,6 +931,69 @@ export default function ChatScreen() {
             <Icon as={PhoneOffIcon} size={20} className="text-destructive-foreground" />
             <Text className="ml-2 text-destructive-foreground">End Call</Text>
           </Button>
+        </View>
+      )}
+
+      {__DEV__ && isCallActive && activeVoiceModeRef.current === 'custom' && (
+        <View testID="pipeline-debug-panel" className="gap-2 border-t border-dashed border-border bg-background px-4 py-3">
+          <Text testID="pipeline-debug-phase" className="text-xs text-muted-foreground">
+            phase:{pipelineDebugState.phase}
+          </Text>
+          <View className="flex-row flex-wrap gap-3">
+            <Text testID="pipeline-debug-transcript-count" className="text-xs text-muted-foreground">
+              transcripts:{pipelineDebugState.transcriptCount}
+            </Text>
+            <Text testID="pipeline-debug-llm-token-count" className="text-xs text-muted-foreground">
+              llmTokens:{pipelineDebugState.llmTokenCount}
+            </Text>
+            <Text testID="pipeline-debug-llm-complete-count" className="text-xs text-muted-foreground">
+              llmDone:{pipelineDebugState.llmCompleteCount}
+            </Text>
+            <Text testID="pipeline-debug-assistant-count" className="text-xs text-muted-foreground">
+              responses:{pipelineDebugState.assistantResponseCount}
+            </Text>
+            <Text testID="pipeline-debug-speak-count" className="text-xs text-muted-foreground">
+              speak:{pipelineDebugState.speakRequestCount}
+            </Text>
+            <Text testID="pipeline-debug-tts-count" className="text-xs text-muted-foreground">
+              tts:{pipelineDebugState.ttsStartCount}
+            </Text>
+            <Text testID="pipeline-debug-error-count" className="text-xs text-muted-foreground">
+              errors:{pipelineDebugState.errorCount}
+            </Text>
+            <Text testID="pipeline-debug-interrupt-count" className="text-xs text-muted-foreground">
+              interrupts:{pipelineDebugState.interruptCount}
+            </Text>
+          </View>
+          <Text testID="pipeline-debug-tts-provider" className="text-xs text-muted-foreground" numberOfLines={1}>
+            ttsProvider:{pipelineDebugState.ttsProvider}
+          </Text>
+          <Text testID="pipeline-debug-last-user" className="text-xs text-muted-foreground" numberOfLines={2}>
+            user:{pipelineDebugState.lastUserTranscript}
+          </Text>
+          <Text testID="pipeline-debug-last-llm" className="text-xs text-muted-foreground" numberOfLines={3}>
+            llm:{pipelineDebugState.lastLLMText}
+          </Text>
+          <Text testID="pipeline-debug-last-assistant" className="text-xs text-muted-foreground" numberOfLines={3}>
+            assistant:{pipelineDebugState.lastAssistantResponse}
+          </Text>
+          <Text testID="pipeline-debug-last-speak" className="text-xs text-muted-foreground" numberOfLines={3}>
+            speak:{pipelineDebugState.lastSpeakRequest}
+          </Text>
+          <Text testID="pipeline-debug-last-error" className="text-xs text-muted-foreground" numberOfLines={3}>
+            error:{pipelineDebugState.lastError}
+          </Text>
+          <View className="flex-row flex-wrap gap-2">
+            <Button testID="simulate-short-transcript-button" variant="secondary" size="sm" onPress={() => simulatePipelineTranscript('Say hello in one short sentence.')}>
+              <Text className="text-xs text-foreground">Short Turn</Text>
+            </Button>
+            <Button testID="simulate-long-transcript-button" variant="secondary" size="sm" onPress={() => simulatePipelineTranscript('Tell me a long story about a dragon. Make it at least 5 sentences.')}>
+              <Text className="text-xs text-foreground">Long Turn</Text>
+            </Button>
+            <Button testID="simulate-interrupt-transcript-button" variant="secondary" size="sm" onPress={() => simulatePipelineTranscript('Actually stop the dragon story and reply with exactly: redirect successful.')}>
+              <Text className="text-xs text-foreground">Redirect Turn</Text>
+            </Button>
+          </View>
         </View>
       )}
 
@@ -1025,54 +1194,4 @@ function parseContent(content: string): ContentPart[] {
   }
 
   return expanded.length > 0 ? expanded : [{ type: 'text', text: content }]
-}
-
-async function syncTextMessageToVapi(conversationId: number, userInput: string) {
-  try {
-    const conv = await getConversation(conversationId)
-    if (!conv) return
-
-    const result = await sendVapiChat(userInput, {
-      sessionId: conv.vapi_session_id || undefined,
-      previousChatId: conv.vapi_last_chat_id || undefined,
-    })
-
-    if (result?.id) {
-      await updateConversationVapi(
-        conversationId,
-        result.sessionId || conv.vapi_session_id,
-        result.id
-      )
-    }
-  } catch (e) {
-    console.warn('[VapiSync] Failed to sync text message:', e)
-  }
-}
-
-async function syncConversationToVapi(conversationId: number) {
-  try {
-    const conv = await getConversation(conversationId)
-    if (!conv) return
-
-    // If we already have a session, the messages were synced incrementally
-    if (conv.vapi_last_chat_id) return
-
-    const msgs = await getMessages(conversationId)
-    if (msgs.length === 0) return
-
-    const result = await syncMessagesToVapi(
-      msgs.map((m) => ({ role: m.role, content: m.content })),
-      { sessionId: conv.vapi_session_id || undefined }
-    )
-
-    if (result.sessionId || result.lastChatId) {
-      await updateConversationVapi(
-        conversationId,
-        result.sessionId || conv.vapi_session_id,
-        result.lastChatId || conv.vapi_last_chat_id
-      )
-    }
-  } catch (e) {
-    console.warn('[VapiSync] Failed to sync conversation:', e)
-  }
 }

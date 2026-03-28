@@ -39,6 +39,7 @@ const KOKORO_IOS_REPO = 'https://github.com/mlalma/kokoro-ios'
 const KOKORO_IOS_TAG = '1.0.11'
 const MISAKI_SWIFT_REPO = 'https://github.com/mlalma/MisakiSwift'
 const MISAKI_SWIFT_TAG = '1.0.6'
+const KOKORO_MIN_IOS_VERSION = '18.0'
 
 function withKokoroSwift(config) {
   // Step 1: patch the Podfile
@@ -56,33 +57,74 @@ function withKokoroPodfile(config) {
     async (config) => {
       const platformRoot = config.modRequest.platformProjectRoot
       const podfilePath = path.join(platformRoot, 'Podfile')
+      const podfilePropertiesPath = path.join(platformRoot, 'Podfile.properties.json')
 
       if (!fs.existsSync(podfilePath)) {
         console.warn('[with-kokoro-swift] Podfile not found, skipping Podfile patch')
         return config
       }
 
+      ensurePodfileDeploymentTarget(podfilePropertiesPath)
+
       let podfile = fs.readFileSync(podfilePath, 'utf8')
 
-      if (podfile.includes('PackageFrameworks')) {
-        console.log('[with-kokoro-swift] Podfile already patched for PackageFrameworks, skipping')
+      if (
+        podfile.includes("target.name == 'ExpoCustomPipeline'") &&
+        podfile.includes('PackageFrameworks')
+      ) {
+        console.log('[with-kokoro-swift] Podfile already patched for KokoroSwift module visibility, skipping')
         return config
       }
 
       // Ruby code to inject into the post_install block
       const injection = `
     # Make KokoroSwift (SPM package linked to VoiceClaw app target) importable
-    # from the ExpoCustomPipeline pod target. SPM dynamic frameworks are built
-    # into $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/PackageFrameworks/
-    # which maps to ${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks inside the
-    # pods build system.
+    # from the ExpoCustomPipeline pod target. The compiled Swift module ends up
+    # in $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME), while the
+    # linked framework lives in PackageFrameworks.
     installer.pods_project.targets.each do |target|
       if target.name == 'ExpoCustomPipeline'
         target.build_configurations.each do |config|
-          existing = config.build_settings['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
-          unless existing.include?('PackageFrameworks')
-            config.build_settings['FRAMEWORK_SEARCH_PATHS'] = "#{existing} \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '${KOKORO_MIN_IOS_VERSION}'
+
+          framework_paths = config.build_settings['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
+          unless framework_paths.include?('PackageFrameworks')
+            framework_paths = "#{framework_paths} \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
           end
+          unless framework_paths.include?('$(PODS_BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)')
+            framework_paths = "#{framework_paths} \\"${'${'}PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\\""
+          end
+          config.build_settings['FRAMEWORK_SEARCH_PATHS'] = framework_paths
+
+          header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+          unless header_paths.include?('swift-numerics/Sources/_NumericsShims/include')
+            header_paths = "#{header_paths} \\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/swift-numerics/Sources/_NumericsShims/include\\""
+          end
+          unless header_paths.include?('mlx-swift/Source/Cmlx/include')
+            header_paths = "#{header_paths} \\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/mlx-swift/Source/Cmlx/include\\""
+          end
+          config.build_settings['HEADER_SEARCH_PATHS'] = header_paths
+
+          swift_include_paths = config.build_settings['SWIFT_INCLUDE_PATHS'] || '$(inherited)'
+          unless swift_include_paths.include?('PackageFrameworks')
+            swift_include_paths = "#{swift_include_paths} \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\""
+          end
+          unless swift_include_paths.include?('$(PODS_BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)')
+            swift_include_paths = "#{swift_include_paths} \\"${'${'}PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\\""
+          end
+          config.build_settings['SWIFT_INCLUDE_PATHS'] = swift_include_paths
+
+          other_swift_flags = config.build_settings['OTHER_SWIFT_FLAGS'] || '$(inherited)'
+          unless other_swift_flags.include?('PackageFrameworks') && other_swift_flags.include?('$(PODS_BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)')
+            other_swift_flags = "#{other_swift_flags} -F \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\" -I \\"${'${'}PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\\""
+          end
+          unless other_swift_flags.include?('swift-numerics/Sources/_NumericsShims/include')
+            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/swift-numerics/Sources/_NumericsShims/include\\""
+          end
+          unless other_swift_flags.include?('mlx-swift/Source/Cmlx/include')
+            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/mlx-swift/Source/Cmlx/include\\""
+          end
+          config.build_settings['OTHER_SWIFT_FLAGS'] = other_swift_flags
         end
       end
     end`
@@ -109,7 +151,7 @@ function withKokoroPodfile(config) {
       }
 
       fs.writeFileSync(podfilePath, podfile)
-      console.log('[with-kokoro-swift] Patched Podfile with PackageFrameworks search path')
+      console.log('[with-kokoro-swift] Patched Podfile with KokoroSwift module search paths')
 
       return config
     },
@@ -191,6 +233,12 @@ function setupLocalPackages(appRoot, platformRoot) {
     path.join(misakiDir, 'Package.swift')
   )
   console.log('[with-kokoro-swift] Applied patched Package.swift to MisakiSwift')
+
+  const kokoroSourceOverrides = path.join(nativePackagesDir, 'kokoro-ios', 'Sources')
+  if (fs.existsSync(kokoroSourceOverrides)) {
+    copyDirectoryContents(kokoroSourceOverrides, path.join(kokoroDir, 'Sources'))
+    console.log('[with-kokoro-swift] Applied Kokoro source overrides')
+  }
 
   // Copy kokoro-ios Resources into Sources/KokoroSwift/Resources/ for .process("Resources")
   const kokoroSrcResDir = path.join(kokoroDir, 'Sources', 'KokoroSwift', 'Resources')
@@ -348,6 +396,8 @@ function patchPbxproj(pbxprojPath) {
   // 8. Ensure CODE_SIGNING_ALLOWED = YES on VoiceClaw target build configurations
   //    (required when SPM packages with resource bundles are linked)
   ensureCodeSigningAllowed(project, mainTarget)
+  ensureDeploymentTarget(project, mainTarget, KOKORO_MIN_IOS_VERSION)
+  ensureProjectDeploymentTarget(project, KOKORO_MIN_IOS_VERSION)
 
   // Write the updated project file
   fs.writeFileSync(pbxprojPath, project.writeSync())
@@ -462,6 +512,79 @@ function ensureCodeSigningAllowed(project, mainTarget) {
         config.buildSettings['CODE_SIGNING_ALLOWED'] = 'YES'
         console.log(`[with-kokoro-swift] Set CODE_SIGNING_ALLOWED = YES on ${config.name} config`)
       }
+    }
+  }
+}
+
+function copyDirectoryContents(sourceDir, destinationDir) {
+  if (!fs.existsSync(sourceDir)) return
+
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const destinationPath = path.join(destinationDir, entry.name)
+
+    if (entry.isDirectory()) {
+      fs.mkdirSync(destinationPath, { recursive: true })
+      copyDirectoryContents(sourcePath, destinationPath)
+    } else if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
+      fs.copyFileSync(sourcePath, destinationPath)
+    }
+  }
+}
+
+function ensurePodfileDeploymentTarget(podfilePropertiesPath) {
+  let properties = {}
+
+  if (fs.existsSync(podfilePropertiesPath)) {
+    try {
+      properties = JSON.parse(fs.readFileSync(podfilePropertiesPath, 'utf8'))
+    } catch (error) {
+      console.warn(`[with-kokoro-swift] Failed to parse Podfile.properties.json: ${error}`)
+    }
+  }
+
+  if (properties['ios.deploymentTarget'] !== KOKORO_MIN_IOS_VERSION) {
+    properties['ios.deploymentTarget'] = KOKORO_MIN_IOS_VERSION
+    fs.writeFileSync(podfilePropertiesPath, `${JSON.stringify(properties, null, 2)}\n`)
+    console.log(`[with-kokoro-swift] Set ios.deploymentTarget = ${KOKORO_MIN_IOS_VERSION} in Podfile.properties.json`)
+  }
+}
+
+function ensureDeploymentTarget(project, mainTarget, version) {
+  if (!mainTarget) return
+
+  const configListUuid = mainTarget.buildConfigurationList
+  const configList = project.hash.project.objects['XCConfigurationList'][configListUuid]
+  const buildConfigs = project.hash.project.objects['XCBuildConfiguration']
+
+  for (const configRef of configList.buildConfigurations) {
+    const configUuid = configRef.value || configRef
+    const config = buildConfigs[configUuid]
+    if (!config || !config.buildSettings) continue
+
+    if (config.buildSettings['IPHONEOS_DEPLOYMENT_TARGET'] !== version) {
+      config.buildSettings['IPHONEOS_DEPLOYMENT_TARGET'] = version
+      console.log(`[with-kokoro-swift] Set VoiceClaw target deployment target to ${version} on ${config.name} config`)
+    }
+  }
+}
+
+function ensureProjectDeploymentTarget(project, version) {
+  const projectSection = project.hash.project.objects['PBXProject']
+  const projectObj = projectSection[project.getFirstProject().uuid]
+  const configListUuid = projectObj.buildConfigurationList
+  const configList = project.hash.project.objects['XCConfigurationList'][configListUuid]
+  const buildConfigs = project.hash.project.objects['XCBuildConfiguration']
+
+  for (const configRef of configList.buildConfigurations) {
+    const configUuid = configRef.value || configRef
+    const config = buildConfigs[configUuid]
+    if (!config || !config.buildSettings) continue
+
+    if (config.buildSettings['IPHONEOS_DEPLOYMENT_TARGET'] !== version) {
+      config.buildSettings['IPHONEOS_DEPLOYMENT_TARGET'] = version
+      console.log(`[with-kokoro-swift] Set project deployment target to ${version} on ${config.name} config`)
     }
   }
 }
