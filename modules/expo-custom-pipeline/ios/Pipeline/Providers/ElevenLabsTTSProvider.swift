@@ -3,7 +3,7 @@ import os.log
 
 private let logger = Logger(subsystem: "com.yagudaev.voiceclaw", category: "ElevenLabs")
 
-class ElevenLabsTTSProvider: NSObject, TTSProvider {
+class ElevenLabsTTSProvider: NSObject, TTSProvider, URLSessionDataDelegate {
     let name = "ElevenLabs TTS"
     private(set) var isSpeaking = false
     private(set) var latencyMs: Double = 0
@@ -16,7 +16,16 @@ class ElevenLabsTTSProvider: NSObject, TTSProvider {
     private var onStartCallback: (() -> Void)?
     private var onCompleteCallback: (() -> Void)?
     private var onErrorCallback: ((String) -> Void)?
-    private var currentTask: URLSessionDataTask?
+
+    // Streaming state
+    private var streamingSession: URLSession?
+    private var streamingTask: URLSessionDataTask?
+    private var accumulatedData = Data()
+    private var requestStartTime: CFAbsoluteTime = 0
+    private var didFireOnStart = false
+    /// Minimum bytes before firing onStart. MP3 frames are ~417 bytes at 128kbps,
+    /// so 4KB gives us roughly 10 frames — enough to confirm valid audio is arriving.
+    private let earlyPlaybackThreshold = 4096
 
     // MARK: - Configuration
 
@@ -68,64 +77,113 @@ class ElevenLabsTTSProvider: NSObject, TTSProvider {
         }
 
         isSpeaking = true
-        let requestStartTime = CFAbsoluteTimeGetCurrent()
+        requestStartTime = CFAbsoluteTimeGetCurrent()
+        accumulatedData = Data()
+        didFireOnStart = false
 
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
+        // Use a delegate-based session so we receive data chunks as they arrive
+        let session = URLSession(
+            configuration: .default,
+            delegate: self,
+            delegateQueue: nil
+        )
+        streamingSession = session
 
-            if let error = error {
-                let msg = "ElevenLabs: \(error.localizedDescription)"
-                logger.error("[ElevenLabs] Request error: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.isSpeaking = false
-                    self.onErrorCallback?(msg)
-                    self.onCompleteCallback?()
-                }
-                return
-            }
-
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                let msg = "ElevenLabs HTTP \(httpResponse.statusCode): \(body.prefix(200))"
-                logger.error("[ElevenLabs] HTTP \(httpResponse.statusCode): \(body.prefix(200))")
-                DispatchQueue.main.async {
-                    self.isSpeaking = false
-                    self.onErrorCallback?(msg)
-                    self.onCompleteCallback?()
-                }
-                return
-            }
-
-            guard let data = data, !data.isEmpty else {
-                logger.error("[ElevenLabs] Empty response")
-                DispatchQueue.main.async {
-                    self.isSpeaking = false
-                    self.onErrorCallback?("ElevenLabs: Empty audio response")
-                    self.onCompleteCallback?()
-                }
-                return
-            }
-
-            self.latencyMs = (CFAbsoluteTimeGetCurrent() - requestStartTime) * 1000
-
-            DispatchQueue.main.async {
-                self.playAudioData(data)
-            }
-        }
-
-        currentTask = task
+        let task = session.dataTask(with: request)
+        streamingTask = task
         task.resume()
     }
 
     func stop() {
-        currentTask?.cancel()
-        currentTask = nil
+        streamingTask?.cancel()
+        streamingTask = nil
+        streamingSession?.invalidateAndCancel()
+        streamingSession = nil
         audioPlayer?.stop()
         audioPlayer = nil
+        accumulatedData = Data()
+        didFireOnStart = false
         isSpeaking = false
         onStartCallback = nil
         onCompleteCallback = nil
         onErrorCallback = nil
+    }
+
+    // MARK: - URLSessionDataDelegate
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            logger.error("[ElevenLabs] HTTP \(httpResponse.statusCode)")
+            completionHandler(.cancel)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                let msg = "ElevenLabs HTTP \(httpResponse.statusCode)"
+                self.isSpeaking = false
+                self.onErrorCallback?(msg)
+                self.onCompleteCallback?()
+                self.cleanupSession()
+            }
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        accumulatedData.append(data)
+
+        // Fire onStart as soon as enough data has arrived — this signals the
+        // pipeline that audio will start momentarily, reducing perceived latency.
+        if !didFireOnStart && accumulatedData.count >= earlyPlaybackThreshold {
+            didFireOnStart = true
+            latencyMs = (CFAbsoluteTimeGetCurrent() - requestStartTime) * 1000
+            logger.debug("[ElevenLabs] Streaming: received \(self.accumulatedData.count) bytes, firing onStart (latency: \(String(format: "%.0f", self.latencyMs))ms)")
+            DispatchQueue.main.async { [weak self] in
+                self?.onStartCallback?()
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            // Ignore cancellation
+            if (error as NSError).code == NSURLErrorCancelled { return }
+            let msg = "ElevenLabs: \(error.localizedDescription)"
+            logger.error("[ElevenLabs] Request error: \(error.localizedDescription)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isSpeaking = false
+                self.onErrorCallback?(msg)
+                self.onCompleteCallback?()
+                self.cleanupSession()
+            }
+            return
+        }
+
+        guard !accumulatedData.isEmpty else {
+            logger.error("[ElevenLabs] Empty response")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isSpeaking = false
+                self.onErrorCallback?("ElevenLabs: Empty audio response")
+                self.onCompleteCallback?()
+                self.cleanupSession()
+            }
+            return
+        }
+
+        // If we never reached the early threshold (very short audio), fire onStart now
+        if !didFireOnStart {
+            didFireOnStart = true
+            latencyMs = (CFAbsoluteTimeGetCurrent() - requestStartTime) * 1000
+        }
+
+        logger.debug("[ElevenLabs] Download complete: \(self.accumulatedData.count) bytes total")
+
+        let audioData = accumulatedData
+        DispatchQueue.main.async { [weak self] in
+            self?.playAudioData(audioData)
+            self?.cleanupSession()
+        }
     }
 }
 
@@ -171,12 +229,22 @@ private extension ElevenLabsTTSProvider {
             audioPlayer?.delegate = self
             let duration = audioPlayer?.duration ?? 0
             logger.debug("[ElevenLabs] AVAudioPlayer created, duration: \(duration)s")
-            onStartCallback?()
+            // If onStart was already fired via early streaming threshold, don't fire again
+            if !didFireOnStart {
+                onStartCallback?()
+            }
             audioPlayer?.play()
         } catch {
             logger.error("[ElevenLabs] Failed to create audio player: \(error)")
             isSpeaking = false
+            onErrorCallback?("ElevenLabs: Failed to create audio player: \(error.localizedDescription)")
             onCompleteCallback?()
         }
+    }
+
+    func cleanupSession() {
+        streamingSession?.finishTasksAndInvalidate()
+        streamingSession = nil
+        streamingTask = nil
     }
 }
