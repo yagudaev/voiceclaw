@@ -1,5 +1,8 @@
 import { getSetting } from '@/db'
+import { getWsStatus, wsStreamCompletion } from '@/lib/ws-completion'
 import EventSource from 'react-native-sse'
+
+export type OpenClawConnectionMode = 'http' | 'plugin'
 
 const DEFAULT_SYSTEM_PROMPT = `\
 You are a helpful assistant. Keep responses concise. Use markdown for formatting \
@@ -144,8 +147,43 @@ export function streamCompletion(
 }
 
 export async function getApiConfig() {
+  const connectionMode = ((await getSetting('openclaw_connection_mode')) || 'http') as OpenClawConnectionMode
   const apiKey = await getSetting('openclaw_api_key')
   const model = (await getSetting('default_model')) || 'openclaw:voice'
   const apiUrl = await getSetting('openclaw_api_url')
-  return { apiKey, model, apiUrl }
+  return { apiKey, model, apiUrl, connectionMode }
+}
+
+/**
+ * Unified streaming completion that checks the connection mode setting.
+ * - HTTP mode: uses SSE-based streamCompletion (existing behaviour)
+ * - Plugin mode: uses WebSocket-based wsStreamCompletion
+ *
+ * Both paths use the same callback interface (onToken, onDone, onError)
+ * and return a cancel function.
+ */
+export function unifiedStreamCompletion(
+  messages: ChatMessage[],
+  apiKey: string,
+  model: string,
+  apiUrl: string,
+  systemPrompt: string,
+  conversationId: number,
+  connectionMode: OpenClawConnectionMode,
+  callbacks: {
+    onToken: (fullText: string) => void
+    onDone: (fullText: string) => void
+    onError: (error: string) => void
+  },
+): () => void {
+  if (connectionMode === 'plugin') {
+    if (getWsStatus() !== 'connected') {
+      callbacks.onError('WebSocket not connected. Check Plugin settings and reconnect.')
+      return () => {}
+    }
+    return wsStreamCompletion(messages, model, systemPrompt, conversationId, callbacks)
+  }
+
+  // Default: HTTP/SSE path
+  return streamCompletion(messages, apiKey, model, apiUrl, systemPrompt, conversationId, callbacks)
 }

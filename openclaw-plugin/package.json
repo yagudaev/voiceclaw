@@ -1,0 +1,18 @@
+{
+  "name": "@voiceclaw/openclaw-plugin",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for VoiceClaw — enables WebSocket-based LLM communication through an OpenClaw gateway",
+  "main": "index.ts",
+  "private": true,
+  "scripts": {
+    "start": "echo 'See openclaw.plugin.json for gateway configuration'"
+  },
+  "keywords": [
+    "openclaw",
+    "voiceclaw",
+    "plugin",
+    "websocket",
+    "llm"
+  ],
+  "license": "MIT"
+}
