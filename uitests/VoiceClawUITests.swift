@@ -123,22 +123,49 @@ class VoiceClawUITests: XCTestCase {
 
   // MARK: - Pipeline Helpers
 
-  func enableCustomPipelineMode() {
-    navigateToTab("Settings")
-
-    let customPipeline = app.descendants(matching: .any)
-      .matching(NSPredicate(format: "label == %@", "Custom Pipeline"))
-      .firstMatch
-
-    XCTAssertTrue(
-      customPipeline.waitForExistence(timeout: 10),
-      "Custom Pipeline option not found"
-    )
-    customPipeline.tap()
-
+  func ensureOnChatScreen() {
     navigateToTab("Chat")
     assertExists(testID: "chat-screen")
+  }
+
+  func startFreshConversation() {
+    ensureOnChatScreen()
     tap(testID: "new-conversation-button")
+  }
+
+  func setDebugMode(_ enabled: Bool) {
+    navigateToTab("Settings")
+    assertExists(testID: "settings-screen")
+    let toggle = waitForElement(withTestID: "debug-mode-toggle", timeout: 10)
+    let isEnabled = String(describing: toggle.value) == "1"
+    if isEnabled != enabled {
+      toggle.tap()
+    }
+  }
+
+  func setVoiceMode(_ label: String) {
+    navigateToTab("Settings")
+    assertExists(testID: "settings-screen")
+    let option = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@", label))
+      .firstMatch
+    XCTAssertTrue(
+      option.waitForExistence(timeout: 10),
+      "Voice mode option '\(label)' not found"
+    )
+    option.tap()
+  }
+
+  func enableCustomPipelineMode() {
+    setVoiceMode("Custom Pipeline")
+    setDebugMode(true)
+    startFreshConversation()
+  }
+
+  func enableVapiMode() {
+    setVoiceMode("Vapi All-in-One")
+    setDebugMode(false)
+    startFreshConversation()
   }
 
   func startCustomPipelineCall() {

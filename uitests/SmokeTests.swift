@@ -8,7 +8,8 @@ final class SmokeTests: VoiceClawUITests {
 
   func testAppLaunches() throws {
     // The base class setUp already launches the app.
-    // Just verify the app is running by checking for the chat screen.
+    // Current app state may restore a different tab, so force Chat first.
+    ensureOnChatScreen()
     assertExists(testID: "chat-screen")
     takeScreenshot(name: "app-launched")
   }
@@ -16,6 +17,7 @@ final class SmokeTests: VoiceClawUITests {
   // MARK: - Chat Screen Elements
 
   func testChatScreenHasInputBar() throws {
+    ensureOnChatScreen()
     assertExists(testID: "input-bar")
     assertExists(testID: "chat-input")
     assertExists(testID: "send-button")
@@ -23,10 +25,12 @@ final class SmokeTests: VoiceClawUITests {
   }
 
   func testChatScreenHasMessagesList() throws {
+    ensureOnChatScreen()
     assertExists(testID: "messages-list")
   }
 
   func testChatScreenHasNewConversationButton() throws {
+    ensureOnChatScreen()
     assertExists(testID: "new-conversation-button")
   }
 
@@ -62,6 +66,7 @@ final class SmokeTests: VoiceClawUITests {
   }
 
   func testVapiCallStartsAndEnds() throws {
+    enableVapiMode()
     tap(testID: "call-button")
     assertExists(testID: "call-controls", timeout: 30)
     assertExists(testID: "mute-button", timeout: 30)
