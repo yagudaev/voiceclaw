@@ -129,6 +129,7 @@ class AppleSTTProvider: STTProvider {
                     self.silenceTimer = nil
                     onFinalResult(text)
                     self.lastPartialText = ""
+                    self.stopListening()
                 } else {
                     print("[AppleSTTProvider] Partial: \(text.prefix(50))")
                     self.lastPartialText = text

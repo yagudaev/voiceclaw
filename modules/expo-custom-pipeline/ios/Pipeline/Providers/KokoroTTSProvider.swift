@@ -8,6 +8,14 @@ import MLX
 
 @available(iOS 18.0, *)
 class KokoroTTSProvider: TTSProvider {
+    private struct SpeechRequest {
+        let id: UUID
+        let chunks: [String]
+        let onStart: () -> Void
+        let onComplete: () -> Void
+        let onError: (String) -> Void
+    }
+
     let name = "Kokoro TTS"
     private(set) var isSpeaking = false
     private(set) var latencyMs: Double = 0
@@ -17,14 +25,13 @@ class KokoroTTSProvider: TTSProvider {
     private var ttsEngine: KokoroTTS?
     private var voiceEmbedding: MLXArray?
 
-    private var onStartCallback: (() -> Void)?
-    private var onCompleteCallback: (() -> Void)?
-    private var onErrorCallback: ((String) -> Void)?
     private var downloadTask: URLSessionDownloadTask?
     private var pendingChunks: [String] = []
     private var didStartCurrentSpeech = false
     private var activeSpeechID = UUID()
     private let synthesisQueue = DispatchQueue(label: "com.yagudaev.voiceclaw.kokoro-tts")
+    private var queuedRequests: [SpeechRequest] = []
+    private var currentRequest: SpeechRequest?
 
     private var isModelReady = false
 
@@ -36,52 +43,41 @@ class KokoroTTSProvider: TTSProvider {
         onComplete: @escaping () -> Void,
         onError: @escaping (String) -> Void
     ) {
-        onStartCallback = onStart
-        onCompleteCallback = onComplete
-        onErrorCallback = onError
-        pendingChunks = makeSpeechChunks(from: text)
-        didStartCurrentSpeech = false
-        activeSpeechID = UUID()
+        let chunks = makeSpeechChunks(from: text)
 
-        guard !pendingChunks.isEmpty else {
+        guard !chunks.isEmpty else {
             onComplete()
             return
         }
 
-        if isModelReady {
-            synthesizeNextChunk(for: activeSpeechID)
-        } else {
-            prepareModel { [weak self] result in
-                guard let self = self else { return }
-                switch result {
-                case .success:
-                    self.synthesizeNextChunk(for: self.activeSpeechID)
-                case .failure(let error):
-                    print("[Kokoro] Model preparation failed: \(error)")
-                    DispatchQueue.main.async {
-                        self.isSpeaking = false
-                        self.onErrorCallback?("Kokoro: \(error.localizedDescription)")
-                        self.onCompleteCallback?()
-                    }
-                }
-            }
-        }
+        queuedRequests.append(
+            SpeechRequest(
+                id: UUID(),
+                chunks: chunks,
+                onStart: onStart,
+                onComplete: onComplete,
+                onError: onError
+            )
+        )
+        startNextRequestIfIdle()
     }
 
     func stop() {
         downloadTask?.cancel()
         downloadTask = nil
         activeSpeechID = UUID()
+        queuedRequests = []
+        currentRequest = nil
         pendingChunks = []
         playerNode?.stop()
+        playerNode?.reset()
         if audioEngine?.isRunning == true {
             audioEngine?.stop()
         }
+        audioEngine = nil
+        playerNode = nil
         isSpeaking = false
         didStartCurrentSpeech = false
-        onStartCallback = nil
-        onCompleteCallback = nil
-        onErrorCallback = nil
     }
 
     // MARK: - Public helpers
@@ -257,14 +253,12 @@ private extension KokoroTTSProvider {
 private extension KokoroTTSProvider {
     func synthesizeAndPlay(text: String) {
         guard let engine = ttsEngine else {
-            onErrorCallback?("Kokoro: model not ready")
-            onCompleteCallback?()
+            failCurrentRequest(message: "Kokoro: model not ready")
             return
         }
 
         guard let voice = voiceEmbedding else {
-            onErrorCallback?("Kokoro: voice '\(defaultVoiceName)' is not loaded")
-            onCompleteCallback?()
+            failCurrentRequest(message: "Kokoro: voice '\(defaultVoiceName)' is not loaded")
             return
         }
 
@@ -279,26 +273,28 @@ private extension KokoroTTSProvider {
                     language: .enUS,
                     text: text
                 )
+                guard let buffer = self.makePCMBuffer(from: audio) else {
+                    DispatchQueue.main.async {
+                        self.failCurrentRequest(message: "Kokoro: Failed to create audio buffer")
+                    }
+                    return
+                }
                 self.latencyMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 let speechID = self.activeSpeechID
                 let isFinalChunk = self.pendingChunks.isEmpty
                 DispatchQueue.main.async {
-                    self.playAudioSamples(audio, speechID: speechID, isFinalChunk: isFinalChunk)
+                    self.playAudioBuffer(buffer, speechID: speechID, isFinalChunk: isFinalChunk)
                 }
             } catch {
                 print("[Kokoro] Synthesis error: \(error)")
                 DispatchQueue.main.async {
-                    self.isSpeaking = false
-                    self.onErrorCallback?("Kokoro synthesis error: \(error.localizedDescription)")
-                    self.onCompleteCallback?()
+                    self.failCurrentRequest(message: "Kokoro synthesis error: \(error.localizedDescription)")
                 }
             }
         }
     }
 
-    func playAudioSamples(_ samples: [Float], speechID: UUID, isFinalChunk: Bool) {
-        guard speechID == activeSpeechID else { return }
-
+    func makePCMBuffer(from samples: [Float]) -> AVAudioPCMBuffer? {
         let format = AVAudioFormat(
             standardFormatWithSampleRate: KokoroTTSProvider.samplingRate,
             channels: 1
@@ -309,10 +305,7 @@ private extension KokoroTTSProvider {
             frameCapacity: AVAudioFrameCount(samples.count)
         ) else {
             print("[Kokoro] Failed to create PCM buffer")
-            isSpeaking = false
-            onErrorCallback?("Kokoro: Failed to create audio buffer")
-            onCompleteCallback?()
-            return
+            return nil
         }
 
         buffer.frameLength = buffer.frameCapacity
@@ -321,6 +314,11 @@ private extension KokoroTTSProvider {
             guard let src = buf.baseAddress else { return }
             dst.assign(from: src, count: samples.count)
         }
+        return buffer
+    }
+
+    func playAudioBuffer(_ buffer: AVAudioPCMBuffer, speechID: UUID, isFinalChunk: Bool) {
+        guard speechID == activeSpeechID else { return }
 
         if audioEngine == nil {
             let eng = AVAudioEngine()
@@ -331,29 +329,25 @@ private extension KokoroTTSProvider {
         }
 
         guard let eng = audioEngine, let player = playerNode else {
-            isSpeaking = false
-            onErrorCallback?("Kokoro: Audio engine not initialized")
-            onCompleteCallback?()
+            failCurrentRequest(message: "Kokoro: Audio engine not initialized")
             return
         }
 
-        eng.connect(player, to: eng.mainMixerNode, format: format)
+        eng.connect(player, to: eng.mainMixerNode, format: buffer.format)
 
         if !eng.isRunning {
             do {
                 try eng.start()
             } catch {
                 print("[Kokoro] Audio engine failed to start: \(error)")
-                isSpeaking = false
-                onErrorCallback?("Kokoro: Audio engine error: \(error.localizedDescription)")
-                onCompleteCallback?()
+                failCurrentRequest(message: "Kokoro: Audio engine error: \(error.localizedDescription)")
                 return
             }
         }
 
         if !didStartCurrentSpeech {
             didStartCurrentSpeech = true
-            onStartCallback?()
+            currentRequest?.onStart()
         }
 
         player.scheduleBuffer(buffer, at: nil, options: .interrupts) { [weak self] in
@@ -361,9 +355,7 @@ private extension KokoroTTSProvider {
                 guard let self = self else { return }
                 guard speechID == self.activeSpeechID else { return }
                 if isFinalChunk {
-                    self.isSpeaking = false
-                    self.didStartCurrentSpeech = false
-                    self.onCompleteCallback?()
+                    self.finishCurrentRequest()
                 } else {
                     self.synthesizeNextChunk(for: speechID)
                 }
@@ -376,14 +368,62 @@ private extension KokoroTTSProvider {
         guard speechID == activeSpeechID else { return }
 
         guard !pendingChunks.isEmpty else {
-            isSpeaking = false
-            didStartCurrentSpeech = false
-            onCompleteCallback?()
+            finishCurrentRequest()
             return
         }
 
         let chunk = pendingChunks.removeFirst()
         synthesizeAndPlay(text: chunk)
+    }
+
+    func startNextRequestIfIdle() {
+        guard currentRequest == nil else { return }
+        guard !queuedRequests.isEmpty else { return }
+
+        let request = queuedRequests.removeFirst()
+        currentRequest = request
+        pendingChunks = request.chunks
+        didStartCurrentSpeech = false
+        activeSpeechID = request.id
+
+        if isModelReady {
+            synthesizeNextChunk(for: request.id)
+        } else {
+            prepareModel { [weak self] result in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    guard self.currentRequest?.id == request.id else { return }
+                    switch result {
+                    case .success:
+                        self.synthesizeNextChunk(for: request.id)
+                    case .failure(let error):
+                        print("[Kokoro] Model preparation failed: \(error)")
+                        self.failCurrentRequest(message: "Kokoro: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+
+    func finishCurrentRequest() {
+        let request = currentRequest
+        currentRequest = nil
+        pendingChunks = []
+        isSpeaking = false
+        didStartCurrentSpeech = false
+        request?.onComplete()
+        startNextRequestIfIdle()
+    }
+
+    func failCurrentRequest(message: String) {
+        let request = currentRequest
+        currentRequest = nil
+        pendingChunks = []
+        isSpeaking = false
+        didStartCurrentSpeech = false
+        request?.onError(message)
+        request?.onComplete()
+        startNextRequestIfIdle()
     }
 
     func makeSpeechChunks(from text: String, maxChunkLength: Int = 180) -> [String] {
