@@ -190,6 +190,10 @@ export default function ChatScreen() {
       soundsRef.current.startThinking()
     },
     onLLMToken: (text) => {
+      setStreamingRole('assistant')
+      setStreamingText(text)
+      setIsThinking(false)
+      soundsRef.current.stopThinking()
       setPipelineDebugState((current) => ({
         ...current,
         llmTokenCount: current.llmTokenCount + 1,
@@ -206,6 +210,7 @@ export default function ChatScreen() {
     onAssistantResponse: (text) => {
       console.log('[CustomPipeline] Assistant response:', text?.substring(0, 50))
       setIsThinking(false)
+      setStreamingText(null)
       soundsRef.current.stopThinking()
       setPipelineDebugState((current) => ({
         ...current,
@@ -243,6 +248,7 @@ export default function ChatScreen() {
     onError: (message) => {
       console.error('[CustomPipeline]', message)
       setIsThinking(false)
+      setStreamingText(null)
       soundsRef.current.stopThinking()
       setPipelineDebugPhase('idle')
       setPipelineDebugState((current) => ({
