@@ -1,0 +1,16 @@
+{
+  "name": "voiceclaw-agent",
+  "version": "0.1.0",
+  "description": "VoiceClaw agent plugin — streams LLM completions to the VoiceClaw mobile app over WebSocket",
+  "channels": [
+    {
+      "name": "agent",
+      "direction": "bidirectional",
+      "description": "Handles req:agent requests and emits event:agent streaming responses"
+    }
+  ],
+  "config": {
+    "gateway_url": "ws://localhost:8080/ws",
+    "auth_required": false
+  }
+}
