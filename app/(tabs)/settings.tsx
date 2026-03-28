@@ -6,8 +6,9 @@ import { Text } from '@/components/ui/text'
 import { getSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
+import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
-import { CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
+import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native'
 
@@ -46,6 +47,22 @@ export default function SettingsScreen() {
   // Latency stats state
   const [latencyStats, setLatencyStats] = useState<LatencyAverages | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
+
+  // API key validation state
+  const [validationStatus, setValidationStatus] = useState<Record<Provider, ValidationStatus>>({
+    openclaw: 'idle',
+    elevenlabs: 'idle',
+    deepgram: 'idle',
+    openai_tts: 'idle',
+    vapi: 'idle',
+  })
+  const [validationErrors, setValidationErrors] = useState<Record<Provider, string | undefined>>({
+    openclaw: undefined,
+    elevenlabs: undefined,
+    deepgram: undefined,
+    openai_tts: undefined,
+    vapi: undefined,
+  })
 
   // Auto-save: guard against saving during initial load
   const loadedRef = useRef(false)
@@ -135,6 +152,22 @@ export default function SettingsScreen() {
     })()
   }, [])
 
+  // --- Validation helpers ---
+  const resetValidation = useCallback((provider: Provider) => {
+    setValidationStatus((prev) => ({ ...prev, [provider]: 'idle' }))
+    setValidationErrors((prev) => ({ ...prev, [provider]: undefined }))
+  }, [])
+
+  const testApiKey = useCallback(async (provider: Provider, apiKey: string, apiUrl?: string) => {
+    setValidationStatus((prev) => ({ ...prev, [provider]: 'testing' }))
+    setValidationErrors((prev) => ({ ...prev, [provider]: undefined }))
+    const result = await validateApiKey(provider, apiKey, apiUrl)
+    setValidationStatus((prev) => ({ ...prev, [provider]: result.status }))
+    if (result.error) {
+      setValidationErrors((prev) => ({ ...prev, [provider]: result.error }))
+    }
+  }, [])
+
   // --- Auto-saving wrappers ---
   // Immediate save for toggles/dropdowns
   const updateVoiceMode = useCallback((v: VoiceMode) => {
@@ -160,8 +193,9 @@ export default function SettingsScreen() {
   // Debounced save for text inputs
   const updateVapiPublicKey = useCallback((v: string) => {
     setVapiPublicKey(v)
+    resetValidation('vapi')
     if (loadedRef.current) saveDebounced('vapi_public_key', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   const updateAssistantId = useCallback((v: string) => {
     setAssistantId(v)
@@ -175,13 +209,15 @@ export default function SettingsScreen() {
 
   const updateOpenclawApiKey = useCallback((v: string) => {
     setOpenclawApiKey(v)
+    resetValidation('openclaw')
     if (loadedRef.current) saveDebounced('openclaw_api_key', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   const updateOpenclawApiUrl = useCallback((v: string) => {
     setOpenclawApiUrl(v)
+    resetValidation('openclaw')
     if (loadedRef.current) saveDebounced('openclaw_api_url', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   const updateSystemPrompt = useCallback((v: string) => {
     setSystemPrompt(v)
@@ -190,13 +226,15 @@ export default function SettingsScreen() {
 
   const updateDeepgramApiKey = useCallback((v: string) => {
     setDeepgramApiKey(v)
+    resetValidation('deepgram')
     if (loadedRef.current) saveDebounced('deepgram_api_key', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   const updateElevenlabsApiKey = useCallback((v: string) => {
     setElevenlabsApiKey(v)
+    resetValidation('elevenlabs')
     if (loadedRef.current) saveDebounced('elevenlabs_api_key', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   const updateElevenlabsVoiceId = useCallback((v: string) => {
     setElevenlabsVoiceId(v)
@@ -205,8 +243,9 @@ export default function SettingsScreen() {
 
   const updateOpenaiTtsApiKey = useCallback((v: string) => {
     setOpenaiTtsApiKey(v)
+    resetValidation('openai_tts')
     if (loadedRef.current) saveDebounced('openai_tts_api_key', v)
-  }, [saveDebounced])
+  }, [saveDebounced, resetValidation])
 
   return (
     <KeyboardAvoidingView
@@ -251,6 +290,9 @@ export default function SettingsScreen() {
                     value={deepgramApiKey}
                     onChangeText={updateDeepgramApiKey}
                     placeholder="Enter your Deepgram API key"
+                    validationStatus={validationStatus.deepgram}
+                    validationError={validationErrors.deepgram}
+                    onTest={() => testApiKey('deepgram', deepgramApiKey)}
                   />
                 </View>
               )}
@@ -281,6 +323,9 @@ export default function SettingsScreen() {
                       value={elevenlabsApiKey}
                       onChangeText={updateElevenlabsApiKey}
                       placeholder="Enter your ElevenLabs API key"
+                      validationStatus={validationStatus.elevenlabs}
+                      validationError={validationErrors.elevenlabs}
+                      onTest={() => testApiKey('elevenlabs', elevenlabsApiKey)}
                     />
                   </View>
                   <View className="gap-2">
@@ -304,6 +349,9 @@ export default function SettingsScreen() {
                       value={openaiTtsApiKey}
                       onChangeText={updateOpenaiTtsApiKey}
                       placeholder="Enter your OpenAI API key"
+                      validationStatus={validationStatus.openai_tts}
+                      validationError={validationErrors.openai_tts}
+                      onTest={() => testApiKey('openai_tts', openaiTtsApiKey)}
                     />
                   </View>
                   <View className="gap-2">
@@ -330,6 +378,9 @@ export default function SettingsScreen() {
                 value={vapiPublicKey}
                 onChangeText={updateVapiPublicKey}
                 placeholder="Enter your Vapi public key"
+                validationStatus={validationStatus.vapi}
+                validationError={validationErrors.vapi}
+                onTest={() => testApiKey('vapi', vapiPublicKey)}
               />
             </View>
 
@@ -391,6 +442,9 @@ export default function SettingsScreen() {
               value={openclawApiKey}
               onChangeText={updateOpenclawApiKey}
               placeholder="Enter your OpenClaw API key"
+              validationStatus={validationStatus.openclaw}
+              validationError={validationErrors.openclaw}
+              onTest={() => testApiKey('openclaw', openclawApiKey, openclawApiUrl)}
             />
           </View>
         </Card>
@@ -500,38 +554,74 @@ function SecretInput({
   value,
   onChangeText,
   placeholder,
+  validationStatus = 'idle',
+  validationError,
+  onTest,
 }: {
   value: string
   onChangeText: (text: string) => void
   placeholder: string
+  validationStatus?: ValidationStatus
+  validationError?: string
+  onTest?: () => void
 }) {
   const [visible, setVisible] = useState(false)
 
   return (
-    <View className="flex-row items-center rounded-md border border-input bg-background dark:bg-input/30">
-      <TextInput
-        className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
-        placeholder={placeholder}
-        placeholderTextColor="#888"
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry={!visible}
-        autoCapitalize="none"
-        autoCorrect={false}
-        numberOfLines={1}
-        scrollEnabled
-      />
-      <Pressable
-        onPress={() => setVisible((prev) => !prev)}
-        className="h-10 shrink-0 items-center justify-center px-3"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Icon
-          as={visible ? EyeOffIcon : EyeIcon}
-          size={20}
-          className="text-muted-foreground"
-        />
-      </Pressable>
+    <View className="gap-1">
+      <View className="flex-row items-center gap-2">
+        <View className="min-w-0 flex-1 flex-row items-center rounded-md border border-input bg-background dark:bg-input/30">
+          <TextInput
+            className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
+            placeholder={placeholder}
+            placeholderTextColor="#888"
+            value={value}
+            onChangeText={onChangeText}
+            secureTextEntry={!visible}
+            autoCapitalize="none"
+            autoCorrect={false}
+            numberOfLines={1}
+            scrollEnabled
+          />
+          <Pressable
+            onPress={() => setVisible((prev) => !prev)}
+            className="h-10 shrink-0 items-center justify-center px-3"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon
+              as={visible ? EyeOffIcon : EyeIcon}
+              size={20}
+              className="text-muted-foreground"
+            />
+          </Pressable>
+        </View>
+        {onTest && (
+          <Pressable
+            onPress={onTest}
+            disabled={validationStatus === 'testing' || !value.trim()}
+            className={`h-10 shrink-0 flex-row items-center justify-center rounded-md px-3 ${
+              validationStatus === 'valid'
+                ? 'bg-green-500/10'
+                : validationStatus === 'invalid'
+                  ? 'bg-destructive/10'
+                  : 'bg-secondary'
+            } ${(!value.trim() || validationStatus === 'testing') ? 'opacity-50' : ''}`}
+          >
+            {validationStatus === 'testing' ? (
+              <ActivityIndicator size="small" color="#888" />
+            ) : validationStatus === 'valid' ? (
+              <Icon as={CheckIcon} size={18} className="text-green-500" />
+            ) : validationStatus === 'invalid' ? (
+              <Icon as={AlertCircleIcon} size={18} className="text-destructive" />
+            ) : (
+              <Text className="text-sm font-medium text-foreground">Test</Text>
+            )}
+          </Pressable>
+        )}
+      </View>
+      {validationStatus === 'invalid' && validationError && (
+        <Text className="text-xs text-destructive">{validationError}</Text>
+      )}
     </View>
   )
 }
