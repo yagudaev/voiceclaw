@@ -3,14 +3,14 @@ import { Card } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { getSetting, setSetting, getLatencyAverages, clearLatencyData, type LatencyAverages } from '@/db'
+import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
-import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react-native'
+import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
+import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
 
 type VoiceMode = 'vapi' | 'custom'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -44,6 +44,9 @@ export default function SettingsScreen() {
 
   // Debug mode
   const [debugMode, setDebugMode] = useState(false)
+
+  // Show latency
+  const [showLatency, setShowLatencyState] = useState(false)
 
   // Kokoro model download state
   const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
@@ -158,6 +161,8 @@ export default function SettingsScreen() {
       }
       const dm = await getSetting('debug_mode')
       if (dm === 'true') setDebugMode(true)
+      const sl = await getSetting('show_latency')
+      if (sl === 'true') setShowLatencyState(true)
 
       loadedRef.current = true
     })()
@@ -261,6 +266,11 @@ export default function SettingsScreen() {
   const toggleDebugMode = useCallback((v: boolean) => {
     setDebugMode(v)
     setSetting('debug_mode', v ? 'true' : 'false')
+  }, [])
+
+  const toggleShowLatency = useCallback((v: boolean) => {
+    setShowLatencyState(v)
+    setSetting('show_latency', v ? 'true' : 'false')
   }, [])
 
   return (
@@ -478,6 +488,22 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
+        <Card testID="show-latency-card" className="gap-2 p-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1">
+              <Text className="text-lg font-semibold text-foreground">Show Latency</Text>
+              <Text className="text-sm text-muted-foreground">
+                Display STT, LLM, and TTS latency badges on chat messages
+              </Text>
+            </View>
+            <Switch
+              testID="show-latency-toggle"
+              value={showLatency}
+              onValueChange={toggleShowLatency}
+            />
+          </View>
+        </Card>
+
         <Card testID="pipeline-test-card" className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">Pipeline Tests</Text>
           <Button
@@ -522,35 +548,9 @@ export default function SettingsScreen() {
         <Card testID="latency-stats-card" className="gap-4 p-4">
           <View className="flex-row items-center justify-between">
             <Text className="text-lg font-semibold text-foreground">Latency Stats</Text>
-            <View className="flex-row items-center gap-2">
-              <Pressable onPress={loadLatencyStats} className="p-2" disabled={loadingStats}>
-                <Icon as={RefreshCwIcon} size={18} className="text-muted-foreground" />
-              </Pressable>
-              {latencyStats && latencyStats.turnCount > 0 && (
-                <Pressable
-                  onPress={() => {
-                    Alert.alert(
-                      'Clear Latency Data',
-                      'This will remove all latency measurements from messages. The messages themselves will not be deleted.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Clear',
-                          style: 'destructive',
-                          onPress: async () => {
-                            await clearLatencyData()
-                            await loadLatencyStats()
-                          },
-                        },
-                      ]
-                    )
-                  }}
-                  className="p-2"
-                >
-                  <Icon as={Trash2Icon} size={18} className="text-destructive" />
-                </Pressable>
-              )}
-            </View>
+            <Pressable onPress={loadLatencyStats} className="p-2" disabled={loadingStats}>
+              <Icon as={RefreshCwIcon} size={18} className="text-muted-foreground" />
+            </Pressable>
           </View>
           {loadingStats ? (
             <ActivityIndicator size="small" color="#888" />

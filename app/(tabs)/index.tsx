@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
-import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, setSetting, type Message, type LatencyData } from '@/db'
+import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, type Message, type LatencyData, type ProviderInfo } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
@@ -16,7 +16,7 @@ import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCus
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, TimerIcon, XIcon } from 'lucide-react-native'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
@@ -118,6 +118,7 @@ export default function ChatScreen() {
   const lastAssistantIdRef = useRef<string | null>(null)
   const pendingLatencyRef = useRef<LatencyData | null>(null)
   const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
+  const activeProvidersRef = useRef<ProviderInfo | null>(null)
   const [pipelineDebugState, setPipelineDebugState] = useState(INITIAL_PIPELINE_DEBUG_STATE)
   const conversationIdRef = useRef<number | null>(null)
   conversationIdRef.current = conversationId
@@ -182,7 +183,7 @@ export default function ChatScreen() {
       }))
       const convId = conversationIdRef.current
       if (convId) {
-        addMessage(convId, 'user', text).then(() => {
+        addMessage(convId, 'user', text, undefined, activeProvidersRef.current ?? undefined).then(() => {
           loadMessagesRef.current()
           maybeGenerateTitle(convId)
         })
@@ -220,7 +221,7 @@ export default function ChatScreen() {
       }))
       const convId = conversationIdRef.current
       if (convId && text) {
-        addMessage(convId, 'assistant', text, pendingLatencyRef.current ?? undefined).then(() => {
+        addMessage(convId, 'assistant', text, pendingLatencyRef.current ?? undefined, activeProvidersRef.current ?? undefined).then(() => {
           pendingLatencyRef.current = null
           loadMessagesRef.current()
         })
@@ -280,7 +281,7 @@ export default function ChatScreen() {
       // Attach latency data to assistant messages from Custom Pipeline
       const latency = role === 'assistant' ? pendingLatencyRef.current ?? undefined : undefined
       if (role === 'assistant') pendingLatencyRef.current = null
-      await addMessage(conversationId, role, text, latency)
+      await addMessage(conversationId, role, text, latency, activeProvidersRef.current ?? undefined)
       await loadMessages()
       maybeGenerateTitle(conversationId)
     } catch (err) {
@@ -381,7 +382,7 @@ export default function ChatScreen() {
             console.log('[Chat] Flushing buffered transcript on call end:', role, text.substring(0, 50))
             const latency = role === 'assistant' ? pendingLatencyRef.current ?? undefined : undefined
             if (role === 'assistant') pendingLatencyRef.current = null
-            await addMessage(conversationId, role, text, latency)
+            await addMessage(conversationId, role, text, latency, activeProvidersRef.current ?? undefined)
           }
           if (pending.length > 0) {
             loadMessages()
@@ -395,6 +396,7 @@ export default function ChatScreen() {
         setIsConnecting(false)
         wasCallActiveRef.current = false
         userInitiatedEndRef.current = false
+        activeProvidersRef.current = null
         soundsRef.current.stopThinking()
 
         if (wasActive && !wasUserInitiated) {
@@ -735,6 +737,13 @@ export default function ChatScreen() {
     lastAssistantIdRef.current = assistantId
     lastCallOverridesRef.current = callOverrides ?? null
 
+    // Store active providers for message tagging
+    activeProvidersRef.current = {
+      sttProvider: 'vapi',
+      llmProvider: model || 'vapi',
+      ttsProvider: 'vapi',
+    }
+
     // Safety timeout: reset isConnecting if onCallStart never fires
     if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
     connectingTimeoutRef.current = setTimeout(() => {
@@ -751,7 +760,7 @@ export default function ChatScreen() {
   const startCustomPipelineCall = useCallback(async (): Promise<boolean> => {
     if (!conversationId) return false
 
-    const { apiKey, apiUrl } = await getApiConfig()
+    const { apiKey, apiUrl, model } = await getApiConfig()
     if (!apiKey || !apiUrl) {
       await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
       await loadMessages()
@@ -761,6 +770,13 @@ export default function ChatScreen() {
     // Read STT/TTS provider settings
     const sttProvider = (await getSetting('stt_provider')) || 'apple'
     const ttsProvider = (await getSetting('tts_provider')) || 'apple'
+
+    // Store active providers for message tagging
+    activeProvidersRef.current = {
+      sttProvider,
+      llmProvider: model,
+      ttsProvider,
+    }
 
     // Configure STT provider
     const sttConfig: Record<string, string> = {}
@@ -800,6 +816,7 @@ export default function ChatScreen() {
 
   const stopCustomPipeline = useCallback(() => {
     pipeline.stop()
+    activeProvidersRef.current = null
     setIsCallActive(false)
     setIsMuted(false)
     setIsThinking(false)
@@ -825,18 +842,12 @@ export default function ChatScreen() {
 
   let displayMessages = messages as Message[]
   if (streamingText !== null) {
-    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: streamingRole, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+    displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: streamingRole, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null, stt_provider: null, llm_provider: null, tts_provider: null }]
   } else if (isThinking) {
-    displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null }]
+    displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null, stt_provider: null, llm_provider: null, tts_provider: null }]
   }
 
   const { partials } = transcriptBuffer
-
-  const toggleLatencyDisplay = useCallback(async () => {
-    const next = !showLatency
-    setShowLatency(next)
-    await setSetting('show_latency', next ? 'true' : 'false')
-  }, [showLatency])
 
   return (
     <KeyboardAvoidingView
@@ -848,9 +859,6 @@ export default function ChatScreen() {
         options={{
           headerRight: () => (
             <View className="mr-2 flex-row items-center">
-              <Pressable testID="latency-toggle-button" onPress={toggleLatencyDisplay} className="p-2">
-                <TimerIcon size={20} color={showLatency ? '#f59e0b' : (colorScheme === 'dark' ? '#666' : '#999')} />
-              </Pressable>
               <Pressable testID="new-conversation-button" onPress={startNewConversation} className="p-2">
                 <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
               </Pressable>
