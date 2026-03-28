@@ -75,10 +75,6 @@ class AudioCoordinator {
             onStart: { [weak self] in
                 guard let self = self else { return }
                 self.delegate?.audioCoordinatorDidStartTTS()
-                // Auto-start VAD when TTS begins (if barge-in is enabled)
-                if self.bargeInEnabled {
-                    self.startBargeInMonitoring()
-                }
             },
             onComplete: { [weak self] in
                 self?.delegate?.audioCoordinatorDidCompleteTTS()
@@ -97,7 +93,10 @@ class AudioCoordinator {
 
     func setBargeInEnabled(_ enabled: Bool) {
         bargeInEnabled = enabled
-        if !enabled {
+        if enabled {
+            // Start monitoring immediately if TTS is already playing
+            startBargeInMonitoring()
+        } else {
             bargeInDetector.stopMonitoring()
         }
         print("[AudioCoordinator] bargeInEnabled = \(enabled)")
