@@ -18,6 +18,12 @@ type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
+const STAGE_COLORS = {
+  stt: '#3b82f6',  // blue-500
+  llm: '#a855f7',  // purple-500
+  tts: '#22c55e',  // green-500
+} as const
+
 export default function SettingsScreen() {
   const [vapiPublicKey, setVapiPublicKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
@@ -549,11 +555,19 @@ export default function SettingsScreen() {
           {loadingStats ? (
             <ActivityIndicator size="small" color="#888" />
           ) : latencyStats && latencyStats.turnCount > 0 ? (
-            <View className="gap-3">
-              <LatencyStageSection label="STT" avg={latencyStats.avgStt} min={latencyStats.minStt} max={latencyStats.maxStt} />
-              <LatencyStageSection label="LLM" avg={latencyStats.avgLlm} min={latencyStats.minLlm} max={latencyStats.maxLlm} />
-              <LatencyStageSection label="TTS" avg={latencyStats.avgTts} min={latencyStats.minTts} max={latencyStats.maxTts} />
-              <LatencyStageSection label="Total" avg={latencyStats.avgTotal} min={latencyStats.minTotal} max={latencyStats.maxTotal} />
+            <View className="gap-4">
+              <LatencyBreakdownBar
+                avgStt={latencyStats.avgStt}
+                avgLlm={latencyStats.avgLlm}
+                avgTts={latencyStats.avgTts}
+              />
+              <View className="gap-3">
+                <LatencyStageSection label="STT" color={STAGE_COLORS.stt} avg={latencyStats.avgStt} min={latencyStats.minStt} max={latencyStats.maxStt} />
+                <LatencyStageSection label="LLM" color={STAGE_COLORS.llm} avg={latencyStats.avgLlm} min={latencyStats.minLlm} max={latencyStats.maxLlm} />
+                <LatencyStageSection label="TTS" color={STAGE_COLORS.tts} avg={latencyStats.avgTts} min={latencyStats.minTts} max={latencyStats.maxTts} />
+                <View className="my-1 border-t border-input" />
+                <LatencyStageSection label="Total" avg={latencyStats.avgTotal} min={latencyStats.minTotal} max={latencyStats.maxTotal} />
+              </View>
               <Text className="text-xs text-muted-foreground/60">
                 Based on {latencyStats.turnCount} turn{latencyStats.turnCount !== 1 ? 's' : ''} with latency data
               </Text>
@@ -817,8 +831,64 @@ function SavedIndicator({ status }: { status: SaveStatus }) {
   )
 }
 
-function LatencyStageSection({ label, avg, min, max }: {
+function LatencyBreakdownBar({ avgStt, avgLlm, avgTts }: {
+  avgStt: number | null
+  avgLlm: number | null
+  avgTts: number | null
+}) {
+  const stt = avgStt ?? 0
+  const llm = avgLlm ?? 0
+  const tts = avgTts ?? 0
+  const total = stt + llm + tts
+
+  if (total === 0) return null
+
+  const sttPct = (stt / total) * 100
+  const llmPct = (llm / total) * 100
+  const ttsPct = (tts / total) * 100
+
+  return (
+    <View className="gap-2">
+      <View className="h-8 flex-row overflow-hidden rounded-full">
+        {stt > 0 && (
+          <View style={{ flex: stt, backgroundColor: STAGE_COLORS.stt }} className="items-center justify-center">
+            {sttPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(sttPct)}%</Text>}
+          </View>
+        )}
+        {llm > 0 && (
+          <View style={{ flex: llm, backgroundColor: STAGE_COLORS.llm }} className="items-center justify-center">
+            {llmPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(llmPct)}%</Text>}
+          </View>
+        )}
+        {tts > 0 && (
+          <View style={{ flex: tts, backgroundColor: STAGE_COLORS.tts }} className="items-center justify-center">
+            {ttsPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(ttsPct)}%</Text>}
+          </View>
+        )}
+      </View>
+      <View className="flex-row justify-center gap-4">
+        {stt > 0 && <BarLegendItem color={STAGE_COLORS.stt} label="STT" pct={sttPct} />}
+        {llm > 0 && <BarLegendItem color={STAGE_COLORS.llm} label="LLM" pct={llmPct} />}
+        {tts > 0 && <BarLegendItem color={STAGE_COLORS.tts} label="TTS" pct={ttsPct} />}
+      </View>
+    </View>
+  )
+}
+
+function BarLegendItem({ color, label, pct }: { color: string, label: string, pct: number }) {
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <View style={{ backgroundColor: color }} className="h-2.5 w-2.5 rounded-full" />
+      <Text className="text-xs text-muted-foreground">
+        {label} {Math.round(pct)}%
+      </Text>
+    </View>
+  )
+}
+
+function LatencyStageSection({ label, color, avg, min, max }: {
   label: string
+  color?: string
   avg: number | null
   min: number | null
   max: number | null
@@ -826,12 +896,15 @@ function LatencyStageSection({ label, avg, min, max }: {
   return (
     <View className="gap-1">
       <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-medium text-foreground">{label}</Text>
+        <View className="flex-row items-center gap-2">
+          {color && <View style={{ backgroundColor: color }} className="h-3 w-3 rounded-full" />}
+          <Text className="text-sm font-medium text-foreground">{label}</Text>
+        </View>
         <Text className="text-sm font-semibold text-foreground">
           {avg != null ? formatLatencyMs(avg) : '--'}
         </Text>
       </View>
-      <View className="flex-row items-center justify-between pl-2">
+      <View className={`flex-row items-center justify-between ${color ? 'pl-7' : 'pl-2'}`}>
         <Text className="text-xs text-muted-foreground">Min / Max</Text>
         <Text className="text-xs text-muted-foreground">
           {min != null ? formatLatencyMs(min) : '--'} / {max != null ? formatLatencyMs(max) : '--'}
