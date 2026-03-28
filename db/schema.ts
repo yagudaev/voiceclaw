@@ -19,7 +19,10 @@ export const CREATE_TABLES = `
     created_at INTEGER NOT NULL,
     stt_latency_ms REAL,
     llm_latency_ms REAL,
-    tts_latency_ms REAL
+    tts_latency_ms REAL,
+    stt_provider TEXT,
+    llm_provider TEXT,
+    tts_provider TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
