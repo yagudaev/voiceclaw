@@ -9,12 +9,21 @@ export type Message = {
   stt_latency_ms: number | null
   llm_latency_ms: number | null
   tts_latency_ms: number | null
+  stt_provider: string | null
+  llm_provider: string | null
+  tts_provider: string | null
 }
 
 export type LatencyData = {
   sttLatencyMs?: number
   llmLatencyMs?: number
   ttsLatencyMs?: number
+}
+
+export type ProviderInfo = {
+  sttProvider?: string
+  llmProvider?: string
+  ttsProvider?: string
 }
 
 export type LatencyAverages = {
@@ -37,16 +46,20 @@ export async function addMessage(
   conversationId: number,
   role: 'user' | 'assistant',
   content: string,
-  latency?: LatencyData
+  latency?: LatencyData,
+  providers?: ProviderInfo
 ): Promise<Message> {
   const now = Date.now()
   const stt = latency?.sttLatencyMs ?? null
   const llm = latency?.llmLatencyMs ?? null
   const tts = latency?.ttsLatencyMs ?? null
+  const sttProv = providers?.sttProvider ?? null
+  const llmProv = providers?.llmProvider ?? null
+  const ttsProv = providers?.ttsProvider ?? null
 
   const result = await db.runAsync(
-    'INSERT INTO messages (conversation_id, role, content, created_at, stt_latency_ms, llm_latency_ms, tts_latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [conversationId, role, content, now, stt, llm, tts]
+    'INSERT INTO messages (conversation_id, role, content, created_at, stt_latency_ms, llm_latency_ms, tts_latency_ms, stt_provider, llm_provider, tts_provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [conversationId, role, content, now, stt, llm, tts, sttProv, llmProv, ttsProv]
   )
 
   await db.runAsync('UPDATE conversations SET updated_at = ? WHERE id = ?', [now, conversationId])
@@ -60,6 +73,9 @@ export async function addMessage(
     stt_latency_ms: stt,
     llm_latency_ms: llm,
     tts_latency_ms: tts,
+    stt_provider: sttProv,
+    llm_provider: llmProv,
+    tts_provider: ttsProv,
   }
 }
 
