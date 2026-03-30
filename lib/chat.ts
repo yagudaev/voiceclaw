@@ -49,6 +49,7 @@ async function fetchCompletionFallback(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
       'x-openclaw-session-key': sessionKey,
+      'x-openclaw-scopes': 'operator.read,operator.write',
     },
     body: JSON.stringify({
       model,
@@ -96,6 +97,7 @@ export function streamCompletion(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
       'x-openclaw-session-key': sessionKey,
+      'x-openclaw-scopes': 'operator.read,operator.write',
     },
     body: JSON.stringify({ model, messages: chatMessages, stream: true, user: sessionKey }),
     pollingInterval: 0,
