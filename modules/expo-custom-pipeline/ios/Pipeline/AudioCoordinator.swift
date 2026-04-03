@@ -12,6 +12,9 @@ protocol AudioCoordinatorDelegate: AnyObject {
 
 /// Owns the full audio lifecycle: STT, TTS, VAD/barge-in detection.
 ///
+/// Queues speak requests so sentences play one at a time (prevents
+/// overlapping audio from providers that don't queue internally).
+///
 /// When barge-in fires the coordinator atomically stops TTS, stops VAD,
 /// starts STT, and emits `onBargeIn` -- no JS bridge round trip required.
 class AudioCoordinator {
@@ -21,6 +24,10 @@ class AudioCoordinator {
     private(set) var ttsProvider: TTSProvider?
     private let bargeInDetector = BargeInDetector()
     private var bargeInEnabled = false
+
+    // TTS speak queue — ensures sentences play sequentially
+    private var speakQueue: [String] = []
+    private var isSpeakingCurrent = false
 
     // MARK: - Provider setup
 
@@ -43,7 +50,6 @@ class AudioCoordinator {
                 options: [.defaultToSpeaker, .allowBluetooth]
             )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
-            print("[AudioCoordinator] Audio session configured (voiceChat mode)")
         } catch {
             print("[AudioCoordinator] Failed to configure audio session: \(error.localizedDescription)")
         }
@@ -70,22 +76,13 @@ class AudioCoordinator {
     // MARK: - TTS
 
     func speak(text: String) {
-        ttsProvider?.speak(
-            text: text,
-            onStart: { [weak self] in
-                guard let self = self else { return }
-                self.delegate?.audioCoordinatorDidStartTTS()
-            },
-            onComplete: { [weak self] in
-                self?.delegate?.audioCoordinatorDidCompleteTTS()
-            },
-            onError: { [weak self] message in
-                self?.delegate?.audioCoordinatorDidError(message)
-            }
-        )
+        speakQueue.append(text)
+        speakNextIfIdle()
     }
 
     func stopSpeaking() {
+        speakQueue.removeAll()
+        isSpeakingCurrent = false
         ttsProvider?.stop()
     }
 
@@ -94,12 +91,10 @@ class AudioCoordinator {
     func setBargeInEnabled(_ enabled: Bool) {
         bargeInEnabled = enabled
         if enabled {
-            // Start monitoring immediately if TTS is already playing
             startBargeInMonitoring()
         } else {
             bargeInDetector.stopMonitoring()
         }
-        print("[AudioCoordinator] bargeInEnabled = \(enabled)")
     }
 
     // MARK: - Simulate (testing support)
@@ -111,7 +106,41 @@ class AudioCoordinator {
     }
 }
 
-// MARK: - Helpers
+// MARK: - TTS Queue
+
+private extension AudioCoordinator {
+    func speakNextIfIdle() {
+        guard !isSpeakingCurrent, !speakQueue.isEmpty else { return }
+
+        let text = speakQueue.removeFirst()
+        isSpeakingCurrent = true
+
+        ttsProvider?.speak(
+            text: text,
+            onStart: { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.audioCoordinatorDidStartTTS()
+                if self.bargeInEnabled {
+                    self.startBargeInMonitoring()
+                }
+            },
+            onComplete: { [weak self] in
+                guard let self = self else { return }
+                self.isSpeakingCurrent = false
+                self.delegate?.audioCoordinatorDidCompleteTTS()
+                self.speakNextIfIdle()
+            },
+            onError: { [weak self] message in
+                guard let self = self else { return }
+                self.isSpeakingCurrent = false
+                self.delegate?.audioCoordinatorDidError(message)
+                self.speakNextIfIdle()
+            }
+        )
+    }
+}
+
+// MARK: - Barge-in
 
 private extension AudioCoordinator {
     func startBargeInMonitoring() {
@@ -124,12 +153,14 @@ private extension AudioCoordinator {
     /// Atomic barge-in: stop TTS -> stop VAD -> start STT -> emit event.
     /// All happens on the main thread with no bridge round trip.
     func handleBargeIn() {
-        print("[AudioCoordinator] Barge-in detected — atomic: stopTTS -> stopVAD -> startSTT -> emit")
+        print("[AudioCoordinator] Barge-in — atomic: stopTTS -> stopVAD -> startSTT -> emit")
 
-        // 1. Stop TTS playback immediately
+        // 1. Clear queue and stop current playback
+        speakQueue.removeAll()
+        isSpeakingCurrent = false
         ttsProvider?.stop()
 
-        // 2. Stop VAD monitoring (detector already stopped itself, but be safe)
+        // 2. Stop VAD monitoring
         bargeInDetector.stopMonitoring()
 
         // 3. Start STT to capture the user's speech
