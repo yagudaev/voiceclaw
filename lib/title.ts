@@ -55,11 +55,14 @@ async function generateTitle(
     max_tokens: 30,
   }
 
+  const sessionKey = `voiceclaw:${messages.length > 0 ? 'titles' : '0'}`
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      'x-openclaw-session-key': sessionKey,
+      'x-openclaw-scopes': 'operator.read,operator.write',
     },
     body: JSON.stringify(body),
   })
