@@ -39,6 +39,7 @@ class KokoroTTSProvider: TTSProvider {
 
     func speak(
         text: String,
+        previousText: String? = nil,
         onStart: @escaping () -> Void,
         onComplete: @escaping () -> Void,
         onError: @escaping (String) -> Void
@@ -518,6 +519,7 @@ class KokoroTTSProvider: TTSProvider {
 
     func speak(
         text: String,
+        previousText: String? = nil,
         onStart: @escaping () -> Void,
         onComplete: @escaping () -> Void,
         onError: @escaping (String) -> Void

@@ -28,6 +28,8 @@ class AudioCoordinator {
     // TTS speak queue — ensures sentences play sequentially
     private var speakQueue: [String] = []
     private var isSpeakingCurrent = false
+    // Tracks recently spoken text so providers can use it for prosodic context
+    private var spokenHistory = ""
 
     // MARK: - Provider setup
 
@@ -83,6 +85,7 @@ class AudioCoordinator {
     func stopSpeaking() {
         speakQueue.removeAll()
         isSpeakingCurrent = false
+        spokenHistory = ""
         ttsProvider?.stop()
     }
 
@@ -113,10 +116,12 @@ private extension AudioCoordinator {
         guard !isSpeakingCurrent, !speakQueue.isEmpty else { return }
 
         let text = speakQueue.removeFirst()
+        let previousText = spokenHistory.isEmpty ? nil : spokenHistory
         isSpeakingCurrent = true
 
         ttsProvider?.speak(
             text: text,
+            previousText: previousText,
             onStart: { [weak self] in
                 guard let self = self else { return }
                 self.delegate?.audioCoordinatorDidStartTTS()
@@ -126,6 +131,7 @@ private extension AudioCoordinator {
             },
             onComplete: { [weak self] in
                 guard let self = self else { return }
+                self.spokenHistory += (self.spokenHistory.isEmpty ? "" : " ") + text
                 self.isSpeakingCurrent = false
                 self.delegate?.audioCoordinatorDidCompleteTTS()
                 self.speakNextIfIdle()
@@ -155,9 +161,10 @@ private extension AudioCoordinator {
     func handleBargeIn() {
         print("[AudioCoordinator] Barge-in — atomic: stopTTS -> stopVAD -> startSTT -> emit")
 
-        // 1. Clear queue and stop current playback
+        // 1. Clear queue, history, and stop current playback
         speakQueue.removeAll()
         isSpeakingCurrent = false
+        spokenHistory = ""
         ttsProvider?.stop()
 
         // 2. Stop VAD monitoring
