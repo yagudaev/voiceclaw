@@ -38,7 +38,7 @@ class ElevenLabsTTSProvider: NSObject, TTSProvider, URLSessionDataDelegate {
 
     // MARK: - TTSProvider
 
-    func speak(text: String, onStart: @escaping () -> Void, onComplete: @escaping () -> Void, onError: @escaping (String) -> Void) {
+    func speak(text: String, previousText: String? = nil, onStart: @escaping () -> Void, onComplete: @escaping () -> Void, onError: @escaping (String) -> Void) {
         logger.debug("[ElevenLabs] speak() called with text: \(text.prefix(50))")
         guard !apiKey.isEmpty else {
             logger.error("[ElevenLabs] API key not configured")
@@ -63,10 +63,13 @@ class ElevenLabsTTSProvider: NSObject, TTSProvider, URLSessionDataDelegate {
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "text": text,
             "model_id": modelId
         ]
+        if let previousText = previousText, !previousText.isEmpty {
+            body["previous_text"] = previousText
+        }
 
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
