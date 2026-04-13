@@ -3,10 +3,12 @@
   "private": true,
   "workspaces": [
     "mobile",
-    "website"
+    "website",
+    "relay-server"
   ],
   "scripts": {
-    "dev": "concurrently --names mobile,web \"yarn dev:mobile\" \"yarn dev:web\"",
+    "dev": "concurrently --names mobile,web,server \"yarn dev:mobile\" \"yarn dev:web\" \"yarn dev:server\"",
+    "dev:server": "cd relay-server && yarn dev",
     "dev:mobile": "cd mobile && yarn dev",
     "dev:web": "cd website && yarn dev",
     "build:web": "cd website && yarn build",
