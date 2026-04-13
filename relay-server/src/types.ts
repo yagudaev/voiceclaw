@@ -14,8 +14,9 @@ export interface SessionConfigEvent {
   provider: "openai" | "gemini"
   voice: string
   brainAgent: "kira" | "none"
-  openclawGatewayUrl: string
-  openclawAuthToken: string
+  apiKey: string
+  openclawGatewayUrl?: string
+  openclawAuthToken?: string
   deviceContext?: {
     timezone?: string
     locale?: string
@@ -23,6 +24,7 @@ export interface SessionConfigEvent {
     location?: string
   }
   instructionsOverride?: string
+  conversationHistory?: { role: "user" | "assistant", text: string }[]
 }
 
 export interface AudioAppendEvent {

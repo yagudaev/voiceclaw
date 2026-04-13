@@ -30,7 +30,7 @@ const ECHO_TOOL: RealtimeTool = {
 const ASK_BRAIN: RealtimeTool = {
   type: "function",
   name: "ask_brain",
-  description: "Ask your brain agent for information, to perform tasks, or to look things up. Use this for anything that requires memory, web access, calendar, tasks, or knowledge beyond what you know. Examples: 'What's on my calendar?', 'Create a task to...', 'Look up my open tickets', 'Remember that I decided to...'",
+  description: "Ask your brain agent for information, to perform tasks, or to look things up. Use this for anything that requires memory, web access, calendar, tasks, or knowledge beyond what you know. Also use this for deep analysis of articles or content the user shares — send the URL and your question together. Examples: 'What's on my calendar?', 'Create a task to...', 'Look up my open tickets', 'Remember that I decided to...', 'Analyze the article at https://...'",
   parameters: {
     type: "object",
     properties: {

@@ -8,11 +8,9 @@ import type {
   RelayEvent,
 } from "./types.js"
 import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
-import { validateOpenClawToken } from "./auth.js"
 import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
-
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
@@ -69,11 +67,12 @@ export class RelaySession {
       return
     }
 
-    // Async tools (ask_brain)
+    // Async tools
     if (name === "ask_brain") {
       this.handleAskBrain(callId, args)
       return
     }
+
   }
 
   private async handleAskBrain(callId: string, args: string) {
@@ -83,14 +82,29 @@ export class RelaySession {
       const parsed = JSON.parse(args)
       const query = parsed.query
 
+      // Send progress so the user knows the agent is thinking
+      this.send({
+        type: "transcript.delta",
+        text: "Let me check on that...\n",
+        role: "assistant",
+      })
+
       const sendToClient: SendToClient = (event) => this.send(event)
 
+      const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
+      const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+
+      const brainStart = Date.now()
+      console.log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
+
       const result = await askBrain(query, {
-        gatewayUrl: this.config.openclawGatewayUrl,
-        authToken: this.config.openclawAuthToken,
+        gatewayUrl,
+        authToken,
         sessionId: this.id,
       }, sendToClient, callId)
 
+      const brainMs = Date.now() - brainStart
+      console.log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
       this.adapter?.sendToolResult(callId, result)
     } catch (err) {
       const message = err instanceof Error ? err.message : "brain agent call failed"
@@ -133,22 +147,17 @@ export class RelaySession {
   }
 
   private async handleSessionConfig(config: SessionConfigEvent) {
-    // Reject if no auth credentials
-    if (!config.openclawAuthToken || !config.openclawGatewayUrl) {
-      this.sendError("unauthorized", 401)
-      this.ws.close()
-      return
+    // Disconnect previous adapter if session.config is sent again
+    if (this.adapter) {
+      console.log(`[session:${this.id}] Replacing existing adapter`)
+      this.adapter.disconnect()
+      this.adapter = null
     }
 
-    // Validate token against OpenClaw gateway
-    console.log(`[session:${this.id}] Validating auth token against ${config.openclawGatewayUrl}`)
-    const valid = await validateOpenClawToken(
-      config.openclawGatewayUrl,
-      config.openclawAuthToken,
-    )
-
-    if (!valid) {
-      console.log(`[session:${this.id}] Auth failed`)
+    // Validate API key
+    const expectedKey = process.env.RELAY_API_KEY
+    if (!config.apiKey || (expectedKey && config.apiKey !== expectedKey)) {
+      console.log(`[session:${this.id}] Auth failed — invalid API key`)
       this.sendError("unauthorized", 401)
       this.ws.close()
       return
@@ -173,7 +182,39 @@ export class RelaySession {
 
   private cleanup() {
     console.log(`[session:${this.id}] Disconnecting`)
+    this.syncTranscriptToBrain()
     this.adapter?.disconnect()
     this.adapter = null
+  }
+
+  private syncTranscriptToBrain() {
+    if (!this.config || !this.adapter) return
+
+    const transcript = this.adapter.getTranscript()
+    if (transcript.length === 0) return
+
+    const lines = transcript.map(
+      (t) => `${t.role === "user" ? "User" : "Kira"}: ${t.text}`
+    ).join("\n")
+
+    const durationMin = Math.round((Date.now() - this.startedAt) / 60_000)
+    const prompt = [
+      "The following is a transcript of a voice conversation that just ended.",
+      `Duration: ~${durationMin} minute(s), ${this.turnCount} turn(s).`,
+      "Please remember the key facts, decisions, action items, and anything the user shared about themselves.",
+      "Do NOT repeat the transcript back. Just quietly store what matters.\n",
+      lines,
+    ].join("\n")
+
+    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
+    const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+
+    console.log(`[session:${this.id}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)
+
+    // Fire-and-forget — don't block cleanup
+    const noop: SendToClient = () => {}
+    askBrain(prompt, { gatewayUrl, authToken, sessionId: this.id }, noop, "transcript-sync").catch((err) => {
+      console.error(`[session:${this.id}] Transcript sync failed:`, err instanceof Error ? err.message : err)
+    })
   }
 }

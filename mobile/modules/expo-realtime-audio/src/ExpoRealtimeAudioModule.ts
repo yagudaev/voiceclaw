@@ -14,6 +14,9 @@ declare class ExpoRealtimeAudioModule extends NativeModule<ExpoRealtimeAudioModu
 
   /** Stop any audio currently playing (barge-in) */
   stopPlayback(): void
+
+  /** Set speaker output volume (0.0 = silent, 1.0 = normal, >1.0 = boosted) */
+  setVolume(volume: number): void
 }
 
 export default requireNativeModule<ExpoRealtimeAudioModule>('ExpoRealtimeAudio')

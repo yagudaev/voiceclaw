@@ -24,6 +24,9 @@ export interface ProviderAdapter {
   /** Send a tool result back to the provider */
   sendToolResult(callId: string, output: string): void
 
+  /** Get the conversation transcript so far */
+  getTranscript(): { role: "user" | "assistant", text: string }[]
+
   /** Clean up the upstream connection */
   disconnect(): void
 }
