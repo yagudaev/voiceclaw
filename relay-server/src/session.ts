@@ -7,12 +7,13 @@ import type {
   SessionConfigEvent,
   RelayEvent,
 } from "./types.js"
-import type { ProviderAdapter } from "./adapters/types.js"
+import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
 import { validateOpenClawToken } from "./auth.js"
 import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
+import { askBrain } from "./tools/brain.js"
 
-const SERVER_SIDE_TOOLS = new Set(["echo_tool"])
+const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
   readonly id = randomUUID()
@@ -46,9 +47,7 @@ export class RelaySession {
   private handleRelayEvent(event: RelayEvent) {
     // Intercept tool calls — handle server-side tools, forward the rest to client
     if (event.type === "tool.call" && SERVER_SIDE_TOOLS.has(event.name)) {
-      console.log(`[session:${this.id}] Handling server-side tool: ${event.name}`)
-      const result = handleToolCall(event.name, event.arguments)
-      this.adapter?.sendToolResult(event.callId, result)
+      this.handleServerToolCall(event.callId, event.name, event.arguments)
       return
     }
 
@@ -58,6 +57,46 @@ export class RelaySession {
     }
 
     this.send(event)
+  }
+
+  private handleServerToolCall(callId: string, name: string, args: string) {
+    console.log(`[session:${this.id}] Handling server-side tool: ${name}`)
+
+    // Synchronous tools
+    const syncResult = handleToolCall(name, args)
+    if (syncResult !== null) {
+      this.adapter?.sendToolResult(callId, syncResult)
+      return
+    }
+
+    // Async tools (ask_brain)
+    if (name === "ask_brain") {
+      this.handleAskBrain(callId, args)
+      return
+    }
+  }
+
+  private async handleAskBrain(callId: string, args: string) {
+    if (!this.config) return
+
+    try {
+      const parsed = JSON.parse(args)
+      const query = parsed.query
+
+      const sendToClient: SendToClient = (event) => this.send(event)
+
+      const result = await askBrain(query, {
+        gatewayUrl: this.config.openclawGatewayUrl,
+        authToken: this.config.openclawAuthToken,
+        sessionId: this.id,
+      }, sendToClient, callId)
+
+      this.adapter?.sendToolResult(callId, result)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "brain agent call failed"
+      console.error(`[session:${this.id}] ask_brain error:`, message)
+      this.adapter?.sendToolResult(callId, JSON.stringify({ error: message }))
+    }
   }
 
   private async handleMessage(raw: unknown) {

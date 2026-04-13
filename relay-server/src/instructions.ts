@@ -29,8 +29,12 @@ const CONVERSATION_RULES = `
 export function buildInstructions(config: SessionConfigEvent): string {
   const parts: string[] = []
 
-  // Mini-identity (placeholder — will be replaced with brain agent personality in Phase 3)
-  parts.push("You are a helpful voice assistant. Keep your responses conversational and concise.")
+  // Mini-identity
+  if (config.brainAgent === "kira") {
+    parts.push("You are Kira, a personal AI assistant in voice mode. You have access to the ask_brain tool for memory, tasks, calendar, and knowledge. Keep your responses conversational and concise. You are the same Kira from text chat, just speaking instead of typing.")
+  } else {
+    parts.push("You are a helpful voice assistant. Keep your responses conversational and concise.")
+  }
 
   // Conversation timing and behavior rules
   parts.push(CONVERSATION_RULES)

@@ -1,6 +1,5 @@
 // Tool definitions for STS sessions
-// Phase 1c: echo_tool for testing
-// Phase 3: replaced with ask_brain for real brain agent integration
+// echo_tool for testing, ask_brain for brain agent integration
 
 import type { SessionConfigEvent } from "../types.js"
 
@@ -28,25 +27,45 @@ const ECHO_TOOL: RealtimeTool = {
   },
 }
 
-export function getTools(config: SessionConfigEvent): RealtimeTool[] {
-  if (config.brainAgent === "none") {
-    // Even without a brain agent, include echo_tool for testing
-    return [ECHO_TOOL]
-  }
-
-  // Phase 3 will add ask_brain here
-  return [ECHO_TOOL]
+const ASK_BRAIN: RealtimeTool = {
+  type: "function",
+  name: "ask_brain",
+  description: "Ask your brain agent for information, to perform tasks, or to look things up. Use this for anything that requires memory, web access, calendar, tasks, or knowledge beyond what you know. Examples: 'What's on my calendar?', 'Create a task to...', 'Look up my open tickets', 'Remember that I decided to...'",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "The question or task to send to the brain agent",
+      },
+    },
+    required: ["query"],
+  },
 }
 
+export function getTools(config: SessionConfigEvent): RealtimeTool[] {
+  const tools: RealtimeTool[] = [ECHO_TOOL]
+
+  if (config.brainAgent !== "none") {
+    tools.push(ASK_BRAIN)
+  }
+
+  return tools
+}
+
+/** Handle synchronous server-side tools. Returns null for async tools like ask_brain. */
 export function handleToolCall(
   name: string,
   args: string,
-): string {
+): string | null {
   switch (name) {
     case "echo_tool": {
       const parsed = JSON.parse(args)
       return JSON.stringify({ echoed: parsed.message })
     }
+    case "ask_brain":
+      // Handled asynchronously by session.ts
+      return null
     default:
       return JSON.stringify({ error: `unknown tool: ${name}` })
   }
