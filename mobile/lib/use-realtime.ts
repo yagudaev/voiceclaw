@@ -8,7 +8,7 @@ export interface RealtimeConfig {
   serverUrl: string
   voice: string
   model?: string
-  brainAgent: 'kira' | 'none'
+  brainAgent: 'enabled' | 'none'
   apiKey: string
   sessionKey?: string
   volume?: number

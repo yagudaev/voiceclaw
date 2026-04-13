@@ -65,7 +65,7 @@ async function run() {
           provider: "openai",
           voice: "sage",
           model: "gpt-realtime-mini",
-          brainAgent: "kira",
+          brainAgent: "enabled",
           apiKey: API_KEY,
           deviceContext: {
             timezone: "America/Vancouver",

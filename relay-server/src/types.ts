@@ -14,7 +14,7 @@ export interface SessionConfigEvent {
   provider: "openai" | "gemini"
   voice: string
   model?: string
-  brainAgent: "kira" | "none"
+  brainAgent: "enabled" | "none"
   apiKey: string
   sessionKey?: string
   openclawGatewayUrl?: string
