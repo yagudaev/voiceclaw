@@ -99,6 +99,8 @@ MVP scope: **OpenAI Realtime only** (using `gpt-realtime-mini`). Gemini Live ada
 Scaffold `relay-server/` as a TypeScript Express + ws app.
 
 **1a. Bare server + WebSocket echo + auth**
+- `relay-server/setup.sh` — interactive setup script that prompts for `OPENAI_API_KEY`, validates it against OpenAI's API, writes `.env`
+- `.env.example` with documented vars for manual setup
 - Express server with `ws` WebSocket endpoint at `ws://localhost:8080/ws`
 - On `session.config`: validate `openclawAuthToken` against `openclawGatewayUrl/voiceclaw/health`
 - If auth fails → send `error { message: "unauthorized", code: 401 }`, close connection
@@ -396,6 +398,8 @@ All audio/UX testing consolidated here. Run this once all phases are built and s
 
 **New files:**
 - `relay-server/package.json`
+- `relay-server/setup.sh` — interactive setup (prompts for OPENAI_API_KEY, validates, writes .env)
+- `relay-server/.env.example` — documented env vars for manual setup
 - `relay-server/src/index.ts` — Express + ws server
 - `relay-server/src/adapters/openai.ts` — OpenAI Realtime adapter (MVP)
 - `relay-server/src/adapters/gemini.ts` — scaffolded, throws "not implemented"
