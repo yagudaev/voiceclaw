@@ -25,7 +25,7 @@ Mobile App ◄──────────────────────
                                     │  ┌───────────────┐  │
                                     │  │ OpenClaw/Kira  │──┼──► POST /voiceclaw/v1/chat/completions
                                     │  ├───────────────┤  │
-                                    │  │ Hermes/Holly   │──┼──► hermes chat -q "..." -Q (subprocess)
+                                    │  │ Hermes/Holly   │──┼──► POST http://127.0.0.1:8642/v1/chat/completions
                                     │  └───────────────┘  │
                                     └─────────────────────┘
 ```
@@ -98,7 +98,7 @@ Relay → Client:
 
 **Tool Router:**
 - Registers `ask_brain` tool with the STS provider session
-- On tool call: routes to configured brain agent (OpenClaw HTTP API or Hermes CLI)
+- On tool call: routes to configured brain agent (OpenClaw or Hermes, both OpenAI-compatible HTTP)
 - Returns result to provider to continue response
 
 **Root scripts:** `yarn dev:server`
@@ -159,9 +159,10 @@ STS Agent (realtime model):
   → [OpenAI: keeps talking "Let me check..." / Gemini: blocks silently]
 
 Relay Server:
-  → Routes to Kira (OpenClaw):
-    POST /voiceclaw/v1/chat/completions
-    { model: "openclaw:voice", messages: [...], stream: true }
+  → Routes to configured brain agent:
+    Kira:  POST <gatewayUrl>/voiceclaw/v1/chat/completions
+    Holly: POST http://127.0.0.1:8642/v1/chat/completions
+    Both use: { messages: [...], stream: true }
   → Collects streamed response
   → Sends tool result back to STS provider
 
@@ -177,11 +178,16 @@ STS Agent:
 - Format: OpenAI-compatible SSE streaming
 - Config from: app settings (`openclaw_gateway_url`, `openclaw_auth_token`)
 
-**Hermes/Holly Integration (subprocess — Phase 2):**
-- No HTTP API exists — needs CLI subprocess or Python bridge
-- CLI: `hermes chat -q "<message>" -Q` (quiet mode, returns text only)
-- Future: thin FastAPI wrapper in `agent/hermes/` that exposes Holly over HTTP
+**Hermes/Holly Integration (HTTP — same pattern as Kira):**
+- Hermes has a built-in OpenAI-compatible API server (gateway platform adapter)
+- Endpoint: `POST http://127.0.0.1:8642/v1/chat/completions`
+- Auth: `Authorization: Bearer <API_SERVER_KEY>` (optional for local)
+- Session continuity: `X-Hermes-Session-Id: realtime:<sessionId>`
+- Format: OpenAI-compatible SSE streaming (`"stream": true`)
+- Also supports async runs: `POST /v1/runs` + `GET /v1/runs/{id}/events` (SSE)
+- **Setup:** Add `API_SERVER_ENABLED=true` to `~/.hermes/.env`, then `hermes gateway restart`
 - Personality source: `~/.hermes/memories/USER.md`
+- Fallback CLI: `hermes chat -q "<message>" -Q` (if gateway not available)
 
 ## Future: WebRTC Upgrade (Post-MVP)
 
@@ -207,7 +213,7 @@ The relay protocol is designed to be provider-agnostic. Adding a new STS provide
 | Provider adapters | TypeScript classes implementing shared interface |
 | Mobile audio | Swift (RealtimeAudioManager), AVAudioEngine |
 | Mobile UI/state | React Native (Expo), TypeScript |
-| Brain agents | OpenClaw (HTTP), Hermes (CLI/Python) |
+| Brain agents | OpenClaw (HTTP), Hermes (HTTP, OpenAI-compatible) |
 
 ## Key Files to Create/Modify
 
