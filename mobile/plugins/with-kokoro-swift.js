@@ -70,14 +70,27 @@ function withKokoroPodfile(config) {
 
       if (
         podfile.includes("target.name == 'ExpoCustomPipeline'") &&
-        podfile.includes('PackageFrameworks')
+        podfile.includes('PackageFrameworks') &&
+        podfile.includes('SWIFT_ENABLE_EXPLICIT_MODULES')
       ) {
-        console.log('[with-kokoro-swift] Podfile already patched for KokoroSwift module visibility, skipping')
+        console.log('[with-kokoro-swift] Podfile already patched, skipping')
         return config
       }
 
       // Ruby code to inject into the post_install block
       const injection = `
+    # Xcode 26: disable Explicitly Built Modules for all pod targets.
+    # Mixed C/Swift pods (expo-sqlite) fail because the auto-generated
+    # Clang module doesn't expose C functions to Swift with this on.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+      end
+    end
+    installer.pods_project.build_configurations.each do |config|
+      config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+    end
+
     # Make KokoroSwift (SPM package linked to VoiceClaw app target) importable
     # from the ExpoCustomPipeline pod target. The compiled Swift module ends up
     # in $(BUILD_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME), while the
