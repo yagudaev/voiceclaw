@@ -5,17 +5,11 @@ import type { SessionConfigEvent } from "../types.js"
 import type { ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getTools } from "../tools/index.js"
+import { log, error as logError } from "../log.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
-const MODEL = "gpt-realtime-mini"
+const DEFAULT_MODEL = "gpt-realtime-mini"
 
-function ts() {
-  return new Date().toLocaleString("en-CA", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false, fractionalSecondDigits: 3,
-  }).replace(",", "")
-}
 const ROTATION_INTERVAL_MS = parseInt(process.env.ROTATION_INTERVAL_MS ?? String(50 * 60 * 1000), 10) // 50 min default
 const WATCHDOG_TIMEOUT_MS = 20_000 // 20 seconds with no audio out
 
@@ -91,7 +85,8 @@ export class OpenAIAdapter implements ProviderAdapter {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error("OPENAI_API_KEY not set")
 
-    const url = `${OPENAI_REALTIME_URL}?model=${MODEL}`
+    const model = config.model || DEFAULT_MODEL
+    const url = `${OPENAI_REALTIME_URL}?model=${model}`
 
     return new Promise((resolve, reject) => {
       this.upstream = new WebSocket(url, {
@@ -102,7 +97,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       })
 
       this.upstream.on("open", () => {
-        console.log("[openai] Upstream WebSocket connected")
+        log(`[openai] Upstream WebSocket connected (model=${model})`)
         this.configureSession(config)
         resolve()
       })
@@ -111,17 +106,17 @@ export class OpenAIAdapter implements ProviderAdapter {
         try {
           this.handleUpstreamEvent(JSON.parse(String(raw)))
         } catch (err) {
-          console.error("[openai] Failed to parse upstream message:", err)
+          logError("[openai] Failed to parse upstream message:", err)
         }
       })
 
       this.upstream.on("error", (err) => {
-        console.error("[openai] Upstream error:", err.message)
+        logError("[openai] Upstream error:", err.message)
         if (!this.isRotating) reject(err)
       })
 
       this.upstream.on("close", (code, reason) => {
-        console.log(`[openai] Upstream closed: ${code} ${String(reason)}`)
+        log(`[openai] Upstream closed: ${code} ${String(reason)}`)
         if (!this.isRotating) {
           this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
         }
@@ -178,12 +173,12 @@ export class OpenAIAdapter implements ProviderAdapter {
     if (!this.config || this.isRotating) return
     this.isRotating = true
 
-    console.log("[openai] Starting session rotation...")
+    log("[openai] Starting session rotation...")
     this.sendToClient?.({ type: "session.rotating" })
 
     // Summarize transcript for context injection
     const summary = this.summarizeTranscript()
-    console.log(`[openai] Transcript summary (${summary.length} chars): ${summary.substring(0, 100)}...`)
+    log(`[openai] Transcript summary (${summary.length} chars): ${summary.substring(0, 100)}...`)
 
     // Close old upstream
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
@@ -197,9 +192,9 @@ export class OpenAIAdapter implements ProviderAdapter {
       this.transcript = [] // Clear transcript for new session
       this.startRotationTimer()
       this.sendToClient?.({ type: "session.rotated", sessionId: `rotated-${Date.now()}` })
-      console.log("[openai] Session rotation complete")
+      log("[openai] Session rotation complete")
     } catch (err) {
-      console.error("[openai] Rotation failed:", err)
+      logError("[openai] Rotation failed:", err)
       this.sendToClient?.({ type: "error", message: "session rotation failed", code: 502 })
     } finally {
       this.isRotating = false
@@ -210,7 +205,8 @@ export class OpenAIAdapter implements ProviderAdapter {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error("OPENAI_API_KEY not set")
 
-    const url = `${OPENAI_REALTIME_URL}?model=${MODEL}`
+    const model = config.model || DEFAULT_MODEL
+    const url = `${OPENAI_REALTIME_URL}?model=${model}`
 
     return new Promise((resolve, reject) => {
       this.upstream = new WebSocket(url, {
@@ -221,7 +217,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       })
 
       this.upstream.on("open", () => {
-        console.log("[openai] New upstream connected after rotation")
+        log("[openai] New upstream connected after rotation")
         this.configureSession(config, summary)
         resolve()
       })
@@ -230,17 +226,17 @@ export class OpenAIAdapter implements ProviderAdapter {
         try {
           this.handleUpstreamEvent(JSON.parse(String(raw)))
         } catch (err) {
-          console.error("[openai] Failed to parse upstream message:", err)
+          logError("[openai] Failed to parse upstream message:", err)
         }
       })
 
       this.upstream.on("error", (err) => {
-        console.error("[openai] New upstream error:", err.message)
+        logError("[openai] New upstream error:", err.message)
         reject(err)
       })
 
       this.upstream.on("close", (code, reason) => {
-        console.log(`[openai] Upstream closed: ${code} ${String(reason)}`)
+        log(`[openai] Upstream closed: ${code} ${String(reason)}`)
         if (!this.isRotating) {
           this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
         }
@@ -268,7 +264,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private startRotationTimer() {
     this.clearRotationTimer()
     this.rotationTimer = setTimeout(() => {
-      console.log(`[openai] Rotation timer fired after ${ROTATION_INTERVAL_MS / 1000}s`)
+      log(`[openai] Rotation timer fired after ${ROTATION_INTERVAL_MS / 1000}s`)
       this.rotate()
     }, ROTATION_INTERVAL_MS)
   }
@@ -292,7 +288,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       clearTimeout(this.watchdogTimer)
     }
     this.watchdogTimer = setTimeout(() => {
-      console.log("[openai] Watchdog: no audio for 20s, injecting prompt")
+      log("[openai] Watchdog: no audio for 20s, injecting prompt")
       // Inject a system message to check if user is still there
       this.sendUpstream({
         type: "conversation.item.create",
@@ -319,10 +315,10 @@ export class OpenAIAdapter implements ProviderAdapter {
     switch (event.type) {
       // Session lifecycle
       case "session.created":
-        console.log(`[${ts()}] [openai] Session created: ${event.session?.id}`)
+        log(`[openai] Session created: ${event.session?.id}`)
         break
       case "session.updated":
-        console.log(`[${ts()}] [openai] Session updated`)
+        log("[openai] Session updated")
         break
 
       // Audio output
@@ -376,7 +372,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Function calls
       case "response.function_call_arguments.done":
-        console.log(`[${ts()}] [openai] Tool call: ${event.name} (${event.call_id})`)
+        log(`[openai] Tool call: ${event.name} (${event.call_id})`)
         this.pendingToolCalls++
         this.pauseWatchdog()
         this.sendToClient?.({
@@ -396,7 +392,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Errors
       case "error":
-        console.error(`[${ts()}] [openai] Error: ${event.error?.message ?? event}`)
+        logError(`[openai] Error: ${event.error?.message ?? event}`)
         this.sendToClient?.({
           type: "error",
           message: event.error?.message ?? "upstream error",
@@ -419,7 +415,7 @@ export class OpenAIAdapter implements ProviderAdapter {
             event.type !== "response.text.done" &&
             event.type !== "response.audio.done" &&
             event.type !== "response.function_call_arguments.delta") {
-          console.log(`[${ts()}] [openai] Unhandled event: ${event.type}`)
+          log(`[openai] Unhandled event: ${event.type}`)
         }
     }
   }
