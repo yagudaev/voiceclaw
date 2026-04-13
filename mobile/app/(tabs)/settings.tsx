@@ -300,7 +300,7 @@ export default function SettingsScreen() {
     const isGemini = v.startsWith('gemini-')
     const currentIsGemini = realtimeVoice.charAt(0) === realtimeVoice.charAt(0).toUpperCase() && GEMINI_VOICES.includes(realtimeVoice as typeof GEMINI_VOICES[number])
     if (isGemini && !currentIsGemini) {
-      updateRealtimeVoice('Puck')
+      updateRealtimeVoice('Zephyr')
     } else if (!isGemini && currentIsGemini) {
       updateRealtimeVoice('sage')
     }
