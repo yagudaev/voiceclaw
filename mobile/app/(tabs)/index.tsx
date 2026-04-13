@@ -943,6 +943,7 @@ export default function ChatScreen() {
       model,
       brainAgent: 'kira',
       apiKey,
+      sessionKey: `voiceclaw:${conversationId}`,
       volume,
       deviceContext: {
         timezone,

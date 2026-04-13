@@ -31,7 +31,7 @@ export async function askBrain(
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${config.authToken}`,
-        "x-openclaw-session-key": `realtime:${config.sessionId}`,
+        "x-openclaw-session-key": config.sessionId,
       },
       body: JSON.stringify({
         model: "openclaw",

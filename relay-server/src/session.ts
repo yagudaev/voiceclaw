@@ -98,10 +98,11 @@ export class RelaySession {
       const brainStart = Date.now()
       log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
 
+      const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
       const result = await askBrain(query, {
         gatewayUrl,
         authToken,
-        sessionId: this.id,
+        sessionId: sessionKey,
       }, sendToClient, callId)
 
       const brainMs = Date.now() - brainStart
@@ -214,7 +215,8 @@ export class RelaySession {
 
     // Fire-and-forget — don't block cleanup
     const noop: SendToClient = () => {}
-    askBrain(prompt, { gatewayUrl, authToken, sessionId: this.id }, noop, "transcript-sync").catch((err) => {
+    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
+    askBrain(prompt, { gatewayUrl, authToken, sessionId: sessionKey }, noop, "transcript-sync").catch((err) => {
       logError(`[session:${this.id}] Transcript sync failed:`, err instanceof Error ? err.message : err)
     })
   }
