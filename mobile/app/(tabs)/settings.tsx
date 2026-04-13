@@ -14,11 +14,12 @@ import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIco
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
 
-type VoiceMode = 'vapi' | 'custom'
+type VoiceMode = 'vapi' | 'custom' | 'realtime'
 type STTProviderValue = 'apple' | 'deepgram'
 type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
+const REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
 
 const STAGE_COLORS = {
   stt: '#3b82f6',  // blue-500
@@ -49,6 +50,10 @@ export default function SettingsScreen() {
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState('Awx8TeMHHpDzbm42nIB6')
   const [openaiTtsApiKey, setOpenaiTtsApiKey] = useState('')
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
+
+  // Realtime mode settings
+  const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
+  const [realtimeVoice, setRealtimeVoice] = useState<typeof REALTIME_VOICES[number]>('alloy')
 
   // Debug mode
   const [debugMode, setDebugMode] = useState(false)
@@ -162,7 +167,13 @@ export default function SettingsScreen() {
 
       // Load voice pipeline settings
       const vm = await getSetting('voice_mode')
-      if (vm === 'vapi' || vm === 'custom') setVoiceMode(vm)
+      if (vm === 'vapi' || vm === 'custom' || vm === 'realtime') setVoiceMode(vm)
+      const rtUrl = await getSetting('realtime_server_url')
+      if (rtUrl) setRealtimeServerUrl(rtUrl)
+      const rtVoice = await getSetting('realtime_voice')
+      if (rtVoice && (REALTIME_VOICES as readonly string[]).includes(rtVoice)) {
+        setRealtimeVoice(rtVoice as typeof REALTIME_VOICES[number])
+      }
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
@@ -224,6 +235,16 @@ export default function SettingsScreen() {
   const updateOpenaiTtsVoice = useCallback((v: typeof OPENAI_TTS_VOICES[number]) => {
     setOpenaiTtsVoice(v)
     if (loadedRef.current) saveImmediate('openai_tts_voice', v)
+  }, [saveImmediate])
+
+  const updateRealtimeServerUrl = useCallback((v: string) => {
+    setRealtimeServerUrl(v)
+    if (loadedRef.current) saveDebounced('realtime_server_url', v)
+  }, [saveDebounced])
+
+  const updateRealtimeVoice = useCallback((v: typeof REALTIME_VOICES[number]) => {
+    setRealtimeVoice(v)
+    if (loadedRef.current) saveImmediate('realtime_voice', v)
   }, [saveImmediate])
 
   // Debounced save for text inputs
@@ -322,8 +343,9 @@ export default function SettingsScreen() {
             <Text className="text-sm text-muted-foreground">Voice Mode</Text>
             <SegmentedControl
               options={[
-                { label: 'Vapi All-in-One', value: 'vapi' as const },
-                { label: 'Custom Pipeline', value: 'custom' as const },
+                { label: 'Vapi', value: 'vapi' as const },
+                { label: 'Custom', value: 'custom' as const },
+                { label: 'Realtime', value: 'realtime' as const },
               ]}
               value={voiceMode}
               onChange={updateVoiceMode}
@@ -425,6 +447,40 @@ export default function SettingsScreen() {
                   </View>
                 </>
               )}
+            </>
+          )}
+
+          {voiceMode === 'realtime' && (
+            <>
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Relay Server URL</Text>
+                <Input
+                  placeholder="ws://localhost:8080/ws"
+                  value={realtimeServerUrl}
+                  onChangeText={updateRealtimeServerUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Voice</Text>
+                <OptionGroup
+                  options={REALTIME_VOICES.map((v) => ({ label: v, value: v }))}
+                  value={realtimeVoice}
+                  onChange={updateRealtimeVoice}
+                />
+              </View>
+
+              <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
+                <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup</Text>
+                <Text className="text-xs leading-5 text-muted-foreground">
+                  1. Run the relay server: yarn dev:server{'\n'}
+                  2. Configure OpenClaw gateway URL and auth token below{'\n'}
+                  3. The relay server validates your identity through OpenClaw
+                </Text>
+              </View>
             </>
           )}
         </Card>

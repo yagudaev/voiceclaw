@@ -10,9 +10,11 @@ import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
+import { useRealtime } from '@/lib/use-realtime'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
+import ExpoRealtimeAudioModule from '@/modules/expo-realtime-audio/src/ExpoRealtimeAudioModule'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
@@ -117,7 +119,7 @@ export default function ChatScreen() {
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
   const pendingLatencyRef = useRef<LatencyData | null>(null)
-  const activeVoiceModeRef = useRef<'vapi' | 'custom'>('vapi')
+  const activeVoiceModeRef = useRef<'vapi' | 'custom' | 'realtime'>('vapi')
   const activeProvidersRef = useRef<ProviderInfo | null>(null)
   const [pipelineDebugState, setPipelineDebugState] = useState(INITIAL_PIPELINE_DEBUG_STATE)
   const conversationIdRef = useRef<number | null>(null)
@@ -265,6 +267,46 @@ export default function ChatScreen() {
     },
     onLatencyUpdate: (latency) => {
       pendingLatencyRef.current = latency
+    },
+  })
+
+  const realtime = useRealtime({
+    onSessionReady: (sessionId) => {
+      console.log('[Realtime] Session ready:', sessionId)
+      setIsCallActive(true)
+      setIsConnecting(false)
+      soundsRef.current.playJoin()
+      // Start mic capture after session is ready
+      ExpoRealtimeAudioModule.startCapture()
+    },
+    onTranscriptDelta: (text, role) => {
+      setStreamingRole(role)
+      setStreamingText(text)
+    },
+    onTranscriptDone: (text, role) => {
+      setStreamingText(null)
+      const convId = conversationIdRef.current
+      if (convId && text) {
+        addMessage(convId, role, text, undefined, activeProvidersRef.current ?? undefined).then(() => {
+          loadMessagesRef.current()
+          if (role === 'user') maybeGenerateTitle(convId)
+        })
+      }
+    },
+    onTurnStarted: () => {
+      setIsThinking(false)
+    },
+    onTurnEnded: () => {
+      setIsThinking(false)
+    },
+    onError: (message, code) => {
+      console.error(`[Realtime] Error (${code}): ${message}`)
+      if (code === 401) {
+        const convId = conversationIdRef.current
+        if (convId) {
+          addMessage(convId, 'assistant', 'Authentication failed. Check your OpenClaw gateway URL and auth token in Settings.').then(() => loadMessagesRef.current())
+        }
+      }
     },
   })
 
@@ -615,7 +657,9 @@ export default function ChatScreen() {
     if (isCallActive) {
       userInitiatedEndRef.current = true
       cancelReconnect()
-      if (activeVoiceModeRef.current === 'custom') {
+      if (activeVoiceModeRef.current === 'realtime') {
+        stopRealtimeCall()
+      } else if (activeVoiceModeRef.current === 'custom') {
         stopCustomPipeline()
       } else {
         await ExpoVapiModule.stopCall()
@@ -635,7 +679,10 @@ export default function ChatScreen() {
         return
       }
 
-      if (voiceMode === 'custom') {
+      if (voiceMode === 'realtime') {
+        activeVoiceModeRef.current = 'realtime'
+        callStarted = await startRealtimeCall()
+      } else if (voiceMode === 'custom') {
         activeVoiceModeRef.current = 'custom'
         callStarted = await startCustomPipelineCall()
       } else {
@@ -824,6 +871,47 @@ export default function ChatScreen() {
     soundsRef.current.stopThinking()
     soundsRef.current.playEnd()
   }, [pipeline, setPipelineDebugPhase])
+
+  const startRealtimeCall = useCallback(async (): Promise<boolean> => {
+    if (!conversationId) return false
+
+    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const voice = (await getSetting('realtime_voice')) || 'alloy'
+    const gatewayUrl = await getSetting('openclaw_gateway_url')
+    const authToken = await getSetting('openclaw_auth_token')
+
+    if (!gatewayUrl || !authToken) {
+      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw gateway URL and auth token in Settings first.')
+      await loadMessages()
+      return false
+    }
+
+    activeProvidersRef.current = {
+      sttProvider: 'openai-realtime',
+      llmProvider: 'gpt-4o-mini-realtime',
+      ttsProvider: 'openai-realtime',
+    }
+
+    console.log('[Realtime] Starting session with', { serverUrl, voice, gatewayUrl: gatewayUrl.substring(0, 30) })
+    realtime.start({
+      serverUrl,
+      voice,
+      brainAgent: 'none',
+      openclawGatewayUrl: gatewayUrl,
+      openclawAuthToken: authToken,
+    })
+
+    return true
+  }, [conversationId, loadMessages, realtime])
+
+  const stopRealtimeCall = useCallback(() => {
+    realtime.stop()
+    activeProvidersRef.current = null
+    setIsCallActive(false)
+    setIsMuted(false)
+    setIsThinking(false)
+    soundsRef.current.playEnd()
+  }, [realtime])
 
   const handlePipelineInterrupt = useCallback(() => {
     setPipelineDebugState((current) => ({
