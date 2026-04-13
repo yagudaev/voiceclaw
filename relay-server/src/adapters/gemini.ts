@@ -29,6 +29,10 @@ export class GeminiAdapter implements ProviderAdapter {
     throw new Error("Gemini Live adapter is not implemented yet")
   }
 
+  getTranscript(): { role: "user" | "assistant", text: string }[] {
+    return []
+  }
+
   disconnect() {
     // no-op
   }

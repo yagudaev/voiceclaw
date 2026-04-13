@@ -3268,6 +3268,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@react-native-community/slider@npm:^5.2.0":
+  version: 5.2.0
+  resolution: "@react-native-community/slider@npm:5.2.0"
+  checksum: 10c0/58ec6a47b5aafefd98a61c79aeae05f1ab8371782eb497d9af665bf2f62a1c372da8fed6dead30e1d6c9e01bfb12bfdbafcde7890736f4f5d55502dabf2e01ad
+  languageName: node
+  linkType: hard
+
 "@react-native/assets-registry@npm:0.83.2":
   version: 0.83.2
   resolution: "@react-native/assets-registry@npm:0.83.2"
@@ -14049,6 +14056,7 @@ __metadata:
   resolution: "voiceclaw-mobile@workspace:mobile"
   dependencies:
     "@babel/core": "npm:^7.26.0"
+    "@react-native-community/slider": "npm:^5.2.0"
     "@react-navigation/native": "npm:^7.0.0"
     "@rn-primitives/avatar": "npm:^1.2.0"
     "@rn-primitives/portal": "npm:~1.3.0"

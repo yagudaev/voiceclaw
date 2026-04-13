@@ -7,7 +7,15 @@ import { buildInstructions } from "../instructions.js"
 import { getTools } from "../tools/index.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
-const MODEL = "gpt-4o-mini-realtime-preview"
+const MODEL = "gpt-realtime-mini"
+
+function ts() {
+  return new Date().toLocaleString("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, fractionalSecondDigits: 3,
+  }).replace(",", "")
+}
 const ROTATION_INTERVAL_MS = parseInt(process.env.ROTATION_INTERVAL_MS ?? String(50 * 60 * 1000), 10) // 50 min default
 const WATCHDOG_TIMEOUT_MS = 20_000 // 20 seconds with no audio out
 
@@ -19,6 +27,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private rotationTimer: ReturnType<typeof setTimeout> | null = null
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null
   private isRotating = false
+  private pendingToolCalls = 0
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
@@ -50,6 +59,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   sendToolResult(callId: string, output: string) {
+    this.pendingToolCalls = Math.max(0, this.pendingToolCalls - 1)
     this.sendUpstream({
       type: "conversation.item.create",
       item: {
@@ -59,6 +69,13 @@ export class OpenAIAdapter implements ProviderAdapter {
       },
     })
     this.sendUpstream({ type: "response.create" })
+    if (this.pendingToolCalls === 0) {
+      this.resetWatchdog()
+    }
+  }
+
+  getTranscript() {
+    return [...this.transcript]
   }
 
   disconnect() {
@@ -91,7 +108,11 @@ export class OpenAIAdapter implements ProviderAdapter {
       })
 
       this.upstream.on("message", (raw) => {
-        this.handleUpstreamEvent(JSON.parse(String(raw)))
+        try {
+          this.handleUpstreamEvent(JSON.parse(String(raw)))
+        } catch (err) {
+          console.error("[openai] Failed to parse upstream message:", err)
+        }
       })
 
       this.upstream.on("error", (err) => {
@@ -111,6 +132,16 @@ export class OpenAIAdapter implements ProviderAdapter {
   private configureSession(config: SessionConfigEvent, contextSummary?: string) {
     let instructions = buildInstructions(config)
 
+    // Inject conversation history from prior messages in this conversation
+    if (config.conversationHistory && config.conversationHistory.length > 0) {
+      const lines = config.conversationHistory.map(
+        (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`
+      ).join("\n")
+      // Keep last ~3000 chars to stay within instruction limits
+      const trimmed = lines.length > 3000 ? "...\n" + lines.slice(-3000) : lines
+      instructions += `\n\n## Prior Conversation (this session continues an ongoing chat)\n${trimmed}`
+    }
+
     // Inject context summary from previous session rotation
     if (contextSummary) {
       instructions += `\n\n## Conversation Context (from previous session)\n${contextSummary}`
@@ -123,7 +154,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       session: {
         modalities: ["text", "audio"],
         instructions,
-        voice: config.voice || "alloy",
+        voice: config.voice || "sage",
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: {
@@ -196,7 +227,11 @@ export class OpenAIAdapter implements ProviderAdapter {
       })
 
       this.upstream.on("message", (raw) => {
-        this.handleUpstreamEvent(JSON.parse(String(raw)))
+        try {
+          this.handleUpstreamEvent(JSON.parse(String(raw)))
+        } catch (err) {
+          console.error("[openai] Failed to parse upstream message:", err)
+        }
       })
 
       this.upstream.on("error", (err) => {
@@ -245,6 +280,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
   }
 
+  private pauseWatchdog() {
+    if (this.watchdogTimer) {
+      clearTimeout(this.watchdogTimer)
+      this.watchdogTimer = null
+    }
+  }
+
   private resetWatchdog() {
     if (this.watchdogTimer) {
       clearTimeout(this.watchdogTimer)
@@ -277,10 +319,10 @@ export class OpenAIAdapter implements ProviderAdapter {
     switch (event.type) {
       // Session lifecycle
       case "session.created":
-        console.log("[openai] Session created:", event.session?.id)
+        console.log(`[${ts()}] [openai] Session created: ${event.session?.id}`)
         break
       case "session.updated":
-        console.log("[openai] Session updated")
+        console.log(`[${ts()}] [openai] Session updated`)
         break
 
       // Audio output
@@ -306,7 +348,16 @@ export class OpenAIAdapter implements ProviderAdapter {
         })
         break
 
-      // User speech transcription
+      // User speech transcription (streaming deltas)
+      case "conversation.item.input_audio_transcription.delta":
+        this.sendToClient?.({
+          type: "transcript.delta",
+          text: event.delta,
+          role: "user",
+        })
+        break
+
+      // User speech transcription (final)
       case "conversation.item.input_audio_transcription.completed":
         this.transcript.push({ role: "user", text: event.transcript })
         this.sendToClient?.({
@@ -325,7 +376,9 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Function calls
       case "response.function_call_arguments.done":
-        console.log(`[openai] Tool call: ${event.name} (${event.call_id})`)
+        console.log(`[${ts()}] [openai] Tool call: ${event.name} (${event.call_id})`)
+        this.pendingToolCalls++
+        this.pauseWatchdog()
         this.sendToClient?.({
           type: "tool.call",
           callId: event.call_id,
@@ -343,7 +396,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Errors
       case "error":
-        console.error("[openai] Error:", event.error?.message ?? event)
+        console.error(`[${ts()}] [openai] Error: ${event.error?.message ?? event}`)
         this.sendToClient?.({
           type: "error",
           message: event.error?.message ?? "upstream error",
@@ -366,7 +419,7 @@ export class OpenAIAdapter implements ProviderAdapter {
             event.type !== "response.text.done" &&
             event.type !== "response.audio.done" &&
             event.type !== "response.function_call_arguments.delta") {
-          console.log(`[openai] Unhandled event: ${event.type}`)
+          console.log(`[${ts()}] [openai] Unhandled event: ${event.type}`)
         }
     }
   }

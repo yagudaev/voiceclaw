@@ -8,14 +8,15 @@ export interface RealtimeConfig {
   serverUrl: string
   voice: string
   brainAgent: 'kira' | 'none'
-  openclawGatewayUrl: string
-  openclawAuthToken: string
+  apiKey: string
+  volume?: number
   deviceContext?: {
     timezone?: string
     locale?: string
     deviceModel?: string
   }
   instructionsOverride?: string
+  conversationHistory?: { role: 'user' | 'assistant', text: string }[]
 }
 
 export interface RealtimeCallbacks {
@@ -39,6 +40,7 @@ export interface RealtimeControls {
 
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
+  const configRef = useRef<RealtimeConfig | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -50,6 +52,17 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       wsRef.current?.close()
       wsRef.current = null
     }
+  }, [])
+
+  // Forward native logs to JS console
+  useEffect(() => {
+    const sub = ExpoRealtimeAudioModule.addListener(
+      'onLog',
+      (event: { message: string }) => {
+        console.log('[native]', event.message)
+      },
+    )
+    return () => sub.remove()
   }, [])
 
   // Listen for audio from native module and forward to WebSocket
@@ -76,6 +89,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'session.ready':
         setSessionId(data.sessionId)
         setIsConnected(true)
+        if (configRef.current?.volume && typeof ExpoRealtimeAudioModule.setVolume === 'function') {
+          ExpoRealtimeAudioModule.setVolume(configRef.current.volume)
+        }
         cb.onSessionReady?.(data.sessionId)
         break
 
@@ -126,6 +142,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       wsRef.current.close()
     }
 
+    configRef.current = config
     console.log(`[useRealtime] Connecting to ${config.serverUrl}`)
     const ws = new WebSocket(config.serverUrl)
     wsRef.current = ws
@@ -137,10 +154,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         provider: 'openai',
         voice: config.voice,
         brainAgent: config.brainAgent,
-        openclawGatewayUrl: config.openclawGatewayUrl,
-        openclawAuthToken: config.openclawAuthToken,
+        apiKey: config.apiKey,
         deviceContext: config.deviceContext,
         instructionsOverride: config.instructionsOverride,
+        conversationHistory: config.conversationHistory,
       }))
     }
 

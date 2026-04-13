@@ -18,27 +18,45 @@ export async function askBrain(
 ): Promise<string> {
   const url = `${config.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`
 
-  console.log(`[brain] Sending query to ${url}: ${query.substring(0, 80)}...`)
+  const ts = () => new Date().toLocaleString("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, fractionalSecondDigits: 3,
+  }).replace(",", "")
+  console.log(`[${ts()}] [brain] Sending query to ${url}: ${query.substring(0, 80)}...`)
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${config.authToken}`,
-      "x-openclaw-session-key": `realtime:${config.sessionId}`,
-    },
-    body: JSON.stringify({
-      model: "kira",
-      messages: [
-        { role: "user", content: query },
-      ],
-      stream: true,
-    }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120_000) // 2 min — gateway may need exec approval
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${config.authToken}`,
+        "x-openclaw-session-key": `realtime:${config.sessionId}`,
+      },
+      body: JSON.stringify({
+        model: "openclaw",
+        messages: [
+          { role: "user", content: query },
+        ],
+        stream: true,
+      }),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    clearTimeout(timeout)
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return JSON.stringify({ error: "Brain agent request timed out" })
+    }
+    throw err
+  }
 
   if (!response.ok) {
     const text = await response.text()
-    console.error(`[brain] Error ${response.status}: ${text.substring(0, 200)}`)
+    console.error(`[${ts()}] [brain] Error ${response.status}: ${text.substring(0, 200)}`)
     return JSON.stringify({ error: `Brain agent returned ${response.status}` })
   }
 
@@ -91,6 +109,7 @@ export async function askBrain(
     }
   }
 
-  console.log(`[brain] Response: ${fullResponse.substring(0, 100)}...`)
+  clearTimeout(timeout)
+  console.log(`[${ts()}] [brain] Response: ${fullResponse.substring(0, 100)}...`)
   return fullResponse || JSON.stringify({ error: "Empty response from brain agent" })
 }

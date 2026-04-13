@@ -26,6 +26,7 @@ import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Pla
 const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
 const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
 const THINKING_MESSAGE_ID = -2
+const LISTENING_MESSAGE_ID = -3
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \
@@ -108,6 +109,7 @@ export default function ChatScreen() {
   const [showLatency, setShowLatency] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false)
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
@@ -280,8 +282,9 @@ export default function ChatScreen() {
       ExpoRealtimeAudioModule.startCapture()
     },
     onTranscriptDelta: (text, role) => {
+      if (role === 'user') setIsUserSpeaking(false)
       setStreamingRole(role)
-      setStreamingText(text)
+      setStreamingText(prev => (prev ?? '') + text)
     },
     onTranscriptDone: (text, role) => {
       setStreamingText(null)
@@ -295,9 +298,11 @@ export default function ChatScreen() {
     },
     onTurnStarted: () => {
       setIsThinking(false)
+      setIsUserSpeaking(true)
     },
     onTurnEnded: () => {
       setIsThinking(false)
+      setIsUserSpeaking(false)
     },
     onError: (message, code) => {
       console.error(`[Realtime] Error (${code}): ${message}`)
@@ -876,12 +881,14 @@ export default function ChatScreen() {
     if (!conversationId) return false
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
-    const voice = (await getSetting('realtime_voice')) || 'alloy'
-    const gatewayUrl = await getSetting('openclaw_gateway_url')
-    const authToken = await getSetting('openclaw_auth_token')
+    const voice = (await getSetting('realtime_voice')) || 'sage'
+    const apiKey = await getSetting('realtime_api_key')
+    const volumeStr = await getSetting('realtime_volume')
+    const volume = volumeStr ? parseFloat(volumeStr) : 2.0
+    const systemPrompt = (await getSetting('system_prompt')) || ''
 
-    if (!gatewayUrl || !authToken) {
-      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw gateway URL and auth token in Settings first.')
+    if (!apiKey) {
+      await addMessage(conversationId, 'assistant', 'Please configure your API key in the Realtime settings first.')
       await loadMessages()
       return false
     }
@@ -892,13 +899,29 @@ export default function ChatScreen() {
       ttsProvider: 'openai-realtime',
     }
 
-    console.log('[Realtime] Starting session with', { serverUrl, voice, gatewayUrl: gatewayUrl.substring(0, 30) })
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale
+
+    // Load recent messages for conversation continuity
+    const allMessages = await getMessages(conversationId)
+    const recentMessages = allMessages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-20)
+      .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
+
+    console.log('[Realtime] Starting session with', { serverUrl, voice, historyMessages: recentMessages.length })
     realtime.start({
       serverUrl,
       voice,
       brainAgent: 'kira',
-      openclawGatewayUrl: gatewayUrl,
-      openclawAuthToken: authToken,
+      apiKey,
+      volume,
+      deviceContext: {
+        timezone,
+        locale,
+      },
+      instructionsOverride: systemPrompt || undefined,
+      conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
     })
 
     return true
@@ -931,6 +954,8 @@ export default function ChatScreen() {
   let displayMessages = messages as Message[]
   if (streamingText !== null) {
     displayMessages = [...messages, { id: -1, conversation_id: conversationId ?? 0, role: streamingRole, content: streamingText, created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null, stt_provider: null, llm_provider: null, tts_provider: null }]
+  } else if (isUserSpeaking) {
+    displayMessages = [...messages, { id: LISTENING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'user' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null, stt_provider: null, llm_provider: null, tts_provider: null }]
   } else if (isThinking) {
     displayMessages = [...messages, { id: THINKING_MESSAGE_ID, conversation_id: conversationId ?? 0, role: 'assistant' as const, content: '', created_at: Date.now(), stt_latency_ms: null, llm_latency_ms: null, tts_latency_ms: null, stt_provider: null, llm_provider: null, tts_provider: null }]
   }
@@ -963,7 +988,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <>
             <MessageBubble message={item} />
-            {showLatency && item.id !== THINKING_MESSAGE_ID && <LatencyBadge message={item} />}
+            {showLatency && item.id !== THINKING_MESSAGE_ID && item.id !== LISTENING_MESSAGE_ID && <LatencyBadge message={item} />}
           </>
         )}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
@@ -1187,6 +1212,44 @@ function ThinkingDots() {
   )
 }
 
+function ListeningDots() {
+  const scale1 = useRef(new Animated.Value(0.4)).current
+  const scale2 = useRef(new Animated.Value(0.4)).current
+  const scale3 = useRef(new Animated.Value(0.4)).current
+
+  useEffect(() => {
+    const pulse = (dot: Animated.Value) =>
+      Animated.sequence([
+        Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0.4, duration: 300, useNativeDriver: true }),
+      ])
+
+    const loop = Animated.loop(
+      Animated.stagger(150, [pulse(scale1), pulse(scale2), pulse(scale3)])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [scale1, scale2, scale3])
+
+  return (
+    <View className="flex-row items-center gap-2 py-0.5">
+      {[scale1, scale2, scale3].map((s, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: '#333',
+            opacity: s,
+            transform: [{ scale: s }],
+          }}
+        />
+      ))}
+    </View>
+  )
+}
+
 function ChatImage({ url }: { url: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -1222,6 +1285,16 @@ function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const isThinkingPlaceholder = message.id === THINKING_MESSAGE_ID
 
+  if (message.id === LISTENING_MESSAGE_ID) {
+    return (
+      <View testID="listening-indicator" className="mb-3 px-4 items-end">
+        <View className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-3">
+          <ListeningDots />
+        </View>
+      </View>
+    )
+  }
+
   if (isThinkingPlaceholder) {
     return (
       <View testID="thinking-indicator" className="mb-3 px-4 items-start">
@@ -1250,6 +1323,9 @@ function MessageBubble({ message }: { message: Message }) {
           ) : null
         )}
       </View>
+      <Text className="mt-1 text-[10px] text-muted-foreground/50">
+        {formatMessageTime(message.created_at)}
+      </Text>
     </View>
   )
 }
@@ -1298,4 +1374,9 @@ function parseContent(content: string): ContentPart[] {
   }
 
   return expanded.length > 0 ? expanded : [{ type: 'text', text: content }]
+}
+
+function formatMessageTime(epochMs: number): string {
+  const d = new Date(epochMs)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }

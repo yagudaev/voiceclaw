@@ -31,6 +31,10 @@ export class EchoAdapter implements ProviderAdapter {
     // no-op for echo
   }
 
+  getTranscript() {
+    return []
+  }
+
   disconnect() {
     this.sendToClient = null
   }
