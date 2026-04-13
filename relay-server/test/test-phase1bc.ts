@@ -62,7 +62,7 @@ function startMockGateway(): Promise<Server> {
         const auth = req.headers.authorization ?? ""
         if (auth === `Bearer ${VALID_TOKEN}`) {
           res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ data: [{ id: "kira" }] }))
+          res.end(JSON.stringify({ data: [{ id: "openclaw" }] }))
         } else {
           res.writeHead(401, { "Content-Type": "application/json" })
           res.end(JSON.stringify({ error: "unauthorized" }))

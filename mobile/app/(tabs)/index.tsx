@@ -941,7 +941,7 @@ export default function ChatScreen() {
       serverUrl,
       voice,
       model,
-      brainAgent: 'kira',
+      brainAgent: 'enabled',
       apiKey,
       sessionKey: `voiceclaw:${conversationId}`,
       volume,

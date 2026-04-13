@@ -51,7 +51,7 @@ export function getTestPageHTML(host: string): string {
     <label>Brain Agent</label>
     <select id="brain-agent">
       <option value="none">None</option>
-      <option value="kira">Kira</option>
+      <option value="enabled">Enabled</option>
     </select>
   </div>
 

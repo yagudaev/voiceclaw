@@ -196,7 +196,7 @@ export class RelaySession {
     if (transcript.length === 0) return
 
     const lines = transcript.map(
-      (t) => `${t.role === "user" ? "User" : "Kira"}: ${t.text}`
+      (t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text}`
     ).join("\n")
 
     const durationMin = Math.round((Date.now() - this.startedAt) / 60_000)
