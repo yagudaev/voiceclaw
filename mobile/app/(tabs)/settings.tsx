@@ -20,8 +20,8 @@ type STTProviderValue = 'apple' | 'deepgram'
 type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
-const REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
-const REALTIME_VOICE_LABELS: Record<typeof REALTIME_VOICES[number], string> = {
+const OPENAI_REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
+const OPENAI_REALTIME_VOICE_LABELS: Record<typeof OPENAI_REALTIME_VOICES[number], string> = {
   alloy: 'alloy (F)',
   ash: 'ash (M)',
   ballad: 'ballad (M)',
@@ -31,6 +31,20 @@ const REALTIME_VOICE_LABELS: Record<typeof REALTIME_VOICES[number], string> = {
   shimmer: 'shimmer (F)',
   verse: 'verse (M)',
 }
+
+const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
+const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
+  Puck: 'Puck (M)',
+  Charon: 'Charon (M)',
+  Kore: 'Kore (F)',
+  Fenrir: 'Fenrir (M)',
+  Aoede: 'Aoede (F)',
+  Leda: 'Leda (F)',
+  Orus: 'Orus (M)',
+  Zephyr: 'Zephyr (F)',
+}
+
+type RealtimeModel = 'gpt-realtime-mini' | 'gpt-realtime-1.5' | 'gemini-3.1-flash-live-preview'
 
 const STAGE_COLORS = {
   stt: '#3b82f6',  // blue-500
@@ -64,10 +78,10 @@ export default function SettingsScreen() {
 
   // Realtime mode settings
   const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
-  const [realtimeVoice, setRealtimeVoice] = useState<typeof REALTIME_VOICES[number]>('sage')
+  const [realtimeVoice, setRealtimeVoice] = useState<string>('sage')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
-  const [realtimeModel, setRealtimeModel] = useState<'gpt-realtime-mini' | 'gpt-realtime-1.5'>('gpt-realtime-mini')
+  const [realtimeModel, setRealtimeModel] = useState<RealtimeModel>('gpt-realtime-mini')
   const [realtimeTestStatus, setRealtimeTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [realtimeTestError, setRealtimeTestError] = useState('')
 
@@ -187,15 +201,15 @@ export default function SettingsScreen() {
       const rtUrl = await getSetting('realtime_server_url')
       if (rtUrl) setRealtimeServerUrl(rtUrl)
       const rtVoice = await getSetting('realtime_voice')
-      if (rtVoice && (REALTIME_VOICES as readonly string[]).includes(rtVoice)) {
-        setRealtimeVoice(rtVoice as typeof REALTIME_VOICES[number])
+      if (rtVoice) {
+        setRealtimeVoice(rtVoice)
       }
       const rtKey = await getSetting('realtime_api_key')
       if (rtKey) setRealtimeApiKey(rtKey)
       const rtVol = await getSetting('realtime_volume')
       if (rtVol) setRealtimeVolume(parseFloat(rtVol))
       const rtModel = await getSetting('realtime_model')
-      if (rtModel === 'gpt-realtime-mini' || rtModel === 'gpt-realtime-1.5') setRealtimeModel(rtModel)
+      if (rtModel === 'gpt-realtime-mini' || rtModel === 'gpt-realtime-1.5' || rtModel === 'gemini-3.1-flash-live-preview') setRealtimeModel(rtModel as RealtimeModel)
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
@@ -264,7 +278,7 @@ export default function SettingsScreen() {
     if (loadedRef.current) saveDebounced('realtime_server_url', v)
   }, [saveDebounced])
 
-  const updateRealtimeVoice = useCallback((v: typeof REALTIME_VOICES[number]) => {
+  const updateRealtimeVoice = useCallback((v: string) => {
     setRealtimeVoice(v)
     if (loadedRef.current) saveImmediate('realtime_voice', v)
   }, [saveImmediate])
@@ -279,10 +293,18 @@ export default function SettingsScreen() {
     if (loadedRef.current) saveImmediate('realtime_volume', String(v))
   }, [saveImmediate])
 
-  const updateRealtimeModel = useCallback((v: 'gpt-realtime-mini' | 'gpt-realtime-1.5') => {
+  const updateRealtimeModel = useCallback((v: RealtimeModel) => {
     setRealtimeModel(v)
     if (loadedRef.current) saveImmediate('realtime_model', v)
-  }, [saveImmediate])
+    // Reset voice to a sensible default when switching providers
+    const isGemini = v.startsWith('gemini-')
+    const currentIsGemini = realtimeVoice.charAt(0) === realtimeVoice.charAt(0).toUpperCase() && GEMINI_VOICES.includes(realtimeVoice as typeof GEMINI_VOICES[number])
+    if (isGemini && !currentIsGemini) {
+      updateRealtimeVoice('Puck')
+    } else if (!isGemini && currentIsGemini) {
+      updateRealtimeVoice('sage')
+    }
+  }, [saveImmediate, realtimeVoice, updateRealtimeVoice])
 
   const testRealtimeConnection = useCallback(async () => {
     setRealtimeTestStatus('testing')
@@ -537,10 +559,11 @@ export default function SettingsScreen() {
 
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">Model</Text>
-                <SegmentedControl
+                <OptionGroup
                   options={[
-                    { label: 'gpt-realtime-mini', value: 'gpt-realtime-mini' as const },
-                    { label: 'gpt-realtime-1.5', value: 'gpt-realtime-1.5' as const },
+                    { label: 'GPT Realtime Mini', value: 'gpt-realtime-mini' as const },
+                    { label: 'GPT Realtime 1.5', value: 'gpt-realtime-1.5' as const },
+                    { label: 'Gemini 3.1 Flash Live', value: 'gemini-3.1-flash-live-preview' as const },
                   ]}
                   value={realtimeModel}
                   onChange={updateRealtimeModel}
@@ -549,11 +572,19 @@ export default function SettingsScreen() {
 
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">Voice</Text>
-                <OptionGroup
-                  options={REALTIME_VOICES.map((v) => ({ label: REALTIME_VOICE_LABELS[v], value: v }))}
-                  value={realtimeVoice}
-                  onChange={updateRealtimeVoice}
-                />
+                {realtimeModel.startsWith('gemini-') ? (
+                  <OptionGroup
+                    options={GEMINI_VOICES.map((v) => ({ label: GEMINI_VOICE_LABELS[v], value: v }))}
+                    value={realtimeVoice}
+                    onChange={updateRealtimeVoice}
+                  />
+                ) : (
+                  <OptionGroup
+                    options={OPENAI_REALTIME_VOICES.map((v) => ({ label: OPENAI_REALTIME_VOICE_LABELS[v], value: v }))}
+                    value={realtimeVoice}
+                    onChange={updateRealtimeVoice}
+                  />
+                )}
               </View>
 
               <View className="gap-2">
