@@ -13,12 +13,24 @@ import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCus
 import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIcon, WifiIcon, WifiOffIcon } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
+import Slider from '@react-native-community/slider'
 
-type VoiceMode = 'vapi' | 'custom'
+type VoiceMode = 'vapi' | 'custom' | 'realtime'
 type STTProviderValue = 'apple' | 'deepgram'
 type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
+const REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
+const REALTIME_VOICE_LABELS: Record<typeof REALTIME_VOICES[number], string> = {
+  alloy: 'alloy (F)',
+  ash: 'ash (M)',
+  ballad: 'ballad (M)',
+  coral: 'coral (F)',
+  echo: 'echo (M)',
+  sage: 'sage (F)',
+  shimmer: 'shimmer (F)',
+  verse: 'verse (M)',
+}
 
 const STAGE_COLORS = {
   stt: '#3b82f6',  // blue-500
@@ -41,7 +53,7 @@ export default function SettingsScreen() {
   const [pluginStatus, setPluginStatus] = useState<PluginConnectionStatus>('disconnected')
 
   // Voice Pipeline state
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('vapi')
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('realtime')
   const [sttProvider, setSttProvider] = useState<STTProviderValue>('apple')
   const [ttsProvider, setTtsProvider] = useState<TTSProviderValue>('apple')
   const [deepgramApiKey, setDeepgramApiKey] = useState('')
@@ -49,6 +61,15 @@ export default function SettingsScreen() {
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState('Awx8TeMHHpDzbm42nIB6')
   const [openaiTtsApiKey, setOpenaiTtsApiKey] = useState('')
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
+
+  // Realtime mode settings
+  const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
+  const [realtimeVoice, setRealtimeVoice] = useState<typeof REALTIME_VOICES[number]>('sage')
+  const [realtimeApiKey, setRealtimeApiKey] = useState('')
+  const [realtimeVolume, setRealtimeVolume] = useState(2.0)
+  const [realtimeModel, setRealtimeModel] = useState<'gpt-realtime-mini' | 'gpt-realtime-1.5'>('gpt-realtime-mini')
+  const [realtimeTestStatus, setRealtimeTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [realtimeTestError, setRealtimeTestError] = useState('')
 
   // Debug mode
   const [debugMode, setDebugMode] = useState(false)
@@ -162,7 +183,19 @@ export default function SettingsScreen() {
 
       // Load voice pipeline settings
       const vm = await getSetting('voice_mode')
-      if (vm === 'vapi' || vm === 'custom') setVoiceMode(vm)
+      if (vm === 'vapi' || vm === 'custom' || vm === 'realtime') setVoiceMode(vm)
+      const rtUrl = await getSetting('realtime_server_url')
+      if (rtUrl) setRealtimeServerUrl(rtUrl)
+      const rtVoice = await getSetting('realtime_voice')
+      if (rtVoice && (REALTIME_VOICES as readonly string[]).includes(rtVoice)) {
+        setRealtimeVoice(rtVoice as typeof REALTIME_VOICES[number])
+      }
+      const rtKey = await getSetting('realtime_api_key')
+      if (rtKey) setRealtimeApiKey(rtKey)
+      const rtVol = await getSetting('realtime_volume')
+      if (rtVol) setRealtimeVolume(parseFloat(rtVol))
+      const rtModel = await getSetting('realtime_model')
+      if (rtModel === 'gpt-realtime-mini' || rtModel === 'gpt-realtime-1.5') setRealtimeModel(rtModel)
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
@@ -225,6 +258,56 @@ export default function SettingsScreen() {
     setOpenaiTtsVoice(v)
     if (loadedRef.current) saveImmediate('openai_tts_voice', v)
   }, [saveImmediate])
+
+  const updateRealtimeServerUrl = useCallback((v: string) => {
+    setRealtimeServerUrl(v)
+    if (loadedRef.current) saveDebounced('realtime_server_url', v)
+  }, [saveDebounced])
+
+  const updateRealtimeVoice = useCallback((v: typeof REALTIME_VOICES[number]) => {
+    setRealtimeVoice(v)
+    if (loadedRef.current) saveImmediate('realtime_voice', v)
+  }, [saveImmediate])
+
+  const updateRealtimeApiKey = useCallback((v: string) => {
+    setRealtimeApiKey(v)
+    if (loadedRef.current) saveDebounced('realtime_api_key', v)
+  }, [saveDebounced])
+
+  const updateRealtimeVolume = useCallback((v: number) => {
+    setRealtimeVolume(v)
+    if (loadedRef.current) saveImmediate('realtime_volume', String(v))
+  }, [saveImmediate])
+
+  const updateRealtimeModel = useCallback((v: 'gpt-realtime-mini' | 'gpt-realtime-1.5') => {
+    setRealtimeModel(v)
+    if (loadedRef.current) saveImmediate('realtime_model', v)
+  }, [saveImmediate])
+
+  const testRealtimeConnection = useCallback(async () => {
+    setRealtimeTestStatus('testing')
+    setRealtimeTestError('')
+    try {
+      // Derive HTTP URL from WebSocket URL: ws:// → http://, wss:// → https://, strip /ws path
+      const httpUrl = realtimeServerUrl
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/^ws:\/\//, 'http://')
+        .replace(/\/ws\/?$/, '')
+      const res = await fetch(`${httpUrl}/health`, { method: 'GET' })
+      if (res.ok) {
+        const body = await res.json()
+        if (body.status === 'ok') {
+          setRealtimeTestStatus('ok')
+          return
+        }
+      }
+      setRealtimeTestStatus('error')
+      setRealtimeTestError(`Server returned ${res.status}`)
+    } catch (err) {
+      setRealtimeTestStatus('error')
+      setRealtimeTestError(err instanceof Error ? err.message : 'Connection failed')
+    }
+  }, [realtimeServerUrl])
 
   // Debounced save for text inputs
   const updateVapiPublicKey = useCallback((v: string) => {
@@ -322,8 +405,9 @@ export default function SettingsScreen() {
             <Text className="text-sm text-muted-foreground">Voice Mode</Text>
             <SegmentedControl
               options={[
-                { label: 'Vapi All-in-One', value: 'vapi' as const },
-                { label: 'Custom Pipeline', value: 'custom' as const },
+                { label: 'Realtime', value: 'realtime' as const },
+                { label: 'Custom', value: 'custom' as const },
+                { label: 'Vapi', value: 'vapi' as const },
               ]}
               value={voiceMode}
               onChange={updateVoiceMode}
@@ -427,6 +511,117 @@ export default function SettingsScreen() {
               )}
             </>
           )}
+
+          {voiceMode === 'realtime' && (
+            <>
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Relay Server URL</Text>
+                <Input
+                  placeholder="ws://localhost:8080/ws"
+                  value={realtimeServerUrl}
+                  onChangeText={updateRealtimeServerUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">API Key</Text>
+                <SecretInput
+                  value={realtimeApiKey}
+                  onChangeText={updateRealtimeApiKey}
+                  placeholder="Enter your API key"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Model</Text>
+                <SegmentedControl
+                  options={[
+                    { label: 'gpt-realtime-mini', value: 'gpt-realtime-mini' as const },
+                    { label: 'gpt-realtime-1.5', value: 'gpt-realtime-1.5' as const },
+                  ]}
+                  value={realtimeModel}
+                  onChange={updateRealtimeModel}
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Voice</Text>
+                <OptionGroup
+                  options={REALTIME_VOICES.map((v) => ({ label: REALTIME_VOICE_LABELS[v], value: v }))}
+                  value={realtimeVoice}
+                  onChange={updateRealtimeVoice}
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Speaker Volume: {realtimeVolume.toFixed(1)}x</Text>
+                <Slider
+                  minimumValue={0.5}
+                  maximumValue={3.0}
+                  step={0.1}
+                  value={realtimeVolume}
+                  onSlidingComplete={(v) => updateRealtimeVolume(Math.round(v * 10) / 10)}
+                  minimumTrackTintColor="#3b82f6"
+                  maximumTrackTintColor="#4b5563"
+                />
+                <View className="flex-row justify-between">
+                  <Text className="text-xs text-muted-foreground">Quiet</Text>
+                  <Text className="text-xs text-muted-foreground">Max</Text>
+                </View>
+              </View>
+
+              <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
+                <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup</Text>
+                <Text className="text-xs leading-5 text-muted-foreground">
+                  1. Run the relay server: cd relay-server && yarn dev{'\n'}
+                  2. Enter the relay server URL shown on startup{'\n'}
+                  3. Enter your API key for authentication
+                </Text>
+              </View>
+
+              <View className={`flex-row items-center justify-between rounded-lg border px-3 py-2 ${
+                realtimeTestStatus === 'ok' ? 'border-green-500/30 bg-green-500/5'
+                : realtimeTestStatus === 'error' ? 'border-destructive/50 bg-destructive/5'
+                : 'border-input'
+              }`}>
+                <View className="flex-row items-center gap-2">
+                  {realtimeTestStatus === 'testing' ? (
+                    <ActivityIndicator size="small" color="#888" />
+                  ) : (
+                    <Icon
+                      as={realtimeTestStatus === 'ok' ? WifiIcon : WifiOffIcon}
+                      size={16}
+                      className={
+                        realtimeTestStatus === 'ok' ? 'text-green-500'
+                        : realtimeTestStatus === 'error' ? 'text-destructive'
+                        : 'text-muted-foreground'
+                      }
+                    />
+                  )}
+                  <Text className={`text-sm ${
+                    realtimeTestStatus === 'ok' ? 'text-green-500'
+                    : realtimeTestStatus === 'error' ? 'text-destructive'
+                    : 'text-muted-foreground'
+                  }`}>
+                    {realtimeTestStatus === 'ok' ? 'Connected'
+                    : realtimeTestStatus === 'testing' ? 'Testing...'
+                    : realtimeTestStatus === 'error' ? realtimeTestError
+                    : 'Not tested'}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={testRealtimeConnection}
+                  disabled={realtimeTestStatus === 'testing'}
+                  className={`rounded-md px-3 py-1 ${realtimeTestStatus === 'testing' ? 'opacity-50' : ''} bg-primary/10`}
+                >
+                  <Text className="text-sm font-medium text-primary">Test</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
         </Card>
 
         {voiceMode === 'vapi' && (
@@ -479,7 +674,7 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        <Card testID="openclaw-config-card" className="gap-4 p-4">
+        {voiceMode !== 'realtime' && <Card testID="openclaw-config-card" className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">OpenClaw Configuration</Text>
 
           <View className="gap-2">
@@ -575,7 +770,7 @@ export default function SettingsScreen() {
               </View>
             </>
           )}
-        </Card>
+        </Card>}
 
         <Card testID="debug-mode-card" className="gap-2 p-4">
           <View className="flex-row items-center justify-between">
