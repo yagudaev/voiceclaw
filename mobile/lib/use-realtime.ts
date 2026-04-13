@@ -10,6 +10,7 @@ export interface RealtimeConfig {
   model?: string
   brainAgent: 'kira' | 'none'
   apiKey: string
+  sessionKey?: string
   volume?: number
   deviceContext?: {
     timezone?: string
@@ -159,6 +160,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         model: config.model,
         brainAgent: config.brainAgent,
         apiKey: config.apiKey,
+        sessionKey: config.sessionKey,
         deviceContext: config.deviceContext,
         instructionsOverride: config.instructionsOverride,
         conversationHistory: config.conversationHistory,

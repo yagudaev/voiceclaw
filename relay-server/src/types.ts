@@ -16,6 +16,7 @@ export interface SessionConfigEvent {
   model?: string
   brainAgent: "kira" | "none"
   apiKey: string
+  sessionKey?: string
   openclawGatewayUrl?: string
   openclawAuthToken?: string
   deviceContext?: {
