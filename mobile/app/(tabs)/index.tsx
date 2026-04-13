@@ -896,7 +896,7 @@ export default function ChatScreen() {
     realtime.start({
       serverUrl,
       voice,
-      brainAgent: 'none',
+      brainAgent: 'kira',
       openclawGatewayUrl: gatewayUrl,
       openclawAuthToken: authToken,
     })
