@@ -53,6 +53,21 @@ export function getTools(config: SessionConfigEvent): RealtimeTool[] {
   return tools
 }
 
+// Gemini function declaration format (no type:"function" wrapper)
+interface GeminiFunctionDeclaration {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export function getGeminiTools(config: SessionConfigEvent): GeminiFunctionDeclaration[] {
+  return getTools(config).map((t) => ({
+    name: t.name,
+    description: t.description,
+    parameters: t.parameters,
+  }))
+}
+
 /** Handle synchronous server-side tools. Returns null for async tools like ask_brain. */
 export function handleToolCall(
   name: string,
