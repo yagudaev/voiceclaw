@@ -3,6 +3,7 @@
 
 import type { SessionConfigEvent } from "../types.js"
 import type { SendToClient } from "../adapters/types.js"
+import { log, error as logError } from "../log.js"
 
 interface BrainConfig {
   gatewayUrl: string
@@ -18,12 +19,7 @@ export async function askBrain(
 ): Promise<string> {
   const url = `${config.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`
 
-  const ts = () => new Date().toLocaleString("en-CA", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false, fractionalSecondDigits: 3,
-  }).replace(",", "")
-  console.log(`[${ts()}] [brain] Sending query to ${url}: ${query.substring(0, 80)}...`)
+  log(`[brain] Sending query to ${url}: ${query.substring(0, 80)}...`)
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000) // 2 min — gateway may need exec approval
@@ -56,7 +52,7 @@ export async function askBrain(
 
   if (!response.ok) {
     const text = await response.text()
-    console.error(`[${ts()}] [brain] Error ${response.status}: ${text.substring(0, 200)}`)
+    logError(`[brain] Error ${response.status}: ${text.substring(0, 200)}`)
     return JSON.stringify({ error: `Brain agent returned ${response.status}` })
   }
 
@@ -89,7 +85,7 @@ export async function askBrain(
 
         // Check for step completion signals (live progress injection)
         if (parsed.type === "step_complete" && parsed.summary) {
-          console.log(`[brain] Step complete: ${parsed.summary}`)
+          log(`[brain] Step complete: ${parsed.summary}`)
           sendToClient({
             type: "tool.progress",
             callId,
@@ -110,6 +106,6 @@ export async function askBrain(
   }
 
   clearTimeout(timeout)
-  console.log(`[${ts()}] [brain] Response: ${fullResponse.substring(0, 100)}...`)
+  log(`[brain] Response: ${fullResponse.substring(0, 100)}...`)
   return fullResponse || JSON.stringify({ error: "Empty response from brain agent" })
 }

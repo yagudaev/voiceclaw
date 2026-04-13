@@ -7,6 +7,7 @@ import ExpoRealtimeAudioModule from '@/modules/expo-realtime-audio/src/ExpoRealt
 export interface RealtimeConfig {
   serverUrl: string
   voice: string
+  model?: string
   brainAgent: 'kira' | 'none'
   apiKey: string
   volume?: number
@@ -28,6 +29,7 @@ export interface RealtimeCallbacks {
   onTurnEnded?: () => void
   onSessionReady?: (sessionId: string) => void
   onSessionEnded?: (summary: string) => void
+  onDisconnect?: () => void
   onError?: (message: string, code: number) => void
 }
 
@@ -41,6 +43,7 @@ export interface RealtimeControls {
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
+  const userStoppedRef = useRef(false)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -153,6 +156,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         type: 'session.config',
         provider: 'openai',
         voice: config.voice,
+        model: config.model,
         brainAgent: config.brainAgent,
         apiKey: config.apiKey,
         deviceContext: config.deviceContext,
@@ -169,15 +173,20 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     }
 
     ws.onclose = () => {
-      console.log('[useRealtime] WebSocket closed')
+      console.log('[useRealtime] WebSocket closed, userStopped:', userStoppedRef.current)
       setIsConnected(false)
       setSessionId(null)
       ExpoRealtimeAudioModule.stopCapture()
       ExpoRealtimeAudioModule.stopPlayback()
+      if (!userStoppedRef.current) {
+        callbacksRef.current.onDisconnect?.()
+      }
+      userStoppedRef.current = false
     }
   }, [handleMessage])
 
   const stop = useCallback(() => {
+    userStoppedRef.current = true
     ExpoRealtimeAudioModule.stopCapture()
     ExpoRealtimeAudioModule.stopPlayback()
     wsRef.current?.close()

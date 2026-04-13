@@ -5,6 +5,7 @@ import { networkInterfaces } from "node:os"
 import { WebSocketServer } from "ws"
 import { RelaySession } from "./session.js"
 import { getTestPageHTML } from "./test-page.js"
+import { log } from "./log.js"
 
 const PORT = parseInt(process.env.PORT ?? "8080", 10)
 
@@ -28,7 +29,7 @@ wss.on("connection", (ws) => {
 })
 
 function shutdown() {
-  console.log("\nShutting down...")
+  log("Shutting down...")
   wss.clients.forEach((ws) => ws.close())
   wss.close()
   server.close(() => process.exit(0))
@@ -41,12 +42,12 @@ process.on("SIGINT", shutdown)
 
 server.listen(PORT, () => {
   const lanIP = getLanIP()
-  console.log(`Relay server listening on http://localhost:${PORT}`)
-  console.log(`Test page: http://localhost:${PORT}/test`)
+  log(`Relay server listening on http://localhost:${PORT}`)
+  log(`Test page: http://localhost:${PORT}/test`)
   if (lanIP) {
-    console.log(`\nConnect from your phone:`)
-    console.log(`  ws://${lanIP}:${PORT}/ws`)
-    console.log(`  Test page: http://${lanIP}:${PORT}/test`)
+    log(`Connect from your phone:`)
+    log(`  ws://${lanIP}:${PORT}/ws`)
+    log(`  Test page: http://${lanIP}:${PORT}/test`)
   }
 })
 

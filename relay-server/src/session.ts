@@ -11,6 +11,7 @@ import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
 import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
+import { log, error as logError } from "./log.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
@@ -26,10 +27,10 @@ export class RelaySession {
     this.ws.on("message", (raw) => this.handleMessage(raw))
     this.ws.on("close", () => this.cleanup())
     this.ws.on("error", (err) => {
-      console.error(`[session:${this.id}] WebSocket error:`, err.message)
+      logError(`[session:${this.id}] WebSocket error:`, err.message)
       this.cleanup()
     })
-    console.log(`[session:${this.id}] Client connected`)
+    log(`[session:${this.id}] Client connected`)
   }
 
   private send(event: RelayEvent) {
@@ -58,7 +59,7 @@ export class RelaySession {
   }
 
   private handleServerToolCall(callId: string, name: string, args: string) {
-    console.log(`[session:${this.id}] Handling server-side tool: ${name}`)
+    log(`[session:${this.id}] Handling server-side tool: ${name}`)
 
     // Synchronous tools
     const syncResult = handleToolCall(name, args)
@@ -95,7 +96,7 @@ export class RelaySession {
       const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
 
       const brainStart = Date.now()
-      console.log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
+      log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
 
       const result = await askBrain(query, {
         gatewayUrl,
@@ -104,11 +105,11 @@ export class RelaySession {
       }, sendToClient, callId)
 
       const brainMs = Date.now() - brainStart
-      console.log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
+      log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
       this.adapter?.sendToolResult(callId, result)
     } catch (err) {
       const message = err instanceof Error ? err.message : "brain agent call failed"
-      console.error(`[session:${this.id}] ask_brain error:`, message)
+      logError(`[session:${this.id}] ask_brain error:`, message)
       this.adapter?.sendToolResult(callId, JSON.stringify({ error: message }))
     }
   }
@@ -149,7 +150,7 @@ export class RelaySession {
   private async handleSessionConfig(config: SessionConfigEvent) {
     // Disconnect previous adapter if session.config is sent again
     if (this.adapter) {
-      console.log(`[session:${this.id}] Replacing existing adapter`)
+      log(`[session:${this.id}] Replacing existing adapter`)
       this.adapter.disconnect()
       this.adapter = null
     }
@@ -157,13 +158,13 @@ export class RelaySession {
     // Validate API key
     const expectedKey = process.env.RELAY_API_KEY
     if (!config.apiKey || (expectedKey && config.apiKey !== expectedKey)) {
-      console.log(`[session:${this.id}] Auth failed — invalid API key`)
+      log(`[session:${this.id}] Auth failed — invalid API key`)
       this.sendError("unauthorized", 401)
       this.ws.close()
       return
     }
 
-    console.log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter`)
+    log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter (model=${config.model || "default"})`)
     this.config = config
     this.startedAt = Date.now()
 
@@ -171,17 +172,17 @@ export class RelaySession {
       this.adapter = createAdapter(config.provider)
       await this.adapter.connect(config, (event) => this.handleRelayEvent(event))
       this.send({ type: "session.ready", sessionId: this.id })
-      console.log(`[session:${this.id}] Session ready`)
+      log(`[session:${this.id}] Session ready`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "adapter connection failed"
-      console.error(`[session:${this.id}] Adapter error:`, message)
+      logError(`[session:${this.id}] Adapter error:`, message)
       this.sendError(message, 500)
       this.ws.close()
     }
   }
 
   private cleanup() {
-    console.log(`[session:${this.id}] Disconnecting`)
+    log(`[session:${this.id}] Disconnecting`)
     this.syncTranscriptToBrain()
     this.adapter?.disconnect()
     this.adapter = null
@@ -209,12 +210,12 @@ export class RelaySession {
     const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
     const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
 
-    console.log(`[session:${this.id}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)
+    log(`[session:${this.id}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)
 
     // Fire-and-forget — don't block cleanup
     const noop: SendToClient = () => {}
     askBrain(prompt, { gatewayUrl, authToken, sessionId: this.id }, noop, "transcript-sync").catch((err) => {
-      console.error(`[session:${this.id}] Transcript sync failed:`, err instanceof Error ? err.message : err)
+      logError(`[session:${this.id}] Transcript sync failed:`, err instanceof Error ? err.message : err)
     })
   }
 }

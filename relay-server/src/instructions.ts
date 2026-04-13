@@ -5,6 +5,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import type { SessionConfigEvent } from "./types.js"
+import { log, warn } from "./log.js"
 
 const OPENCLAW_WORKSPACE = process.env.OPENCLAW_WORKSPACE
   || join(homedir(), ".openclaw", "workspace")
@@ -51,7 +52,7 @@ export function buildInstructions(config: SessionConfigEvent): string {
 
   if (config.brainAgent !== "none") {
     const identity = loadAgentIdentity()
-    console.log(`[instructions] Loaded agent identity (${identity.length} chars): ${identity.substring(0, 100)}...`)
+    log(`[instructions] Loaded agent identity (${identity.length} chars): ${identity.substring(0, 100)}...`)
     parts.push(identity)
     parts.push(BRAIN_CAPABILITIES)
   } else {
@@ -79,7 +80,7 @@ export function buildInstructions(config: SessionConfigEvent): string {
   }
 
   const instructions = parts.join("\n\n")
-  console.log(`[instructions] Full prompt (${instructions.length} chars):\n---\n${instructions}\n---`)
+  log(`[instructions] Full prompt (${instructions.length} chars):\n---\n${instructions}\n---`)
   return instructions
 }
 
@@ -118,7 +119,7 @@ function loadFile(filename: string): string | null {
   try {
     return readFileSync(path, "utf-8")
   } catch {
-    console.warn(`[instructions] Failed to read ${path}`)
+    warn(`[instructions] Failed to read ${path}`)
     return null
   }
 }

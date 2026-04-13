@@ -53,7 +53,7 @@ export default function SettingsScreen() {
   const [pluginStatus, setPluginStatus] = useState<PluginConnectionStatus>('disconnected')
 
   // Voice Pipeline state
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('vapi')
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('realtime')
   const [sttProvider, setSttProvider] = useState<STTProviderValue>('apple')
   const [ttsProvider, setTtsProvider] = useState<TTSProviderValue>('apple')
   const [deepgramApiKey, setDeepgramApiKey] = useState('')
@@ -67,6 +67,7 @@ export default function SettingsScreen() {
   const [realtimeVoice, setRealtimeVoice] = useState<typeof REALTIME_VOICES[number]>('sage')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
+  const [realtimeModel, setRealtimeModel] = useState<'gpt-realtime-mini' | 'gpt-realtime-1.5'>('gpt-realtime-mini')
   const [realtimeTestStatus, setRealtimeTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [realtimeTestError, setRealtimeTestError] = useState('')
 
@@ -193,6 +194,8 @@ export default function SettingsScreen() {
       if (rtKey) setRealtimeApiKey(rtKey)
       const rtVol = await getSetting('realtime_volume')
       if (rtVol) setRealtimeVolume(parseFloat(rtVol))
+      const rtModel = await getSetting('realtime_model')
+      if (rtModel === 'gpt-realtime-mini' || rtModel === 'gpt-realtime-1.5') setRealtimeModel(rtModel)
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
@@ -274,6 +277,11 @@ export default function SettingsScreen() {
   const updateRealtimeVolume = useCallback((v: number) => {
     setRealtimeVolume(v)
     if (loadedRef.current) saveImmediate('realtime_volume', String(v))
+  }, [saveImmediate])
+
+  const updateRealtimeModel = useCallback((v: 'gpt-realtime-mini' | 'gpt-realtime-1.5') => {
+    setRealtimeModel(v)
+    if (loadedRef.current) saveImmediate('realtime_model', v)
   }, [saveImmediate])
 
   const testRealtimeConnection = useCallback(async () => {
@@ -397,9 +405,9 @@ export default function SettingsScreen() {
             <Text className="text-sm text-muted-foreground">Voice Mode</Text>
             <SegmentedControl
               options={[
-                { label: 'Vapi', value: 'vapi' as const },
-                { label: 'Custom', value: 'custom' as const },
                 { label: 'Realtime', value: 'realtime' as const },
+                { label: 'Custom', value: 'custom' as const },
+                { label: 'Vapi', value: 'vapi' as const },
               ]}
               value={voiceMode}
               onChange={updateVoiceMode}
@@ -524,6 +532,18 @@ export default function SettingsScreen() {
                   value={realtimeApiKey}
                   onChangeText={updateRealtimeApiKey}
                   placeholder="Enter your API key"
+                />
+              </View>
+
+              <View className="gap-2">
+                <Text className="text-sm text-muted-foreground">Model</Text>
+                <SegmentedControl
+                  options={[
+                    { label: 'gpt-realtime-mini', value: 'gpt-realtime-mini' as const },
+                    { label: 'gpt-realtime-1.5', value: 'gpt-realtime-1.5' as const },
+                  ]}
+                  value={realtimeModel}
+                  onChange={updateRealtimeModel}
                 />
               </View>
 

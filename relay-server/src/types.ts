@@ -13,6 +13,7 @@ export interface SessionConfigEvent {
   type: "session.config"
   provider: "openai" | "gemini"
   voice: string
+  model?: string
   brainAgent: "kira" | "none"
   apiKey: string
   openclawGatewayUrl?: string

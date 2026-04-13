@@ -121,8 +121,10 @@ export default function ChatScreen() {
   const lastCallOverridesRef = useRef<Record<string, unknown> | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
   const pendingLatencyRef = useRef<LatencyData | null>(null)
-  const activeVoiceModeRef = useRef<'vapi' | 'custom' | 'realtime'>('vapi')
+  const activeVoiceModeRef = useRef<'vapi' | 'custom' | 'realtime'>('realtime')
   const activeProvidersRef = useRef<ProviderInfo | null>(null)
+  const cancelReconnectRef = useRef<(() => void) | null>(null)
+  const triggerReconnectRef = useRef<(() => void) | null>(null)
   const [pipelineDebugState, setPipelineDebugState] = useState(INITIAL_PIPELINE_DEBUG_STATE)
   const conversationIdRef = useRef<number | null>(null)
   conversationIdRef.current = conversationId
@@ -277,6 +279,7 @@ export default function ChatScreen() {
       console.log('[Realtime] Session ready:', sessionId)
       setIsCallActive(true)
       setIsConnecting(false)
+      cancelReconnectRef.current?.()
       soundsRef.current.playJoin()
       // Start mic capture after session is ready
       ExpoRealtimeAudioModule.startCapture()
@@ -303,6 +306,11 @@ export default function ChatScreen() {
     onTurnEnded: () => {
       setIsThinking(false)
       setIsUserSpeaking(false)
+    },
+
+    onDisconnect: () => {
+      console.log('[Realtime] Unexpected disconnect, triggering auto-reconnect')
+      triggerReconnectRef.current?.()
     },
     onError: (message, code) => {
       console.error(`[Realtime] Error (${code}): ${message}`)
@@ -341,6 +349,22 @@ export default function ChatScreen() {
   transcriptBufferRef.current = transcriptBuffer
 
   const reconnectCall = useCallback(async () => {
+    const voiceMode = activeVoiceModeRef.current
+
+    if (voiceMode === 'realtime') {
+      console.log('[Chat] Reconnecting Realtime session')
+      setIsConnecting(true)
+      try {
+        const success = await startRealtimeCall()
+        if (!success) throw new Error('Realtime reconnect failed')
+      } catch (e) {
+        setIsConnecting(false)
+        throw e
+      }
+      return
+    }
+
+    // Vapi reconnect
     const assistantId = lastAssistantIdRef.current
     if (!assistantId) {
       throw new Error('No previous call configuration to reconnect with')
@@ -367,11 +391,13 @@ export default function ChatScreen() {
       }
       throw e
     }
-  }, [])
+  }, [startRealtimeCall])
 
   const { state: reconnectState, trigger: triggerReconnect, cancel: cancelReconnect, retry: manualRetry } = useAutoReconnect({
     onReconnect: reconnectCall,
   })
+  cancelReconnectRef.current = cancelReconnect
+  triggerReconnectRef.current = triggerReconnect
 
   const ensureVapiReady = useCallback(async (): Promise<boolean> => {
     if (vapiReady) return true
@@ -882,6 +908,7 @@ export default function ChatScreen() {
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const voice = (await getSetting('realtime_voice')) || 'sage'
+    const model = (await getSetting('realtime_model')) || 'gpt-realtime-mini'
     const apiKey = await getSetting('realtime_api_key')
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
@@ -909,10 +936,11 @@ export default function ChatScreen() {
       .slice(-20)
       .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
 
-    console.log('[Realtime] Starting session with', { serverUrl, voice, historyMessages: recentMessages.length })
+    console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length })
     realtime.start({
       serverUrl,
       voice,
+      model,
       brainAgent: 'kira',
       apiKey,
       volume,
@@ -928,13 +956,15 @@ export default function ChatScreen() {
   }, [conversationId, loadMessages, realtime])
 
   const stopRealtimeCall = useCallback(() => {
+    cancelReconnect()
     realtime.stop()
     activeProvidersRef.current = null
     setIsCallActive(false)
     setIsMuted(false)
     setIsThinking(false)
+    setIsUserSpeaking(false)
     soundsRef.current.playEnd()
-  }, [realtime])
+  }, [realtime, cancelReconnect])
 
   const handlePipelineInterrupt = useCallback(() => {
     setPipelineDebugState((current) => ({
