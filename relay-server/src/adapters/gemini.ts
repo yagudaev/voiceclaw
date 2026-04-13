@@ -37,6 +37,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private pendingToolCalls = 0
   private currentAssistantText = ""
   private currentUserText = ""
+  private userSpeaking = false
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
@@ -159,6 +160,10 @@ export class GeminiAdapter implements ProviderAdapter {
     const tools = getGeminiTools(config)
     const voice = resolveVoice(config.voice)
 
+    // Gemini Live setup message structure:
+    // - generationConfig: responseModalities, speechConfig (generation settings)
+    // - outputAudioTranscription, inputAudioTranscription: at setup root
+    // - systemInstruction, tools, realtimeInputConfig: at setup root
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const setup: Record<string, any> = {
       model: `models/${model}`,
@@ -235,26 +240,33 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private handleServerContent(content: any) {
-    // Model audio/text output
+    const keys = Object.keys(content).join(", ")
+    log(`[gemini] serverContent: ${keys}`)
+
+    // Model audio output — only extract inlineData (audio)
+    // Do NOT emit transcript from modelTurn.parts[].text — outputTranscription handles that
     if (content.modelTurn?.parts) {
       for (const part of content.modelTurn.parts) {
         if (part.inlineData) {
-          // Gemini outputs 24kHz PCM16 — matches client expectation
           this.sendToClient?.({ type: "audio.delta", data: part.inlineData.data })
           this.resetWatchdog()
-        }
-        if (part.text) {
-          this.sendToClient?.({
-            type: "transcript.delta",
-            text: part.text,
-            role: "assistant",
-          })
         }
       }
     }
 
     // Output transcription (model speech → text)
+    // Flush any accumulated user text first — the model is now responding
     if (content.outputTranscription?.text) {
+      if (this.currentUserText) {
+        this.transcript.push({ role: "user", text: this.currentUserText })
+        this.sendToClient?.({
+          type: "transcript.done",
+          text: this.currentUserText,
+          role: "user",
+        })
+        this.currentUserText = ""
+      }
+      this.userSpeaking = false
       this.currentAssistantText += content.outputTranscription.text
       this.sendToClient?.({
         type: "transcript.delta",
@@ -264,17 +276,13 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     // Input transcription (user speech → text)
+    // Synthesize turn.started so client stops playback (prevents echo)
     if (content.inputTranscription?.text) {
-      this.currentUserText += content.inputTranscription.text
-      this.sendToClient?.({
-        type: "transcript.delta",
-        text: content.inputTranscription.text,
-        role: "user",
-      })
-    }
-
-    // Turn complete — flush accumulated transcriptions
-    if (content.turnComplete) {
+      if (!this.userSpeaking) {
+        this.userSpeaking = true
+        this.sendToClient?.({ type: "turn.started" })
+      }
+      // Flush any accumulated assistant text — user is speaking again
       if (this.currentAssistantText) {
         this.transcript.push({ role: "assistant", text: this.currentAssistantText })
         this.sendToClient?.({
@@ -283,6 +291,45 @@ export class GeminiAdapter implements ProviderAdapter {
           role: "assistant",
         })
         this.currentAssistantText = ""
+      }
+      this.currentUserText += content.inputTranscription.text
+      this.sendToClient?.({
+        type: "transcript.delta",
+        text: content.inputTranscription.text,
+        role: "user",
+      })
+    }
+
+    // Turn complete — flush accumulated transcriptions (user first, then assistant)
+    if (content.turnComplete) {
+      if (this.currentUserText) {
+        this.transcript.push({ role: "user", text: this.currentUserText })
+        this.sendToClient?.({
+          type: "transcript.done",
+          text: this.currentUserText,
+          role: "user",
+        })
+        this.currentUserText = ""
+      }
+      if (this.currentAssistantText) {
+        this.transcript.push({ role: "assistant", text: this.currentAssistantText })
+        this.sendToClient?.({
+          type: "transcript.done",
+          text: this.currentAssistantText,
+          role: "assistant",
+        })
+        this.currentAssistantText = ""
+      }
+      this.userSpeaking = false
+      this.sendToClient?.({ type: "turn.ended" })
+    }
+
+    // Interrupted (barge-in) — flush both user and assistant text
+    if (content.interrupted) {
+      log("[gemini] Response interrupted by user")
+      if (!this.userSpeaking) {
+        this.userSpeaking = true
+        this.sendToClient?.({ type: "turn.started" })
       }
       if (this.currentUserText) {
         this.transcript.push({ role: "user", text: this.currentUserText })
@@ -293,12 +340,6 @@ export class GeminiAdapter implements ProviderAdapter {
         })
         this.currentUserText = ""
       }
-      this.sendToClient?.({ type: "turn.ended" })
-    }
-
-    // Interrupted (barge-in)
-    if (content.interrupted) {
-      log("[gemini] Response interrupted by user")
       if (this.currentAssistantText) {
         this.transcript.push({ role: "assistant", text: this.currentAssistantText + "..." })
         this.sendToClient?.({
@@ -369,12 +410,12 @@ export class GeminiAdapter implements ProviderAdapter {
 // --- helpers ---
 
 function resolveVoice(voice?: string): string {
-  if (!voice) return "Puck"
+  if (!voice) return "Zephyr"
   // If it's already a Gemini voice name, normalize casing
   const match = GEMINI_VOICES.find((v) => v.toLowerCase() === voice.toLowerCase())
   if (match) return match
   // Map from OpenAI voice names
-  return VOICE_MAP[voice.toLowerCase()] || "Puck"
+  return VOICE_MAP[voice.toLowerCase()] || "Zephyr"
 }
 
 function downsample24to16(base64Audio: string): string {
