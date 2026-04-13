@@ -64,8 +64,8 @@ The relay server holds STS provider API keys (e.g., `OPENAI_API_KEY`) and acts a
 The relay server has no auth system of its own — it delegates authentication to [OpenClaw](https://github.com/yagudaev/openclaw):
 
 1. Mobile sends its existing OpenClaw credentials (`openclawGatewayUrl` + `openclawAuthToken`) when connecting to the relay
-2. Relay validates the token by calling the OpenClaw gateway health endpoint
-3. Valid token → session proceeds. Invalid → connection rejected.
+2. Relay validates the token by calling `GET <gatewayUrl>/v1/models` with the bearer token
+3. Valid token (200 + JSON) → session proceeds. Invalid → connection rejected.
 
 This means **the `OPENAI_API_KEY` is only accessible to authenticated OpenClaw users**. No separate relay credentials or user database required.
 

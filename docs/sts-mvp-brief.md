@@ -25,7 +25,7 @@ Mobile App ◄──────────────────────
                                     │                     │
                                     │   Tool Router       │
                                     │  ┌───────────────┐  │
-                                    │  │ OpenClaw/Kira  │──┼──► POST /voiceclaw/v1/chat/completions
+                                    │  │ OpenClaw/Kira  │──┼──► POST /v1/chat/completions
                                     │  ├───────────────┤  │
                                     │  │ Hermes/Holly   │──┼──► POST http://127.0.0.1:8642/v1/chat/completions
                                     │  └───────────────┘  │
@@ -102,7 +102,7 @@ Scaffold `relay-server/` as a TypeScript Express + ws app.
 - `relay-server/setup.sh` — interactive setup script that prompts for `OPENAI_API_KEY`, validates it against OpenAI's API, writes `.env`
 - `.env.example` with documented vars for manual setup
 - Express server with `ws` WebSocket endpoint at `ws://localhost:8080/ws`
-- On `session.config`: validate `openclawAuthToken` against `openclawGatewayUrl/voiceclaw/health`
+- On `session.config`: validate `openclawAuthToken` against `openclawGatewayUrl/v1/models`
 - If auth fails → send `error { message: "unauthorized", code: 401 }`, close connection
 - If auth passes → reply with `session.ready`, proceed
 - Echo back any `audio.append` as `audio.delta` (loopback)
@@ -137,8 +137,8 @@ Scaffold `relay-server/` as a TypeScript Express + ws app.
 The relay has no auth system of its own — OpenClaw is the identity provider. On connect:
 
 1. Client sends `session.config` with `openclawGatewayUrl` + `openclawAuthToken`
-2. Relay validates by calling `GET <gatewayUrl>/voiceclaw/health` with the token
-3. 200 → valid user, session proceeds. 401 → relay sends `error { message: "unauthorized", code: 401 }` and closes.
+2. Relay validates by calling `GET <gatewayUrl>/v1/models` with `Authorization: Bearer <token>`
+3. 200 + JSON response → valid user, session proceeds. Non-200 or HTML response → relay sends `error { message: "unauthorized", code: 401 }` and closes.
 4. No token → reject immediately.
 
 This means the `OPENAI_API_KEY` on the relay is only accessible to authenticated OpenClaw users. The relay env only needs `OPENAI_API_KEY` — no separate relay secret or user database.
@@ -251,7 +251,7 @@ Relay → streams SSE from brain agent
 This requires brain agents to signal step completions in their SSE stream. Convention: a streamed chunk containing a JSON object with `"type": "step_complete"` and a `summary` field.
 
 **OpenClaw/Kira Integration (MVP):**
-- Endpoint: `POST <gatewayUrl>/voiceclaw/v1/chat/completions`
+- Endpoint: `POST <gatewayUrl>/v1/chat/completions`
 - Auth: `Authorization: Bearer <authToken>`
 - Session: `x-openclaw-session-key: realtime:<sessionId>`
 - Format: OpenAI-compatible SSE streaming
