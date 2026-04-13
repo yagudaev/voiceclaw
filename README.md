@@ -27,6 +27,13 @@ yarn ios:device       # run on connected device
 yarn build:web        # production build
 ```
 
+### Relay Server Setup
+
+```bash
+./relay-server/setup.sh   # prompts for OPENAI_API_KEY, validates, writes .env
+yarn dev:server           # start the relay server on ws://localhost:8080
+```
+
 ## STS Provider Costs
 
 VoiceClaw uses speech-to-speech (STS) models via a relay server. Here's what it costs:
