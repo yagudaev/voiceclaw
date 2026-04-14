@@ -8,6 +8,7 @@ export type ClientEvent =
   | ResponseCreateEvent
   | ResponseCancelEvent
   | ToolResultEvent
+  | ClientTimingEvent
 
 export interface SessionConfigEvent {
   type: "session.config"
@@ -50,6 +51,15 @@ export interface ToolResultEvent {
   type: "tool.result"
   callId: string
   output: string
+}
+
+// Emitted by the mobile client to attribute latency across the pipeline
+// (e.g., mic-open → first-audio-chunk, turn-started → first-tts-sample).
+// Relay attaches these to the active Langfuse generation span as metadata.
+export interface ClientTimingEvent {
+  type: "client.timing"
+  phase: string
+  ms: number
 }
 
 // Relay → Client events

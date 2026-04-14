@@ -167,6 +167,9 @@ export class RelaySession {
         this.tracer.endToolCall(event.callId, event.output)
         this.adapter?.sendToolResult(event.callId, event.output)
         break
+      case "client.timing":
+        this.tracer.attachClientTiming(event.phase, event.ms)
+        break
       default:
         this.sendError(`unknown event type: ${(event as { type: string }).type}`, 400)
     }
