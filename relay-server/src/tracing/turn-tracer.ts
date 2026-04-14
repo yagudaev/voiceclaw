@@ -10,6 +10,7 @@
 // All methods no-op when Langfuse is not initialized, so callers don't
 // need to guard every site.
 
+import { randomUUID } from "node:crypto"
 import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
 
@@ -19,10 +20,15 @@ export class TurnTracer {
   private model: string | null = null
 
   private activeGeneration: LangfuseGeneration | null = null
+  private activeTurnId: string | null = null
   private activeToolSpans = new Map<string, LangfuseTool>()
 
   private currentUserText = ""
   private currentAssistantText = ""
+
+  getActiveTurnId(): string | null {
+    return this.activeTurnId
+  }
 
   startSession(sessionId: string, userId: string | null, model: string | null) {
     this.sessionId = sessionId
@@ -43,6 +49,7 @@ export class TurnTracer {
     // them via metadata.langfuseSessionId is the Langchain integration pattern
     // and does NOT populate the trace's session field in the @langfuse/tracing
     // direct SDK.
+    this.activeTurnId = randomUUID()
     propagateAttributes(
       {
         ...(this.sessionId ? { sessionId: this.sessionId } : {}),
@@ -51,7 +58,10 @@ export class TurnTracer {
       () => {
         this.activeGeneration = startObservation(
           "voice-turn",
-          { model: this.model ?? undefined },
+          {
+            model: this.model ?? undefined,
+            metadata: { turnId: this.activeTurnId },
+          },
           { asType: "generation" },
         )
       },
@@ -59,10 +69,12 @@ export class TurnTracer {
   }
 
   appendUserText(text: string) {
+    if (!this.activeGeneration) return
     this.currentUserText += text
   }
 
   appendAssistantText(text: string) {
+    if (!this.activeGeneration) return
     this.currentAssistantText += text
   }
 
@@ -90,8 +102,11 @@ export class TurnTracer {
     this.activeToolSpans.delete(callId)
   }
 
-  attachClientTiming(phase: string, ms: number) {
+  attachClientTiming(phase: string, ms: number, turnId?: string) {
     if (!this.activeGeneration) return
+    // Drop timings for a stale turn rather than attributing them to the wrong
+    // generation. Missing turnId means legacy client — best-effort attach.
+    if (turnId && turnId !== this.activeTurnId) return
     this.activeGeneration.update({
       metadata: { [`client.${phase}_ms`]: ms },
     })
@@ -126,6 +141,7 @@ export class TurnTracer {
     })
     this.activeGeneration.end()
     this.activeGeneration = null
+    this.activeTurnId = null
   }
 
   endSession() {
