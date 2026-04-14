@@ -6,6 +6,9 @@
 //   turn.ended        → close the generation
 //   tool.call / result → nested tool spans
 //   client.timing     → attrs on the active generation
+//   usage.metrics     → attrs on the active generation (buffered briefly
+//                       after turn.ended since providers emit usage
+//                       metadata separately from the end-of-turn marker)
 //
 // All methods no-op when Langfuse is not initialized, so callers don't
 // need to guard every site.
@@ -13,6 +16,14 @@
 import { randomUUID } from "node:crypto"
 import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
+
+// How long to keep the generation object around after endTurn() so trailing
+// usage.metrics / client.timing events from the same turn can still attach.
+// Gemini in particular fans usageMetadata as an independent upstream message
+// that can land milliseconds after turnComplete. Keep this small — tokens
+// dropped on a 2s flush are far cheaper than blocking a turn's visibility
+// in Langfuse for seconds.
+const PENDING_FLUSH_MS = 2000
 
 export class TurnTracer {
   private sessionId: string | null = null
@@ -22,6 +33,7 @@ export class TurnTracer {
   private activeGeneration: LangfuseGeneration | null = null
   private activeTurnId: string | null = null
   private activeToolSpans = new Map<string, LangfuseTool>()
+  private pendingEnd: { generation: LangfuseGeneration, turnId: string, timer: ReturnType<typeof setTimeout> } | null = null
 
   private currentUserText = ""
   private currentAssistantText = ""
@@ -40,6 +52,9 @@ export class TurnTracer {
     if (!isLangfuseEnabled()) return
     // Close any leftover generation (defensive — shouldn't happen if turn.ended fires)
     this.endTurn()
+    // Any still-pending trailing updates from the prior turn must be flushed
+    // before a new generation takes over as the target for attach* calls.
+    this.flushPending()
 
     this.currentUserText = ""
     this.currentAssistantText = ""
@@ -103,13 +118,9 @@ export class TurnTracer {
   }
 
   attachClientTiming(phase: string, ms: number, turnId?: string) {
-    if (!this.activeGeneration) return
-    // Drop timings for a stale turn rather than attributing them to the wrong
-    // generation. Missing turnId means legacy client — best-effort attach.
-    if (turnId && turnId !== this.activeTurnId) return
-    this.activeGeneration.update({
-      metadata: { [`client.${phase}_ms`]: ms },
-    })
+    const target = this.resolveTarget(turnId)
+    if (!target) return
+    target.update({ metadata: { [`client.${phase}_ms`]: ms } })
   }
 
   attachUsage(usage: {
@@ -118,15 +129,16 @@ export class TurnTracer {
     totalTokens?: number
     inputAudioTokens?: number
     outputAudioTokens?: number
-  }) {
-    if (!this.activeGeneration) return
+  }, turnId?: string) {
+    const target = this.resolveTarget(turnId)
+    if (!target) return
     const usageDetails: Record<string, number> = {}
     if (usage.promptTokens != null) usageDetails.input = usage.promptTokens
     if (usage.completionTokens != null) usageDetails.output = usage.completionTokens
     if (usage.totalTokens != null) usageDetails.total = usage.totalTokens
     if (usage.inputAudioTokens != null) usageDetails.input_audio = usage.inputAudioTokens
     if (usage.outputAudioTokens != null) usageDetails.output_audio = usage.outputAudioTokens
-    this.activeGeneration.update({ usageDetails })
+    target.update({ usageDetails })
   }
 
   endTurn(errorMessage?: string) {
@@ -139,18 +151,48 @@ export class TurnTracer {
       output: this.currentAssistantText || undefined,
       ...(errorMessage ? { level: "ERROR" as const, statusMessage: errorMessage } : {}),
     })
-    this.activeGeneration.end()
+    // Keep the generation around briefly so trailing usage.metrics /
+    // client.timing can still attach before we call .end() and hand the
+    // span off to the exporter. Any earlier pending flushes first.
+    this.flushPending()
+    const generation = this.activeGeneration
+    const turnId = this.activeTurnId ?? ""
+    this.pendingEnd = {
+      generation,
+      turnId,
+      timer: setTimeout(() => this.flushPending(), PENDING_FLUSH_MS),
+    }
     this.activeGeneration = null
     this.activeTurnId = null
   }
 
   endSession() {
     this.endTurn()
+    this.flushPending()
     for (const [callId, span] of this.activeToolSpans) {
       span.update({ level: "WARNING", statusMessage: "tool span closed without result" })
       span.end()
       this.activeToolSpans.delete(callId)
     }
+  }
+
+  private resolveTarget(turnId?: string): LangfuseGeneration | null {
+    // Live turn — if a turnId is supplied, must match.
+    if (this.activeGeneration && (!turnId || turnId === this.activeTurnId)) {
+      return this.activeGeneration
+    }
+    // Recently-ended turn — usage/timing from the tail of the last turn.
+    if (this.pendingEnd && (!turnId || turnId === this.pendingEnd.turnId)) {
+      return this.pendingEnd.generation
+    }
+    return null
+  }
+
+  private flushPending() {
+    if (!this.pendingEnd) return
+    clearTimeout(this.pendingEnd.timer)
+    this.pendingEnd.generation.end()
+    this.pendingEnd = null
   }
 }
 
