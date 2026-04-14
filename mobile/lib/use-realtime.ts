@@ -153,9 +153,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
     ws.onopen = () => {
       console.log('[useRealtime] WebSocket connected, sending session.config')
+      const provider = config.model?.startsWith('gemini-') ? 'gemini' : 'openai'
       ws.send(JSON.stringify({
         type: 'session.config',
-        provider: 'openai',
+        provider,
         voice: config.voice,
         model: config.model,
         brainAgent: config.brainAgent,

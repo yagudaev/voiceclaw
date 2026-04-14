@@ -44,6 +44,7 @@ export function getTestPageHTML(host: string): string {
     <select id="provider">
       <option value="echo">Echo (loopback test)</option>
       <option value="openai" selected>OpenAI Realtime</option>
+      <option value="gemini">Gemini Live</option>
     </select>
   </div>
 
@@ -67,6 +68,15 @@ export function getTestPageHTML(host: string): string {
   </div>
 
   <div class="section">
+    <label>Model</label>
+    <select id="model">
+      <option value="gpt-realtime-mini" selected>GPT Realtime Mini</option>
+      <option value="gpt-realtime-1.5">GPT Realtime 1.5</option>
+      <option value="gemini-3.1-flash-live-preview">Gemini 3.1 Flash Live</option>
+    </select>
+  </div>
+
+  <div class="section">
     <label>Voice</label>
     <select id="voice">
       <option value="alloy">Alloy (F)</option>
@@ -77,6 +87,14 @@ export function getTestPageHTML(host: string): string {
       <option value="sage" selected>Sage (F)</option>
       <option value="shimmer">Shimmer (F)</option>
       <option value="verse">Verse (M)</option>
+      <option value="Puck">Puck (M) — Gemini</option>
+      <option value="Charon">Charon (M) — Gemini</option>
+      <option value="Kore">Kore (F) — Gemini</option>
+      <option value="Fenrir">Fenrir (M) — Gemini</option>
+      <option value="Aoede">Aoede (F) — Gemini</option>
+      <option value="Leda">Leda (F) — Gemini</option>
+      <option value="Orus">Orus (M) — Gemini</option>
+      <option value="Zephyr">Zephyr (M) — Gemini</option>
     </select>
   </div>
 
@@ -152,9 +170,12 @@ export function getTestPageHTML(host: string): string {
 
         ws.onopen = () => {
           setStatus("Connected, configuring session...", "ok")
+          const selectedModel = document.getElementById("model").value
+          const provider = selectedModel.startsWith("gemini-") ? "gemini" : document.getElementById("provider").value
           ws.send(JSON.stringify({
             type: "session.config",
-            provider: document.getElementById("provider").value,
+            provider: provider,
+            model: selectedModel,
             voice: document.getElementById("voice").value,
             brainAgent: document.getElementById("brain-agent").value,
             openclawGatewayUrl: document.getElementById("gateway-url").value || "http://localhost:18789",
