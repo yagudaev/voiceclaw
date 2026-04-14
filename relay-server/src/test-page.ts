@@ -79,22 +79,24 @@ export function getTestPageHTML(host: string): string {
   <div class="section">
     <label>Voice</label>
     <select id="voice">
-      <option value="alloy">Alloy (F)</option>
-      <option value="ash">Ash (M)</option>
-      <option value="ballad">Ballad (M)</option>
-      <option value="coral">Coral (F)</option>
-      <option value="echo">Echo (M)</option>
-      <option value="sage" selected>Sage (F)</option>
-      <option value="shimmer">Shimmer (F)</option>
-      <option value="verse">Verse (M)</option>
-      <option value="Puck">Puck (M) — Gemini</option>
-      <option value="Charon">Charon (M) — Gemini</option>
-      <option value="Kore">Kore (F) — Gemini</option>
-      <option value="Fenrir">Fenrir (M) — Gemini</option>
-      <option value="Aoede">Aoede (F) — Gemini</option>
-      <option value="Leda">Leda (F) — Gemini</option>
-      <option value="Orus">Orus (M) — Gemini</option>
-      <option value="Zephyr">Zephyr (M) — Gemini</option>
+      <option value="alloy" data-provider="openai">Alloy (N)</option>
+      <option value="ash" data-provider="openai">Ash (M)</option>
+      <option value="ballad" data-provider="openai">Ballad (M)</option>
+      <option value="coral" data-provider="openai">Coral (F)</option>
+      <option value="echo" data-provider="openai">Echo (M)</option>
+      <option value="sage" data-provider="openai" selected>Sage (F)</option>
+      <option value="shimmer" data-provider="openai">Shimmer (F)</option>
+      <option value="verse" data-provider="openai">Verse (M)</option>
+      <option value="marin" data-provider="openai">Marin (F)</option>
+      <option value="cedar" data-provider="openai">Cedar (M)</option>
+      <option value="Puck" data-provider="gemini">Puck (M, upbeat)</option>
+      <option value="Charon" data-provider="gemini">Charon (M, informative)</option>
+      <option value="Fenrir" data-provider="gemini">Fenrir (M, excitable)</option>
+      <option value="Orus" data-provider="gemini">Orus (M, firm)</option>
+      <option value="Kore" data-provider="gemini">Kore (F, firm)</option>
+      <option value="Aoede" data-provider="gemini">Aoede (F, breezy)</option>
+      <option value="Leda" data-provider="gemini">Leda (F, youthful)</option>
+      <option value="Zephyr" data-provider="gemini">Zephyr (F, bright)</option>
     </select>
   </div>
 
@@ -122,6 +124,23 @@ export function getTestPageHTML(host: string): string {
     const statusEl = document.getElementById("status")
     const transcriptEl = document.getElementById("transcript")
     const levelBar = document.getElementById("level-bar")
+    const modelSel = document.getElementById("model")
+    const voiceSel = document.getElementById("voice")
+
+    function filterVoicesByModel() {
+      const provider = modelSel.value.startsWith("gemini-") ? "gemini" : "openai"
+      const defaults = { openai: "sage", gemini: "Zephyr" }
+      let currentOk = false
+      for (const opt of voiceSel.options) {
+        const match = opt.dataset.provider === provider
+        opt.hidden = !match
+        opt.disabled = !match
+        if (match && opt.value === voiceSel.value) currentOk = true
+      }
+      if (!currentOk) voiceSel.value = defaults[provider]
+    }
+    modelSel.addEventListener("change", filterVoicesByModel)
+    filterVoicesByModel()
 
     function setStatus(msg, type = "") {
       statusEl.textContent = msg
