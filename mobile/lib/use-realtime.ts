@@ -37,6 +37,7 @@ export interface RealtimeCallbacks {
 export interface RealtimeControls {
   start: (config: RealtimeConfig) => void
   stop: () => void
+  setMuted: (muted: boolean) => void
   isConnected: boolean
   sessionId: string | null
 }
@@ -45,6 +46,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
   const userStoppedRef = useRef(false)
+  const mutedRef = useRef(false)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -74,6 +76,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     const subscription = ExpoRealtimeAudioModule.addListener(
       'onAudioCaptured',
       (event: { data: string }) => {
+        if (mutedRef.current) return
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({
             type: 'audio.append',
@@ -190,6 +193,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const stop = useCallback(() => {
     userStoppedRef.current = true
+    mutedRef.current = false
     ExpoRealtimeAudioModule.stopCapture()
     ExpoRealtimeAudioModule.stopPlayback()
     wsRef.current?.close()
@@ -198,5 +202,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     setSessionId(null)
   }, [])
 
-  return { start, stop, isConnected, sessionId }
+  const setMuted = useCallback((muted: boolean) => {
+    mutedRef.current = muted
+  }, [])
+
+  return { start, stop, setMuted, isConnected, sessionId }
 }
