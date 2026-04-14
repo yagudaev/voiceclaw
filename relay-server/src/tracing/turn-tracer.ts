@@ -130,7 +130,11 @@ export class TurnTracer {
     inputAudioTokens?: number
     outputAudioTokens?: number
   }, turnId?: string) {
-    const target = this.resolveTarget(turnId)
+    // Providers emit usage for the turn that just finished, not the one in
+    // progress. Prefer pendingEnd so a late usageMetadata arriving after the
+    // next turn has already started still lands on the correct generation
+    // instead of being misattributed to the new active turn.
+    const target = this.resolveUsageTarget(turnId)
     if (!target) return
     const usageDetails: Record<string, number> = {}
     if (usage.promptTokens != null) usageDetails.input = usage.promptTokens
@@ -184,6 +188,19 @@ export class TurnTracer {
     // Recently-ended turn — usage/timing from the tail of the last turn.
     if (this.pendingEnd && (!turnId || turnId === this.pendingEnd.turnId)) {
       return this.pendingEnd.generation
+    }
+    return null
+  }
+
+  private resolveUsageTarget(turnId?: string): LangfuseGeneration | null {
+    // Usage telemetry describes the turn that just completed, so prefer the
+    // just-ended generation over any new active one. This matters when a late
+    // usageMetadata lands after the user has already started the next turn.
+    if (this.pendingEnd && (!turnId || turnId === this.pendingEnd.turnId)) {
+      return this.pendingEnd.generation
+    }
+    if (this.activeGeneration && (!turnId || turnId === this.activeTurnId)) {
+      return this.activeGeneration
     }
     return null
   }
