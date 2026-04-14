@@ -56,7 +56,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // Session resumption state
   private resumptionHandle: string | null = null
-  private currentlyResumable = true
+  private currentlyResumable = false
   private rotateAfterToolCalls = false
   private isReconnecting = false
   private disconnected = false
@@ -213,9 +213,11 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     this.isReconnecting = true
-    // Reset session-scoped state — the new upstream gets its own resumable flag
-    // from its first sessionResumptionUpdate.
-    this.currentlyResumable = true
+    // Reset session-scoped state. Treat the resumed session as not-yet-resumable
+    // until its first sessionResumptionUpdate reports `resumable: true` — otherwise
+    // a goAway on the fresh session could trigger another rotation using the
+    // prior session's stale handle.
+    this.currentlyResumable = false
     this.rotateAfterToolCalls = false
     log(`[gemini] Reconnecting (${reason}, handle=${this.resumptionHandle.slice(0, 8)}…)`)
     this.sendToClient?.({ type: "session.rotating" })
