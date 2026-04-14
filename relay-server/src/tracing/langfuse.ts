@@ -19,7 +19,7 @@ let enabled = false
 export function initLangfuse() {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY
   const secretKey = process.env.LANGFUSE_SECRET_KEY
-  const baseUrl = process.env.LANGFUSE_HOST ?? "https://cloud.langfuse.com"
+  const baseUrl = process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com"
 
   if (!publicKey || !secretKey) {
     log("[langfuse] LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set — tracing disabled")
