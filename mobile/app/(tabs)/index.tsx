@@ -907,8 +907,8 @@ export default function ChatScreen() {
     if (!conversationId) return false
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
-    const voice = (await getSetting('realtime_voice')) || 'sage'
-    const model = (await getSetting('realtime_model')) || 'gemini-3.1-flash-live-preview'
+    const voice = (await getSetting('realtime_voice')) || 'marin'
+    const model = (await getSetting('realtime_model')) || 'gpt-realtime-mini'
     const apiKey = await getSetting('realtime_api_key')
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
