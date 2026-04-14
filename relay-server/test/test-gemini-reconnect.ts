@@ -796,6 +796,248 @@ async function runChainedGoAwayTest() {
   wss.close()
 }
 
+async function runResumedGoAwayBeforeFreshHandleTest() {
+  console.log("\nGemini Resumed GoAway Before Fresh Handle Test (no rotation with stale handle)")
+  console.log("===============================================================================")
+
+  const MOCK_PORT = 19897
+  const clientEvents: RelayEvent[] = []
+  const receivedSetups: Record<string, unknown>[] = []
+
+  const wss = new WebSocketServer({ port: MOCK_PORT })
+  let connectionIndex = 0
+
+  wss.on("connection", (ws) => {
+    const myIndex = connectionIndex++
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw))
+      if (!msg.setup) return
+      receivedSetups.push(msg.setup)
+
+      if (myIndex === 0) {
+        // Original session: captures handle, then goAway → first rotation
+        ws.send(JSON.stringify({ setupComplete: {} }))
+        setTimeout(() => ws.send(JSON.stringify({
+          sessionResumptionUpdate: { newHandle: "stale-handle", resumable: true },
+        })), 20)
+        setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "2s" } })), 40)
+        setTimeout(() => ws.close(1011, "rotating"), 80)
+      } else if (myIndex === 1) {
+        // Resumed session: emits goAway BEFORE its first sessionResumptionUpdate.
+        // Adapter must defer (currentlyResumable=false) and not rotate with the
+        // prior session's stale handle.
+        ws.send(JSON.stringify({ setupComplete: {} }))
+        setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "2s" } })), 40)
+        // Keep socket open — no close, no new handle. Adapter should stay put.
+      }
+    })
+  })
+
+  await new Promise((r) => wss.on("listening", () => r(null)))
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    openclawGatewayUrl: "http://localhost:18789",
+    openclawAuthToken: "test-token",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  ;(adapter as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+  // Wait through first rotation (~150ms) + resumed goAway (40ms after setup)
+  await new Promise((r) => setTimeout(r, 1500))
+
+  console.log(`    Setups: ${receivedSetups.length}, events: ${clientEvents.map((e) => e.type).join(", ")}`)
+
+  // Expect exactly 2 setups: initial + first resume. A third setup would mean
+  // the adapter rotated again using the stale handle.
+  assert(receivedSetups.length === 2,
+    `no third setup attempted after resumed-goAway (got ${receivedSetups.length})`)
+
+  const rotated = clientEvents.filter((e) => e.type === "session.rotated")
+  assert(rotated.length === 1,
+    `exactly one rotation completed, not two (got ${rotated.length})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
+async function runQueueAcrossRetryTest() {
+  console.log("\nGemini Queue Across Retry Test (queue survives attempt-1 failure)")
+  console.log("==================================================================")
+
+  const MOCK_PORT = 19898
+  const clientEvents: RelayEvent[] = []
+  const socketThreeMessages: Record<string, unknown>[] = []
+
+  const wss = new WebSocketServer({ port: MOCK_PORT })
+  let connectionIndex = 0
+
+  wss.on("connection", (ws) => {
+    const myIndex = connectionIndex++
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw))
+      if (msg.setup) {
+        if (myIndex === 0) {
+          // Original: capture handle, then goAway, then close
+          ws.send(JSON.stringify({ setupComplete: {} }))
+          setTimeout(() => ws.send(JSON.stringify({
+            sessionResumptionUpdate: { newHandle: "h1", resumable: true },
+          })), 20)
+          setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "3s" } })), 40)
+          setTimeout(() => ws.close(1011, "rotating"), 80)
+        } else if (myIndex === 1) {
+          // Attempt 1 fails: close without setupComplete
+          ws.close(1011, "first retry fails")
+        } else {
+          // Attempt 2 succeeds — delay setupComplete so messages queue
+          setTimeout(() => ws.send(JSON.stringify({ setupComplete: {} })), 100)
+        }
+      } else if (myIndex === 2) {
+        socketThreeMessages.push(msg)
+      }
+    })
+  })
+
+  await new Promise((r) => wss.on("listening", () => r(null)))
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    openclawGatewayUrl: "http://localhost:18789",
+    openclawAuthToken: "test-token",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  ;(adapter as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+
+  // Wait for first rotation to begin (isReconnecting=true)
+  await new Promise((r) => setTimeout(r, 60))
+
+  // Queue audio + toolResponse while attempt 1 is in flight (and will fail)
+  for (let i = 0; i < 10; i++) {
+    const buf = Buffer.alloc(1920)
+    adapter.sendAudio(buf.toString("base64"))
+  }
+  adapter.sendToolResult("call-retry", JSON.stringify({ ok: true }))
+
+  // Wait long enough for attempt 1 to fail, backoff, attempt 2 to succeed, flush
+  await new Promise((r) => setTimeout(r, 2500))
+
+  const audio = socketThreeMessages.filter((m) => "realtimeInput" in m)
+  const tools = socketThreeMessages.filter((m) => "toolResponse" in m)
+
+  console.log(`    Socket 3 received: ${audio.length} audio, ${tools.length} toolResponse`)
+
+  assert(audio.length === 10, `10 audio frames drained to socket 3 (got ${audio.length})`)
+  assert(tools.length === 1, `toolResponse drained to socket 3 (got ${tools.length})`)
+
+  const errors = clientEvents.filter((e) => e.type === "error")
+  assert(errors.length === 0, `no error after attempt-2 success (got ${errors.length})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
+async function runControlOverflowTest() {
+  console.log("\nGemini Control Overflow Test (newest-drop, originals preserved)")
+  console.log("================================================================")
+
+  const MOCK_PORT = 19899
+  const socketTwoMessages: Record<string, unknown>[] = []
+
+  const wss = new WebSocketServer({ port: MOCK_PORT })
+  let connectionIndex = 0
+
+  wss.on("connection", (ws) => {
+    const myIndex = connectionIndex++
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw))
+      if (msg.setup) {
+        if (myIndex === 0) {
+          ws.send(JSON.stringify({ setupComplete: {} }))
+          setTimeout(() => ws.send(JSON.stringify({
+            sessionResumptionUpdate: { newHandle: "h1", resumable: true },
+          })), 20)
+          setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "3s" } })), 40)
+          setTimeout(() => ws.close(1011, "rotating"), 80)
+        } else {
+          // Delay setupComplete so control messages queue before draining
+          setTimeout(() => ws.send(JSON.stringify({ setupComplete: {} })), 200)
+        }
+      } else if (myIndex === 1) {
+        socketTwoMessages.push(msg)
+      }
+    })
+  })
+
+  await new Promise((r) => wss.on("listening", () => r(null)))
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    openclawGatewayUrl: "http://localhost:18789",
+    openclawAuthToken: "test-token",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  ;(adapter as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+
+  const clientEvents: RelayEvent[] = []
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+
+  // Wait for reconnect to begin
+  await new Promise((r) => setTimeout(r, 60))
+
+  // Flood control queue past MAX_PENDING_CONTROL (20): first 20 preserved, rest dropped.
+  const floodSize = MAX_PENDING_CONTROL_FROM_ADAPTER + 10
+  for (let i = 0; i < floodSize; i++) {
+    adapter.sendToolResult(`call-${i}`, JSON.stringify({ seq: i }))
+  }
+
+  // Wait for drain
+  await new Promise((r) => setTimeout(r, 1500))
+
+  const toolOnSocket2 = socketTwoMessages.filter((m) => "toolResponse" in m)
+  console.log(`    Socket 2 received: ${toolOnSocket2.length} toolResponse (expected ${MAX_PENDING_CONTROL_FROM_ADAPTER})`)
+
+  assert(toolOnSocket2.length === MAX_PENDING_CONTROL_FROM_ADAPTER,
+    `control capped at ${MAX_PENDING_CONTROL_FROM_ADAPTER} (got ${toolOnSocket2.length})`)
+
+  // Newest-drop: originals (seq 0..19) preserved, seq 20..29 dropped.
+  const firstMsg = toolOnSocket2[0] as { toolResponse: { functionResponses: { id: string }[] } }
+  const lastMsg = toolOnSocket2[toolOnSocket2.length - 1] as { toolResponse: { functionResponses: { id: string }[] } }
+  assert(firstMsg.toolResponse.functionResponses[0].id === "call-0",
+    `first preserved toolResponse is call-0 (got ${firstMsg.toolResponse.functionResponses[0].id})`)
+  assert(lastMsg.toolResponse.functionResponses[0].id === `call-${MAX_PENDING_CONTROL_FROM_ADAPTER - 1}`,
+    `last preserved toolResponse is call-${MAX_PENDING_CONTROL_FROM_ADAPTER - 1} (got ${lastMsg.toolResponse.functionResponses[0].id})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
+// Must mirror the adapter's MAX_PENDING_CONTROL constant
+const MAX_PENDING_CONTROL_FROM_ADAPTER = 20
+
 async function main() {
   await runReconnectTest()
   await runUnrecoverableCloseTest()
@@ -807,6 +1049,9 @@ async function main() {
   await runClose1011WithHandleTest()
   await runReconnectExhaustedTest()
   await runChainedGoAwayTest()
+  await runResumedGoAwayBeforeFreshHandleTest()
+  await runQueueAcrossRetryTest()
+  await runControlOverflowTest()
   console.log(`\nResults: ${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)
 }
