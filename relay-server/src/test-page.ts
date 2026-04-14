@@ -70,9 +70,9 @@ export function getTestPageHTML(host: string): string {
   <div class="section">
     <label>Model</label>
     <select id="model">
-      <option value="gpt-realtime-mini" selected>GPT Realtime Mini</option>
-      <option value="gpt-realtime-1.5">GPT Realtime 1.5</option>
-      <option value="gemini-3.1-flash-live-preview">Gemini 3.1 Flash Live</option>
+      <option value="gpt-realtime-mini" data-provider="openai" selected>GPT Realtime Mini</option>
+      <option value="gpt-realtime-1.5" data-provider="openai">GPT Realtime 1.5</option>
+      <option value="gemini-3.1-flash-live-preview" data-provider="gemini">Gemini 3.1 Flash Live</option>
     </select>
   </div>
 
@@ -124,23 +124,38 @@ export function getTestPageHTML(host: string): string {
     const statusEl = document.getElementById("status")
     const transcriptEl = document.getElementById("transcript")
     const levelBar = document.getElementById("level-bar")
+    const providerSel = document.getElementById("provider")
     const modelSel = document.getElementById("model")
     const voiceSel = document.getElementById("voice")
 
-    function filterVoicesByModel() {
-      const provider = modelSel.value.startsWith("gemini-") ? "gemini" : "openai"
-      const defaults = { openai: "sage", gemini: "Zephyr" }
-      let currentOk = false
+    const DEFAULT_MODEL = { openai: "gpt-realtime-mini", gemini: "gemini-3.1-flash-live-preview" }
+    const DEFAULT_VOICE = { openai: "sage", gemini: "Zephyr" }
+
+    function syncForProvider() {
+      // Echo is a loopback with no upstream model/voice; treat it as openai for option visibility,
+      // since the echo adapter ignores both fields.
+      const provider = providerSel.value === "gemini" ? "gemini" : "openai"
+
+      let modelOk = false
+      for (const opt of modelSel.options) {
+        const match = opt.dataset.provider === provider
+        opt.hidden = !match
+        opt.disabled = !match
+        if (match && opt.value === modelSel.value) modelOk = true
+      }
+      if (!modelOk) modelSel.value = DEFAULT_MODEL[provider]
+
+      let voiceOk = false
       for (const opt of voiceSel.options) {
         const match = opt.dataset.provider === provider
         opt.hidden = !match
         opt.disabled = !match
-        if (match && opt.value === voiceSel.value) currentOk = true
+        if (match && opt.value === voiceSel.value) voiceOk = true
       }
-      if (!currentOk) voiceSel.value = defaults[provider]
+      if (!voiceOk) voiceSel.value = DEFAULT_VOICE[provider]
     }
-    modelSel.addEventListener("change", filterVoicesByModel)
-    filterVoicesByModel()
+    providerSel.addEventListener("change", syncForProvider)
+    syncForProvider()
 
     function setStatus(msg, type = "") {
       statusEl.textContent = msg
@@ -189,8 +204,8 @@ export function getTestPageHTML(host: string): string {
 
         ws.onopen = () => {
           setStatus("Connected, configuring session...", "ok")
-          const selectedModel = document.getElementById("model").value
-          const provider = selectedModel.startsWith("gemini-") ? "gemini" : document.getElementById("provider").value
+          const selectedModel = modelSel.value
+          const provider = providerSel.value
           ws.send(JSON.stringify({
             type: "session.config",
             provider: provider,
