@@ -92,12 +92,9 @@ export class TurnTracer {
 
   endTurn(errorMessage?: string) {
     if (!this.activeGeneration) return
-    // Any dangling tool spans mean we lost the result — mark them and close.
-    for (const [callId, span] of this.activeToolSpans) {
-      span.update({ level: "WARNING", statusMessage: "tool span closed without result" })
-      span.end()
-      this.activeToolSpans.delete(callId)
-    }
+    // Tool spans may legitimately outlive the turn they started in — async tools
+    // (e.g. ask_brain) often resolve on a later turn. Leave them open; endSession
+    // will WARNING-close anything still dangling when the socket closes.
     this.activeGeneration.update({
       input: this.currentUserText || undefined,
       output: this.currentAssistantText || undefined,
@@ -109,6 +106,11 @@ export class TurnTracer {
 
   endSession() {
     this.endTurn()
+    for (const [callId, span] of this.activeToolSpans) {
+      span.update({ level: "WARNING", statusMessage: "tool span closed without result" })
+      span.end()
+      this.activeToolSpans.delete(callId)
+    }
   }
 }
 
