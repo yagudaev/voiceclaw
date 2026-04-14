@@ -10,7 +10,7 @@
 // All methods no-op when Langfuse is not initialized, so callers don't
 // need to guard every site.
 
-import { startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
+import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
 
 export class TurnTracer {
@@ -38,16 +38,23 @@ export class TurnTracer {
     this.currentUserText = ""
     this.currentAssistantText = ""
 
-    this.activeGeneration = startObservation(
-      "voice-turn",
+    // propagateAttributes writes sessionId/userId onto the OTel context so the
+    // span created inside the callback (and its children) inherit them. Setting
+    // them via metadata.langfuseSessionId is the Langchain integration pattern
+    // and does NOT populate the trace's session field in the @langfuse/tracing
+    // direct SDK.
+    propagateAttributes(
       {
-        model: this.model ?? undefined,
-        metadata: {
-          langfuseSessionId: this.sessionId,
-          langfuseUserId: this.userId,
-        },
+        ...(this.sessionId ? { sessionId: this.sessionId } : {}),
+        ...(this.userId ? { userId: this.userId } : {}),
       },
-      { asType: "generation" },
+      () => {
+        this.activeGeneration = startObservation(
+          "voice-turn",
+          { model: this.model ?? undefined },
+          { asType: "generation" },
+        )
+      },
     )
   }
 
