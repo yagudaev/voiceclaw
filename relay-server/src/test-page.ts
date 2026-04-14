@@ -40,15 +40,6 @@ export function getTestPageHTML(host: string): string {
   <p class="subtitle">Test the realtime voice pipeline from your browser</p>
 
   <div class="section">
-    <label>Provider</label>
-    <select id="provider">
-      <option value="echo">Echo (loopback test)</option>
-      <option value="openai" selected>OpenAI Realtime</option>
-      <option value="gemini">Gemini Live</option>
-    </select>
-  </div>
-
-  <div class="section">
     <label>Brain Agent</label>
     <select id="brain-agent">
       <option value="none">None</option>
@@ -65,6 +56,15 @@ export function getTestPageHTML(host: string): string {
       <label>Auth Token</label>
       <input id="auth-token" type="password" placeholder="Bearer token">
     </div>
+  </div>
+
+  <div class="section">
+    <label>Provider</label>
+    <select id="provider">
+      <option value="echo">Echo (loopback test)</option>
+      <option value="openai" selected>OpenAI Realtime</option>
+      <option value="gemini">Gemini Live</option>
+    </select>
   </div>
 
   <div class="section">
