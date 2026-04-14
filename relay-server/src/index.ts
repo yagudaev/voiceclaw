@@ -1,4 +1,9 @@
 import "dotenv/config"
+import { initLangfuse, shutdownLangfuse } from "./tracing/langfuse.js"
+// initLangfuse must run BEFORE any module that may create OTEL spans on import,
+// since the NodeSDK replaces the global TracerProvider.
+initLangfuse()
+
 import express from "express"
 import { createServer } from "node:http"
 import { networkInterfaces } from "node:os"
@@ -32,6 +37,7 @@ function shutdown() {
   log("Shutting down...")
   wss.clients.forEach((ws) => ws.close())
   wss.close()
+  void shutdownLangfuse()
   server.close(() => process.exit(0))
   // Force exit if graceful shutdown takes too long
   setTimeout(() => process.exit(1), 3000)
