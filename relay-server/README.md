@@ -53,5 +53,5 @@ since async tools typically resolve on the next turn.
 
 Mobile devices can also post latency measurements via `client.timing`
 events (e.g. `ttft_audio`, turn.started → first TTS byte). Mobile
-emission is gated behind `EXPO_PUBLIC_ENABLE_TRACING=1` so release
-builds ship with no telemetry unless explicitly enabled.
+emission is on by default in dev builds (`__DEV__`) and off in release
+builds unless `EXPO_PUBLIC_ENABLE_TRACING=1` is set at build time.

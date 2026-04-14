@@ -42,10 +42,10 @@ export interface RealtimeControls {
   sessionId: string | null
 }
 
-// Gate mobile telemetry forwarding. Defaults off so production/TestFlight
-// builds never phone home with latency measurements — dev machines opt in
-// by setting EXPO_PUBLIC_ENABLE_TRACING=1.
-const TRACING_ENABLED = process.env.EXPO_PUBLIC_ENABLE_TRACING === '1'
+// Gate mobile telemetry forwarding. Defaults on in dev builds so we measure
+// latency while iterating; release builds stay silent unless explicitly
+// enabled via EXPO_PUBLIC_ENABLE_TRACING=1.
+const TRACING_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_TRACING === '1'
 
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
