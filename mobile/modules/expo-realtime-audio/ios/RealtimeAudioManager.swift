@@ -49,8 +49,7 @@ class RealtimeAudioManager {
         guard !isCapturing else { return }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth])
-        try session.overrideOutputAudioPort(.speaker)
+        try session.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth])
         try session.setActive(true)
 
         // AEC without .voiceChat's aggressive speaker AGC
@@ -163,8 +162,6 @@ class RealtimeAudioManager {
         }
 
         try engine.start()
-        // Re-assert speaker routing after engine start (iOS may reset it)
-        try? session.overrideOutputAudioPort(.speaker)
         playerNode.play()
 
         self.audioEngine = engine
