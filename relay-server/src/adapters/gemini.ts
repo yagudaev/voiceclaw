@@ -13,8 +13,18 @@ const WATCHDOG_TIMEOUT_MS = 20_000
 const SETUP_TIMEOUT_MS = 15_000
 const MAX_RECONNECT_ATTEMPTS = 2
 const RECONNECT_BACKOFF_MS = 500
-// Close codes that warrant a transparent reconnect (vs. surfacing to the client)
-const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1011, 1012, 1013])
+// Close codes that warrant a transparent reconnect (vs. surfacing to the client).
+// Gemini's graceful end-of-session path is goAway → we reconnect proactively
+// before the close lands. These codes cover transport-level drops (network,
+// server restart, rate limit). 1011 is intentionally excluded: it usually
+// signals a server error that's not helped by replaying the resumption handle.
+const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1012, 1013])
+// Bounded send queues for the reconnect window.
+// Audio: ~1s at 50Hz — older chunks are dropped first since stale audio
+// smears VAD. Control: small buffer for toolResponse / clientContent which
+// MUST reach the upstream to unblock the model.
+const MAX_PENDING_AUDIO = 50
+const MAX_PENDING_CONTROL = 20
 
 const GEMINI_VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
 
@@ -46,9 +56,15 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // Session resumption state
   private resumptionHandle: string | null = null
+  private currentlyResumable = true
+  private rotateAfterToolCalls = false
   private isReconnecting = false
   private disconnected = false
   private wsUrlOverride: string | null = null // for tests to point at a mock server
+  // Bounded queues for messages written during the reconnect window.
+  // Flushed on the resumed connection's setupComplete.
+  private pendingAudio: string[] = []
+  private pendingControl: string[] = []
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
@@ -76,54 +92,79 @@ export class GeminiAdapter implements ProviderAdapter {
 
     return new Promise((resolve, reject) => {
       let settled = false
-      const finish = (err?: Error) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeoutHandle)
-        if (err) reject(err)
-        else resolve()
-      }
 
-      const timeoutHandle = setTimeout(() => finish(new Error("Gemini setup timed out")), SETUP_TIMEOUT_MS)
-
-      ws.on("open", () => {
+      const onOpen = () => {
         const resuming = this.resumptionHandle !== null
         log(`[gemini] WebSocket connected, sending setup (model=${model}${resuming ? ", resuming" : ""})`)
-        this.sendSetup(this.config!, model)
-      })
+        try {
+          this.sendSetup(this.config!, model)
+        } catch (err) {
+          finish(err instanceof Error ? err : new Error(String(err)))
+        }
+      }
 
-      ws.on("message", (raw) => {
+      const onMessage = (raw: WebSocket.RawData) => {
         try {
           const msg = JSON.parse(String(raw))
-
-          // Setup complete is the first response — resolve the connect promise
           if (msg.setupComplete !== undefined) {
             log("[gemini] Setup complete")
             this.resetWatchdog()
             finish()
+            // Flush AFTER finish() so any waiters see a fully-established
+            // connection before queued sends begin landing on the wire.
+            this.flushPending()
             return
           }
-
           this.handleServerMessage(msg)
         } catch (err) {
           logError("[gemini] Failed to parse message:", err)
         }
-      })
+      }
 
-      ws.on("error", (err) => {
+      const onError = (err: Error) => {
         logError("[gemini] WebSocket error:", err.message)
         finish(err)
-      })
+      }
 
-      ws.on("close", (code, reason) => {
+      const onClose = (code: number, reason: Buffer) => {
         log(`[gemini] WebSocket closed: ${code} ${String(reason)}`)
-        // If we haven't finished the setup promise yet, this is a hard failure
         if (!settled) {
           finish(new Error(`WebSocket closed during setup: ${code}`))
           return
         }
         this.handleUpstreamClose(code)
-      })
+      }
+
+      const finish = (err?: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutHandle)
+        if (err) {
+          // Detach our handlers so the abandoned socket can't fire a spurious
+          // handleUpstreamClose. Swap in no-op error/close first so any follow-on
+          // events after close() don't become uncaught.
+          ws.off("open", onOpen)
+          ws.off("message", onMessage)
+          ws.off("error", onError)
+          ws.off("close", onClose)
+          ws.on("error", () => { /* discard */ })
+          ws.on("close", () => { /* discard */ })
+          if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
+            try { ws.close(1011, "setup failed") } catch { /* ignore */ }
+          }
+          if (this.upstream === ws) this.upstream = null
+          reject(err)
+        } else {
+          resolve()
+        }
+      }
+
+      const timeoutHandle = setTimeout(() => finish(new Error("Gemini setup timed out")), SETUP_TIMEOUT_MS)
+
+      ws.on("open", onOpen)
+      ws.on("message", onMessage)
+      ws.on("error", onError)
+      ws.on("close", onClose)
     })
   }
 
@@ -136,6 +177,18 @@ export class GeminiAdapter implements ProviderAdapter {
     if (this.disconnected) return // we initiated the close
     if (code === 1000) return // clean close — nothing to do
     if (this.isReconnecting) return // a reconnect is already in flight
+
+    // If the socket closes while a tool call is in flight or we were waiting
+    // for a post-tool resumable handle, the call is lost — our stored handle
+    // is from before the call and the new session wouldn't recognize the
+    // callId. Surface the error rather than silently resuming into a broken state.
+    if (this.pendingToolCalls > 0 || this.rotateAfterToolCalls) {
+      logError(`[gemini] upstream closed mid-tool-call — cannot safely resume (pending=${this.pendingToolCalls}, deferred=${this.rotateAfterToolCalls})`)
+      this.pendingToolCalls = 0
+      this.rotateAfterToolCalls = false
+      this.sendToClient?.({ type: "error", message: "upstream connection closed mid-tool-call", code: 502 })
+      return
+    }
 
     if (!RECONNECTABLE_CLOSE_CODES.has(code) || !this.resumptionHandle) {
       this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
@@ -160,6 +213,10 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     this.isReconnecting = true
+    // Reset session-scoped state — the new upstream gets its own resumable flag
+    // from its first sessionResumptionUpdate.
+    this.currentlyResumable = true
+    this.rotateAfterToolCalls = false
     log(`[gemini] Reconnecting (${reason}, handle=${this.resumptionHandle.slice(0, 8)}…)`)
     this.sendToClient?.({ type: "session.rotating" })
     this.pauseWatchdog()
@@ -201,7 +258,7 @@ export class GeminiAdapter implements ProviderAdapter {
           mimeType: "audio/pcm;rate=16000",
         },
       },
-    })
+    }, "audio")
     this.resetWatchdog()
   }
 
@@ -305,7 +362,11 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     log(`[gemini] Setup: model=${model}, voice=${voice}, tools=${tools.length}`)
-    this.sendUpstream({ setup })
+    // Bypass the reconnect queue — the setup message IS the handshake that
+    // ends the reconnect window. Queuing it would deadlock.
+    if (this.upstream?.readyState === WebSocket.OPEN) {
+      this.upstream.send(JSON.stringify({ setup }))
+    }
   }
 
   // --- server message handling ---
@@ -331,17 +392,31 @@ export class GeminiAdapter implements ProviderAdapter {
 
     if (msg.goAway) {
       const timeLeftMs = parseTimeLeftMs(msg.goAway.timeLeft)
+      if (this.pendingToolCalls > 0 || !this.currentlyResumable) {
+        // Gemini marks the stream non-resumable while a tool call is in flight.
+        // Rotating now would resume to a checkpoint from before the call existed,
+        // and the pending toolResponse would be sent to a session that never saw
+        // the callId. Defer until we see a fresh resumable handle post-tool.
+        log(`[gemini] GoAway received — deferring rotation (pending=${this.pendingToolCalls}, resumable=${this.currentlyResumable}, timeLeft=${timeLeftMs}ms)`)
+        this.rotateAfterToolCalls = true
+        return
+      }
       log(`[gemini] GoAway received — session ending in ~${timeLeftMs}ms, rotating proactively`)
-      // Rotate now rather than waiting for the close — Gemini gave us a grace
-      // period specifically so we can swap the upstream without a user-visible gap.
       void this.reconnect("goAway")
       return
     }
 
     if (msg.sessionResumptionUpdate) {
       const update = msg.sessionResumptionUpdate
+      this.currentlyResumable = !!update.resumable
       if (update.newHandle && update.resumable) {
         this.resumptionHandle = update.newHandle
+        // If a goAway arrived during a tool call, this is our first chance to
+        // rotate safely — the new handle is post-call.
+        if (this.rotateAfterToolCalls && this.pendingToolCalls === 0) {
+          this.rotateAfterToolCalls = false
+          void this.reconnect("goAway-deferred")
+        }
       }
       return
     }
@@ -485,16 +560,56 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // --- upstream comms ---
 
-  private sendUpstream(msg: Record<string, unknown>) {
-    if (this.upstream?.readyState === WebSocket.OPEN) {
-      this.upstream.send(JSON.stringify(msg))
+  private sendUpstream(msg: Record<string, unknown>, kind: "audio" | "control" = "control") {
+    const payload = JSON.stringify(msg)
+    // While rotating, always queue — the resumed socket may be OPEN before
+    // setupComplete lands, and writing between CONNECTED and SETUP would
+    // interleave with our setup message and corrupt the handshake.
+    if (this.isReconnecting) {
+      if (kind === "audio") {
+        // Oldest-drop: stale audio smears VAD and delays the next turn more
+        // than a short loss does.
+        if (this.pendingAudio.length >= MAX_PENDING_AUDIO) this.pendingAudio.shift()
+        this.pendingAudio.push(payload)
+      } else {
+        // Control messages (toolResponse, clientContent) must reach the upstream
+        // to unblock the model. If we somehow overflow, drop the newest so the
+        // original toolResponse still goes through.
+        if (this.pendingControl.length < MAX_PENDING_CONTROL) {
+          this.pendingControl.push(payload)
+        } else {
+          logError(`[gemini] control queue full (${MAX_PENDING_CONTROL}) — dropping message`)
+        }
+      }
+      return
     }
+    if (this.upstream?.readyState === WebSocket.OPEN) {
+      this.upstream.send(payload)
+    }
+  }
+
+  private flushPending() {
+    if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return
+    // Control first so the model unblocks before we flood it with audio.
+    const control = this.pendingControl
+    const audio = this.pendingAudio
+    this.pendingControl = []
+    this.pendingAudio = []
+    if (control.length > 0 || audio.length > 0) {
+      log(`[gemini] Flushing reconnect queue (${control.length} control, ${audio.length} audio)`)
+    }
+    for (const p of control) this.upstream.send(p)
+    for (const p of audio) this.upstream.send(p)
   }
 
   // --- watchdog ---
 
   private resetWatchdog() {
     this.clearWatchdog()
+    // While a tool call is in flight, leave the watchdog paused — firing the
+    // "user silent" prompt mid-tool would inject a fake user turn into a
+    // session that's already waiting on us, corrupting the conversation.
+    if (this.pendingToolCalls > 0) return
     this.watchdogTimer = setTimeout(() => {
       log("[gemini] Watchdog: no audio for 20s, injecting prompt")
       this.sendUpstream({
