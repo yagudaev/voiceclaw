@@ -203,9 +203,18 @@ function compactLines(lines: Array<string | null>, limit: number): string[] {
 function extractSection(markdown: string | null, title: string): string {
   if (!markdown) return ""
 
-  const escapedTitle = escapeRegex(title)
-  const match = markdown.match(new RegExp(`^## ${escapedTitle}\\s*$([\\s\\S]*?)(?=^##\\s|\\Z)`, "m"))
-  return match?.[1]?.trim() || ""
+  const lines = markdown.split("\n")
+  const heading = `## ${title}`
+  const startIndex = lines.findIndex((line) => line.trim() === heading)
+  if (startIndex === -1) return ""
+
+  const sectionLines: string[] = []
+  for (const line of lines.slice(startIndex + 1)) {
+    if (line.startsWith("## ")) break
+    sectionLines.push(line)
+  }
+
+  return sectionLines.join("\n").trim()
 }
 
 function extractPromptLines(markdown: string, limit: number): string[] {
