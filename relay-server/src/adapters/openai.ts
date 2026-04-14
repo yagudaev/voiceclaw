@@ -22,6 +22,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null
   private isRotating = false
   private isResponseActive = false
+  private pendingResponseCancel = false
   private pendingResponseCreate = false
   private pendingToolCalls = 0
 
@@ -52,7 +53,8 @@ export class OpenAIAdapter implements ProviderAdapter {
 
   cancelResponse() {
     this.pendingResponseCreate = false
-    if (this.isResponseActive) {
+    if (this.isResponseActive && !this.pendingResponseCancel) {
+      this.pendingResponseCancel = true
       this.sendUpstream({ type: "response.cancel" })
     }
   }
@@ -70,7 +72,10 @@ export class OpenAIAdapter implements ProviderAdapter {
     if (this.isResponseActive) {
       log(`[openai] Tool result (${callId}) arrived mid-response, canceling current response before continuing`)
       this.pendingResponseCreate = true
-      this.sendUpstream({ type: "response.cancel" })
+      if (!this.pendingResponseCancel) {
+        this.pendingResponseCancel = true
+        this.sendUpstream({ type: "response.cancel" })
+      }
     } else {
       this.requestResponse(`tool:${callId}`)
     }
@@ -389,10 +394,12 @@ export class OpenAIAdapter implements ProviderAdapter {
       // Response lifecycle
       case "response.created":
         this.isResponseActive = true
+        this.pendingResponseCancel = false
         this.pendingResponseCreate = false
         break
       case "response.done": {
         this.isResponseActive = false
+        this.pendingResponseCancel = false
         this.sendToClient?.({ type: "turn.ended" })
         const usage = event.response?.usage
         if (usage) {
@@ -485,6 +492,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
   private resetResponseState() {
     this.isResponseActive = false
+    this.pendingResponseCancel = false
     this.pendingResponseCreate = false
   }
 }

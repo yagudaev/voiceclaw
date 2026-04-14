@@ -3,29 +3,6 @@ import { OpenAIAdapter } from "../src/adapters/openai.js"
 
 type UpstreamEvent = Record<string, unknown>
 
-function getCaptured(adapter: OpenAIAdapter): UpstreamEvent[] {
-  return (adapter as unknown as { capturedEvents: UpstreamEvent[] }).capturedEvents
-}
-
-function setUpCapture(adapter: OpenAIAdapter) {
-  ;(adapter as unknown as { capturedEvents: UpstreamEvent[] }).capturedEvents = []
-  ;(adapter as unknown as { sendUpstream: (event: UpstreamEvent) => void }).sendUpstream = (event: UpstreamEvent) => {
-    getCaptured(adapter).push(event)
-  }
-}
-
-function resetCaptured(adapter: OpenAIAdapter) {
-  getCaptured(adapter).length = 0
-}
-
-function emit(adapter: OpenAIAdapter, event: Record<string, unknown>) {
-  ;(adapter as unknown as { handleUpstreamEvent: (event: Record<string, unknown>) => void }).handleUpstreamEvent(event)
-}
-
-function assertEvents(adapter: OpenAIAdapter, expected: UpstreamEvent[], message: string) {
-  assert.deepEqual(getCaptured(adapter), expected, message)
-}
-
 function testQueuesClientResponseUntilDone() {
   const adapter = new OpenAIAdapter()
   setUpCapture(adapter)
@@ -47,7 +24,8 @@ function testToolResultCancelsBeforeCreatingReplacementResponse() {
   setUpCapture(adapter)
 
   emit(adapter, { type: "response.created" })
-  ;(adapter as unknown as { pendingToolCalls: number }).pendingToolCalls = 1
+  const state = adapter as unknown as { pendingToolCalls: number }
+  state.pendingToolCalls = 1
 
   adapter.sendToolResult("call-123", "{\"ok\":true}")
 
@@ -73,12 +51,13 @@ function testWatchdogDefersWhileResponseIsActive() {
   setUpCapture(adapter)
 
   let resetCount = 0
-  ;(adapter as unknown as { resetWatchdog: () => void }).resetWatchdog = () => {
+  const state = adapter as unknown as { resetWatchdog: () => void }
+  state.resetWatchdog = () => {
     resetCount++
   }
 
   emit(adapter, { type: "response.created" })
-  ;(adapter as unknown as { handleWatchdogTimeout: () => void }).handleWatchdogTimeout()
+  invokeWatchdog(adapter)
 
   assert.equal(resetCount, 1, "watchdog should reschedule itself while a response is active")
   assertEvents(adapter, [], "watchdog should not inject a prompt during an active response")
@@ -88,7 +67,7 @@ function testWatchdogInjectsPromptWhenIdle() {
   const adapter = new OpenAIAdapter()
   setUpCapture(adapter)
 
-  ;(adapter as unknown as { handleWatchdogTimeout: () => void }).handleWatchdogTimeout()
+  invokeWatchdog(adapter)
 
   assertEvents(adapter, [
     {
@@ -115,3 +94,38 @@ function main() {
 }
 
 main()
+
+function getCaptured(adapter: OpenAIAdapter): UpstreamEvent[] {
+  const state = adapter as unknown as { capturedEvents: UpstreamEvent[] }
+  return state.capturedEvents
+}
+
+function setUpCapture(adapter: OpenAIAdapter) {
+  const state = adapter as unknown as {
+    capturedEvents: UpstreamEvent[]
+    sendUpstream: (event: UpstreamEvent) => void
+  }
+
+  state.capturedEvents = []
+  state.sendUpstream = (event: UpstreamEvent) => {
+    getCaptured(adapter).push(event)
+  }
+}
+
+function resetCaptured(adapter: OpenAIAdapter) {
+  getCaptured(adapter).length = 0
+}
+
+function emit(adapter: OpenAIAdapter, event: Record<string, unknown>) {
+  const state = adapter as unknown as { handleUpstreamEvent: (event: Record<string, unknown>) => void }
+  state.handleUpstreamEvent(event)
+}
+
+function invokeWatchdog(adapter: OpenAIAdapter) {
+  const state = adapter as unknown as { handleWatchdogTimeout: () => void }
+  state.handleWatchdogTimeout()
+}
+
+function assertEvents(adapter: OpenAIAdapter, expected: UpstreamEvent[], message: string) {
+  assert.deepEqual(getCaptured(adapter), expected, message)
+}
