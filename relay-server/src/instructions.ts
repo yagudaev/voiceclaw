@@ -148,6 +148,8 @@ function buildOpenAIVoiceIdentity(
   const relationship = vibeLines.filter((line) => (
     /role is|presence matters|helping with|protect .* attention|slow down|verify|low-risk|high-risk/i.test(line)
   ))
+  const safetyRelationship = relationship.filter((line) => /slow down|verify|low-risk|high-risk/i.test(line))
+  const behaviorRelationship = relationship.filter((line) => !safetyRelationship.includes(line))
   const toneDetails = vibeLines.filter((line) => !relationship.includes(line))
 
   const personalityLines = compactLines([
@@ -158,12 +160,12 @@ function buildOpenAIVoiceIdentity(
 
   const behaviorLines = compactLines([
     ...coreTruths,
-    ...relationship,
+    ...behaviorRelationship,
   ], 4)
 
   const guardrailLines = compactLines([
     ...boundaries,
-    ...relationship.filter((line) => /slow down|verify|low-risk|high-risk/i.test(line)),
+    ...safetyRelationship,
   ], 4)
 
   const sections = [
