@@ -908,7 +908,7 @@ export default function ChatScreen() {
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const voice = (await getSetting('realtime_voice')) || 'sage'
-    const model = (await getSetting('realtime_model')) || 'gpt-realtime-mini'
+    const model = (await getSetting('realtime_model')) || 'gemini-3.1-flash-live-preview'
     const apiKey = await getSetting('realtime_api_key')
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
@@ -920,10 +920,11 @@ export default function ChatScreen() {
       return false
     }
 
+    const isGemini = model.startsWith('gemini-')
     activeProvidersRef.current = {
-      sttProvider: 'openai-realtime',
-      llmProvider: 'gpt-4o-mini-realtime',
-      ttsProvider: 'openai-realtime',
+      sttProvider: isGemini ? 'gemini-realtime' : 'openai-realtime',
+      llmProvider: isGemini ? 'gemini-realtime' : 'gpt-4o-mini-realtime',
+      ttsProvider: isGemini ? 'gemini-realtime' : 'openai-realtime',
     }
 
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -978,9 +979,14 @@ export default function ChatScreen() {
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
-    await ExpoVapiModule.setMuted(newMuted)
+    const voiceMode = activeVoiceModeRef.current
+    if (voiceMode === 'realtime') {
+      realtime.setMuted(newMuted)
+    } else {
+      await ExpoVapiModule.setMuted(newMuted)
+    }
     setIsMuted(newMuted)
-  }, [isMuted])
+  }, [isMuted, realtime])
 
   let displayMessages = messages as Message[]
   if (streamingText !== null) {

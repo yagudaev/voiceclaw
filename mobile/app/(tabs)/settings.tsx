@@ -81,7 +81,7 @@ export default function SettingsScreen() {
   const [realtimeVoice, setRealtimeVoice] = useState<string>('sage')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
-  const [realtimeModel, setRealtimeModel] = useState<RealtimeModel>('gpt-realtime-mini')
+  const [realtimeModel, setRealtimeModel] = useState<RealtimeModel>('gemini-3.1-flash-live-preview')
   const [realtimeTestStatus, setRealtimeTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [realtimeTestError, setRealtimeTestError] = useState('')
 
