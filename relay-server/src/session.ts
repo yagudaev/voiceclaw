@@ -61,6 +61,10 @@ export class RelaySession {
       case "turn.ended":
         this.tracer.endTurn()
         break
+      case "usage.metrics":
+        this.tracer.attachUsage(event)
+        // Internal only — do not forward to client
+        return
     }
 
     // Intercept tool calls — handle server-side tools, forward the rest to client
