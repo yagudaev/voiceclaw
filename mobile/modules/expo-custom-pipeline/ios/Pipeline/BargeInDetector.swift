@@ -56,8 +56,8 @@ class BargeInDetector {
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            // voiceChat mode enables AEC so TTS echo is suppressed
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            // voiceChat mode enables AEC so TTS echo is suppressed while still following the system route
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             print("[BargeInDetector] Audio session configured with AEC (voiceChat mode)")
         } catch {

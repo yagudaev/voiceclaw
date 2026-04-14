@@ -194,7 +194,7 @@ class AppleSTTProvider: STTProvider {
         do {
             try audioSession.setCategory(
                 .playAndRecord, mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                options: [.allowBluetooth]
             )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             print("[AppleSTTProvider] Audio session configured OK — category: \(audioSession.category.rawValue), mode: \(audioSession.mode.rawValue)")

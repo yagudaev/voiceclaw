@@ -215,7 +215,7 @@ private extension ElevenLabsTTSProvider {
         do {
             try audioSession.setCategory(
                 .playAndRecord, mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                options: [.allowBluetooth]
             )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             logger.debug("[ElevenLabs] Audio session configured for playback")
