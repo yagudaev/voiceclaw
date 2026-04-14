@@ -11,7 +11,6 @@ function testQueuesClientResponseUntilDone() {
   assertEvents(adapter, [{ type: "response.create" }], "idle response.create should be sent immediately")
 
   resetCaptured(adapter)
-  emit(adapter, { type: "response.created" })
   adapter.createResponse()
   assertEvents(adapter, [], "active response should queue client response.create")
 
@@ -78,6 +77,19 @@ function testToolResultsDoNotSendDuplicateCancels() {
   ], "multiple tool results should share a single pending response.cancel")
 }
 
+function testErrorResetsActiveResponseState() {
+  const adapter = new OpenAIAdapter()
+  setUpCapture(adapter)
+
+  adapter.createResponse()
+  resetCaptured(adapter)
+
+  emit(adapter, { type: "error", error: { message: "upstream failed" } })
+  adapter.createResponse()
+
+  assertEvents(adapter, [{ type: "response.create" }], "error should clear active-response state so a new response can start")
+}
+
 function testWatchdogDefersWhileResponseIsActive() {
   const adapter = new OpenAIAdapter()
   setUpCapture(adapter)
@@ -121,6 +133,7 @@ function main() {
   testQueuesClientResponseUntilDone()
   testToolResultCancelsBeforeCreatingReplacementResponse()
   testToolResultsDoNotSendDuplicateCancels()
+  testErrorResetsActiveResponseState()
   testWatchdogDefersWhileResponseIsActive()
   testWatchdogInjectsPromptWhenIdle()
   console.log("OpenAI response guard tests passed")
@@ -136,12 +149,13 @@ function getCaptured(adapter: OpenAIAdapter): UpstreamEvent[] {
 function setUpCapture(adapter: OpenAIAdapter) {
   const state = adapter as unknown as {
     capturedEvents: UpstreamEvent[]
-    sendUpstream: (event: UpstreamEvent) => void
+    sendUpstream: (event: UpstreamEvent) => boolean
   }
 
   state.capturedEvents = []
   state.sendUpstream = (event: UpstreamEvent) => {
     getCaptured(adapter).push(event)
+    return true
   }
 }
 

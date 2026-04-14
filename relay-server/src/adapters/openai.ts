@@ -419,6 +419,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       // Errors
       case "error":
         logError(`[openai] Error: ${event.error?.message ?? event}`)
+        this.resetResponseState()
         this.sendToClient?.({
           type: "error",
           message: event.error?.message ?? "upstream error",
@@ -446,10 +447,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
   }
 
-  private sendUpstream(event: Record<string, unknown>) {
+  private sendUpstream(event: Record<string, unknown>): boolean {
     if (this.upstream?.readyState === WebSocket.OPEN) {
       this.upstream.send(JSON.stringify(event))
+      return true
     }
+
+    return false
   }
 
   private handleWatchdogTimeout() {
@@ -479,7 +483,10 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
 
     this.pendingResponseCreate = false
-    this.sendUpstream({ type: "response.create" })
+    if (this.sendUpstream({ type: "response.create" })) {
+      this.isResponseActive = true
+      this.pendingResponseCancel = false
+    }
   }
 
   private flushPendingResponseCreate() {
@@ -487,7 +494,10 @@ export class OpenAIAdapter implements ProviderAdapter {
 
     log("[openai] Flushing queued response.create")
     this.pendingResponseCreate = false
-    this.sendUpstream({ type: "response.create" })
+    if (this.sendUpstream({ type: "response.create" })) {
+      this.isResponseActive = true
+      this.pendingResponseCancel = false
+    }
   }
 
   private resetResponseState() {
