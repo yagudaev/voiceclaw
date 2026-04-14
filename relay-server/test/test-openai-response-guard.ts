@@ -46,6 +46,38 @@ function testToolResultCancelsBeforeCreatingReplacementResponse() {
   assertEvents(adapter, [{ type: "response.create" }], "tool result should resume with a fresh response after cancel completes")
 }
 
+function testToolResultsDoNotSendDuplicateCancels() {
+  const adapter = new OpenAIAdapter()
+  setUpCapture(adapter)
+
+  emit(adapter, { type: "response.created" })
+  const state = adapter as unknown as { pendingToolCalls: number }
+  state.pendingToolCalls = 2
+
+  adapter.sendToolResult("call-1", "{\"ok\":1}")
+  adapter.sendToolResult("call-2", "{\"ok\":2}")
+
+  assertEvents(adapter, [
+    {
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: "call-1",
+        output: "{\"ok\":1}",
+      },
+    },
+    { type: "response.cancel" },
+    {
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: "call-2",
+        output: "{\"ok\":2}",
+      },
+    },
+  ], "multiple tool results should share a single pending response.cancel")
+}
+
 function testWatchdogDefersWhileResponseIsActive() {
   const adapter = new OpenAIAdapter()
   setUpCapture(adapter)
@@ -88,6 +120,7 @@ function testWatchdogInjectsPromptWhenIdle() {
 function main() {
   testQueuesClientResponseUntilDone()
   testToolResultCancelsBeforeCreatingReplacementResponse()
+  testToolResultsDoNotSendDuplicateCancels()
   testWatchdogDefersWhileResponseIsActive()
   testWatchdogInjectsPromptWhenIdle()
   console.log("OpenAI response guard tests passed")
