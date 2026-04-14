@@ -53,15 +53,16 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const userStoppedRef = useRef(false)
   const mutedRef = useRef(false)
   const turnStartedAtRef = useRef<number | null>(null)
+  const turnIdRef = useRef<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
-  const sendTiming = useCallback((phase: string, ms: number) => {
+  const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
     if (!TRACING_ENABLED) return
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
-    wsRef.current.send(JSON.stringify({ type: 'client.timing', phase, ms }))
+    wsRef.current.send(JSON.stringify({ type: 'client.timing', phase, ms, turnId: turnId ?? undefined }))
   }, [])
 
   // Clean up on unmount
@@ -118,7 +119,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         // Forward to native module for playback
         ExpoRealtimeAudioModule.playAudio(data.data)
         if (turnStartedAtRef.current != null) {
-          sendTiming('ttft_audio', Date.now() - turnStartedAtRef.current)
+          sendTiming('ttft_audio', Date.now() - turnStartedAtRef.current, turnIdRef.current)
           turnStartedAtRef.current = null
         }
         break
@@ -143,6 +144,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         // Barge-in: stop playback when user starts speaking
         ExpoRealtimeAudioModule.stopPlayback()
         turnStartedAtRef.current = Date.now()
+        turnIdRef.current = data.turnId ?? null
         cb.onTurnStarted?.()
         break
 

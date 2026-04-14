@@ -78,6 +78,16 @@ export class RelaySession {
       this.turnCount++
     }
 
+    // Stamp the active turnId onto outbound turn.started so the client can
+    // echo it back in client.timing events and we can attribute correctly.
+    if (event.type === "turn.started") {
+      const turnId = this.tracer.getActiveTurnId()
+      if (turnId) {
+        this.send({ ...event, turnId })
+        return
+      }
+    }
+
     this.send(event)
   }
 
@@ -172,7 +182,7 @@ export class RelaySession {
         this.adapter?.sendToolResult(event.callId, event.output)
         break
       case "client.timing":
-        this.tracer.attachClientTiming(event.phase, event.ms)
+        this.tracer.attachClientTiming(event.phase, event.ms, event.turnId)
         break
       default:
         this.sendError(`unknown event type: ${(event as { type: string }).type}`, 400)
@@ -185,6 +195,11 @@ export class RelaySession {
       log(`[session:${this.id}] Replacing existing adapter`)
       this.adapter.disconnect()
       this.adapter = null
+      // Close out any spans still attributed to the old logical session before
+      // startSession() overwrites session metadata. Otherwise leftover
+      // generations/tool spans stay open and late tool results land on the
+      // wrong session.
+      this.tracer.endSession()
     }
 
     // Validate API key

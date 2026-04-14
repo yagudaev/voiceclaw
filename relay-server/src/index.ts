@@ -33,18 +33,26 @@ wss.on("connection", (ws) => {
   new RelaySession(ws)
 })
 
-function shutdown() {
+async function shutdown() {
   log("Shutting down...")
+  // Force exit if graceful shutdown hangs
+  const forceExit = setTimeout(() => process.exit(1), 3000)
+  forceExit.unref()
+
+  // Close client sockets first so each RelaySession runs its cleanup()
+  // (endSession → adapter disconnect → transcript sync) before we tear
+  // down the OTel exporter that ships the final spans.
   wss.clients.forEach((ws) => ws.close())
   wss.close()
-  void shutdownLangfuse()
-  server.close(() => process.exit(0))
-  // Force exit if graceful shutdown takes too long
-  setTimeout(() => process.exit(1), 3000)
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  // Drain pending spans before exiting — otherwise the last turn of every
+  // active session gets dropped on SIGTERM.
+  await shutdownLangfuse()
+  process.exit(0)
 }
 
-process.on("SIGTERM", shutdown)
-process.on("SIGINT", shutdown)
+process.on("SIGTERM", () => { void shutdown() })
+process.on("SIGINT", () => { void shutdown() })
 
 server.listen(PORT, () => {
   const lanIP = getLanIP()
