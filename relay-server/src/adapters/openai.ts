@@ -21,6 +21,8 @@ export class OpenAIAdapter implements ProviderAdapter {
   private rotationTimer: ReturnType<typeof setTimeout> | null = null
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null
   private isRotating = false
+  private isResponseActive = false
+  private pendingResponseCreate = false
   private pendingToolCalls = 0
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
@@ -45,11 +47,14 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   createResponse() {
-    this.sendUpstream({ type: "response.create" })
+    this.requestResponse("client")
   }
 
   cancelResponse() {
-    this.sendUpstream({ type: "response.cancel" })
+    this.pendingResponseCreate = false
+    if (this.isResponseActive) {
+      this.sendUpstream({ type: "response.cancel" })
+    }
   }
 
   sendToolResult(callId: string, output: string) {
@@ -62,7 +67,13 @@ export class OpenAIAdapter implements ProviderAdapter {
         output,
       },
     })
-    this.sendUpstream({ type: "response.create" })
+    if (this.isResponseActive) {
+      log(`[openai] Tool result (${callId}) arrived mid-response, canceling current response before continuing`)
+      this.pendingResponseCreate = true
+      this.sendUpstream({ type: "response.cancel" })
+    } else {
+      this.requestResponse(`tool:${callId}`)
+    }
     if (this.pendingToolCalls === 0) {
       this.resetWatchdog()
     }
@@ -84,6 +95,8 @@ export class OpenAIAdapter implements ProviderAdapter {
   private async openUpstream(config: SessionConfigEvent): Promise<void> {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error("OPENAI_API_KEY not set")
+
+    this.resetResponseState()
 
     const model = config.model || DEFAULT_MODEL
     const url = `${OPENAI_REALTIME_URL}?model=${model}`
@@ -205,6 +218,8 @@ export class OpenAIAdapter implements ProviderAdapter {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) throw new Error("OPENAI_API_KEY not set")
 
+    this.resetResponseState()
+
     const model = config.model || DEFAULT_MODEL
     const url = `${OPENAI_REALTIME_URL}?model=${model}`
 
@@ -287,19 +302,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     if (this.watchdogTimer) {
       clearTimeout(this.watchdogTimer)
     }
-    this.watchdogTimer = setTimeout(() => {
-      log("[openai] Watchdog: no audio for 20s, injecting prompt")
-      // Inject a system message to check if user is still there
-      this.sendUpstream({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: "(The user has been silent for a while. If you were mid-conversation, gently check if they're still there. If the conversation had naturally ended, stay quiet.)" }],
-        },
-      })
-      this.sendUpstream({ type: "response.create" })
-    }, WATCHDOG_TIMEOUT_MS)
+    this.watchdogTimer = setTimeout(() => this.handleWatchdogTimeout(), WATCHDOG_TIMEOUT_MS)
   }
 
   private clearTimers() {
@@ -385,8 +388,11 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Response lifecycle
       case "response.created":
+        this.isResponseActive = true
+        this.pendingResponseCreate = false
         break
       case "response.done": {
+        this.isResponseActive = false
         this.sendToClient?.({ type: "turn.ended" })
         const usage = event.response?.usage
         if (usage) {
@@ -399,6 +405,7 @@ export class OpenAIAdapter implements ProviderAdapter {
             outputAudioTokens: usage.output_token_details?.audio_tokens,
           })
         }
+        this.flushPendingResponseCreate()
         break
       }
 
@@ -436,5 +443,48 @@ export class OpenAIAdapter implements ProviderAdapter {
     if (this.upstream?.readyState === WebSocket.OPEN) {
       this.upstream.send(JSON.stringify(event))
     }
+  }
+
+  private handleWatchdogTimeout() {
+    if (this.isResponseActive) {
+      log("[openai] Watchdog fired during active response, deferring")
+      this.resetWatchdog()
+      return
+    }
+
+    log("[openai] Watchdog: no audio for 20s, injecting prompt")
+    this.sendUpstream({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "(The user has been silent for a while. If you were mid-conversation, gently check if they're still there. If the conversation had naturally ended, stay quiet.)" }],
+      },
+    })
+    this.requestResponse("watchdog")
+  }
+
+  private requestResponse(reason: string) {
+    if (this.isResponseActive) {
+      this.pendingResponseCreate = true
+      log(`[openai] Skipping response.create (${reason}) because a response is already active`)
+      return
+    }
+
+    this.pendingResponseCreate = false
+    this.sendUpstream({ type: "response.create" })
+  }
+
+  private flushPendingResponseCreate() {
+    if (!this.pendingResponseCreate) return
+
+    log("[openai] Flushing queued response.create")
+    this.pendingResponseCreate = false
+    this.sendUpstream({ type: "response.create" })
+  }
+
+  private resetResponseState() {
+    this.isResponseActive = false
+    this.pendingResponseCreate = false
   }
 }
