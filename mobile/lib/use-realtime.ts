@@ -19,6 +19,7 @@ export interface RealtimeConfig {
   }
   instructionsOverride?: string
   conversationHistory?: { role: 'user' | 'assistant', text: string }[]
+  tracingEnabled?: boolean
 }
 
 export interface RealtimeCallbacks {
@@ -42,11 +43,6 @@ export interface RealtimeControls {
   sessionId: string | null
 }
 
-// Gate mobile telemetry forwarding. Defaults on in dev builds so we measure
-// latency while iterating; release builds stay silent unless explicitly
-// enabled via EXPO_PUBLIC_ENABLE_TRACING=1.
-const TRACING_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_TRACING === '1'
-
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
@@ -60,7 +56,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   callbacksRef.current = callbacks
 
   const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
-    if (!TRACING_ENABLED) return
+    if (!configRef.current?.tracingEnabled) return
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     wsRef.current.send(JSON.stringify({ type: 'client.timing', phase, ms, turnId: turnId ?? undefined }))
   }, [])
