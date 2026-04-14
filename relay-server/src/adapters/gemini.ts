@@ -10,6 +10,11 @@ import { log, error as logError } from "../log.js"
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 const WATCHDOG_TIMEOUT_MS = 20_000
+const SETUP_TIMEOUT_MS = 15_000
+const MAX_RECONNECT_ATTEMPTS = 2
+const RECONNECT_BACKOFF_MS = 500
+// Close codes that warrant a transparent reconnect (vs. surfacing to the client)
+const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1011, 1012, 1013])
 
 const GEMINI_VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
 
@@ -39,25 +44,55 @@ export class GeminiAdapter implements ProviderAdapter {
   private currentUserText = ""
   private userSpeaking = false
 
+  // Session resumption state
+  private resumptionHandle: string | null = null
+  private isReconnecting = false
+  private disconnected = false
+  private wsUrlOverride: string | null = null // for tests to point at a mock server
+
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
     this.config = config
+    this.disconnected = false
+
+    await this.openUpstream()
+  }
+
+  /**
+   * Open an upstream WebSocket to Gemini and wait for setupComplete.
+   * If `this.resumptionHandle` is set, includes it in the setup message so
+   * Gemini resumes the conversation instead of starting fresh.
+   */
+  private openUpstream(): Promise<void> {
+    if (!this.config) throw new Error("openUpstream called without config")
 
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) throw new Error("GEMINI_API_KEY not set")
 
-    const model = config.model || DEFAULT_MODEL
-    const url = `${GEMINI_WS_URL}?key=${apiKey}`
+    const model = this.config.model || DEFAULT_MODEL
+    const url = this.wsUrlOverride ?? `${GEMINI_WS_URL}?key=${apiKey}`
+    const ws = new WebSocket(url)
+    this.upstream = ws
 
     return new Promise((resolve, reject) => {
-      this.upstream = new WebSocket(url)
+      let settled = false
+      const finish = (err?: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutHandle)
+        if (err) reject(err)
+        else resolve()
+      }
 
-      this.upstream.on("open", () => {
-        log(`[gemini] WebSocket connected, sending setup (model=${model})`)
-        this.sendSetup(config, model)
+      const timeoutHandle = setTimeout(() => finish(new Error("Gemini setup timed out")), SETUP_TIMEOUT_MS)
+
+      ws.on("open", () => {
+        const resuming = this.resumptionHandle !== null
+        log(`[gemini] WebSocket connected, sending setup (model=${model}${resuming ? ", resuming" : ""})`)
+        this.sendSetup(this.config!, model)
       })
 
-      this.upstream.on("message", (raw) => {
+      ws.on("message", (raw) => {
         try {
           const msg = JSON.parse(String(raw))
 
@@ -65,7 +100,7 @@ export class GeminiAdapter implements ProviderAdapter {
           if (msg.setupComplete !== undefined) {
             log("[gemini] Setup complete")
             this.resetWatchdog()
-            resolve()
+            finish()
             return
           }
 
@@ -75,19 +110,85 @@ export class GeminiAdapter implements ProviderAdapter {
         }
       })
 
-      this.upstream.on("error", (err) => {
+      ws.on("error", (err) => {
         logError("[gemini] WebSocket error:", err.message)
-        reject(err)
+        finish(err)
       })
 
-      this.upstream.on("close", (code, reason) => {
+      ws.on("close", (code, reason) => {
         log(`[gemini] WebSocket closed: ${code} ${String(reason)}`)
-        this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+        // If we haven't finished the setup promise yet, this is a hard failure
+        if (!settled) {
+          finish(new Error(`WebSocket closed during setup: ${code}`))
+          return
+        }
+        this.handleUpstreamClose(code)
       })
-
-      // Timeout if setup doesn't complete within 15s
-      setTimeout(() => reject(new Error("Gemini setup timed out")), 15_000)
     })
+  }
+
+  /**
+   * Handle an unexpected upstream close after the session was established.
+   * For reconnectable codes (1001/1006/1011/1012/1013) with a resumption handle
+   * available, silently re-open the session. Otherwise surface an error.
+   */
+  private handleUpstreamClose(code: number) {
+    if (this.disconnected) return // we initiated the close
+    if (code === 1000) return // clean close — nothing to do
+    if (this.isReconnecting) return // a reconnect is already in flight
+
+    if (!RECONNECTABLE_CLOSE_CODES.has(code) || !this.resumptionHandle) {
+      this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+      return
+    }
+
+    void this.reconnect(`close code ${code}`)
+  }
+
+  /**
+   * Open a fresh upstream using the stored resumption handle. Runs with a
+   * small retry budget so a single transient failure doesn't drop the call.
+   * Emits session.rotating / session.rotated so clients can clear playback
+   * buffers and show status.
+   */
+  private async reconnect(reason: string): Promise<void> {
+    if (this.isReconnecting || this.disconnected) return
+    if (!this.resumptionHandle) {
+      logError(`[gemini] reconnect requested (${reason}) but no resumption handle — giving up`)
+      this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+      return
+    }
+
+    this.isReconnecting = true
+    log(`[gemini] Reconnecting (${reason}, handle=${this.resumptionHandle.slice(0, 8)}…)`)
+    this.sendToClient?.({ type: "session.rotating" })
+    this.pauseWatchdog()
+
+    // Tear down any remaining upstream so listeners don't fire during the swap
+    if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
+      this.upstream.removeAllListeners()
+      try { this.upstream.close() } catch { /* ignore */ }
+    }
+    this.upstream = null
+
+    for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
+      try {
+        await this.openUpstream()
+        this.isReconnecting = false
+        this.sendToClient?.({ type: "session.rotated", sessionId: `gemini-resumed-${Date.now()}` })
+        log(`[gemini] Reconnected on attempt ${attempt}`)
+        return
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logError(`[gemini] Reconnect attempt ${attempt} failed: ${msg}`)
+        if (attempt < MAX_RECONNECT_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, RECONNECT_BACKOFF_MS))
+        }
+      }
+    }
+
+    this.isReconnecting = false
+    this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
   }
 
   sendAudio(data: string) {
@@ -145,6 +246,7 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   disconnect() {
+    this.disconnected = true
     this.clearWatchdog()
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
       this.upstream.close()
@@ -191,6 +293,11 @@ export class GeminiAdapter implements ProviderAdapter {
           silenceDurationMs: 500,
         },
       },
+      // Opt into session resumption: empty object on first connect tells Gemini
+      // to start sending newHandle updates; a stored handle resumes that session.
+      sessionResumption: this.resumptionHandle
+        ? { handle: this.resumptionHandle }
+        : {},
     }
 
     if (tools.length > 0) {
@@ -223,12 +330,19 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     if (msg.goAway) {
-      log(`[gemini] GoAway received — session ending soon`)
+      const timeLeftMs = parseTimeLeftMs(msg.goAway.timeLeft)
+      log(`[gemini] GoAway received — session ending in ~${timeLeftMs}ms, rotating proactively`)
+      // Rotate now rather than waiting for the close — Gemini gave us a grace
+      // period specifically so we can swap the upstream without a user-visible gap.
+      void this.reconnect("goAway")
       return
     }
 
     if (msg.sessionResumptionUpdate) {
-      log("[gemini] Session resumption update")
+      const update = msg.sessionResumptionUpdate
+      if (update.newHandle && update.resumable) {
+        this.resumptionHandle = update.newHandle
+      }
       return
     }
 
@@ -408,6 +522,17 @@ export class GeminiAdapter implements ProviderAdapter {
 }
 
 // --- helpers ---
+
+/**
+ * Parse goAway.timeLeft — Gemini sends a Duration proto which serializes to
+ * a string like "30s" or "0.500s". We only use it for logging.
+ */
+function parseTimeLeftMs(timeLeft: unknown): number {
+  if (typeof timeLeft !== "string") return 0
+  const match = /^(\d+(?:\.\d+)?)s$/.exec(timeLeft)
+  if (!match) return 0
+  return Math.round(parseFloat(match[1]) * 1000)
+}
 
 function resolveVoice(voice?: string): string {
   if (!voice) return "Zephyr"
