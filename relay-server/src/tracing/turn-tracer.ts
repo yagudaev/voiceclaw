@@ -97,6 +97,23 @@ export class TurnTracer {
     })
   }
 
+  attachUsage(usage: {
+    promptTokens?: number
+    completionTokens?: number
+    totalTokens?: number
+    inputAudioTokens?: number
+    outputAudioTokens?: number
+  }) {
+    if (!this.activeGeneration) return
+    const usageDetails: Record<string, number> = {}
+    if (usage.promptTokens != null) usageDetails.input = usage.promptTokens
+    if (usage.completionTokens != null) usageDetails.output = usage.completionTokens
+    if (usage.totalTokens != null) usageDetails.total = usage.totalTokens
+    if (usage.inputAudioTokens != null) usageDetails.input_audio = usage.inputAudioTokens
+    if (usage.outputAudioTokens != null) usageDetails.output_audio = usage.outputAudioTokens
+    this.activeGeneration.update({ usageDetails })
+  }
+
   endTurn(errorMessage?: string) {
     if (!this.activeGeneration) return
     // Tool spans may legitimately outlive the turn they started in — async tools

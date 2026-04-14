@@ -75,6 +75,7 @@ export type RelayEvent =
   | SessionEndedEvent
   | SessionRotatingEvent
   | SessionRotatedEvent
+  | UsageMetricsEvent
   | ErrorEvent
 
 export interface SessionReadyEvent {
@@ -134,6 +135,18 @@ export interface SessionRotatingEvent {
 export interface SessionRotatedEvent {
   type: "session.rotated"
   sessionId: string
+}
+
+// Emitted by adapters with per-turn token/audio usage. Consumed internally
+// by the tracer to attribute cost on Langfuse generations; not forwarded to
+// the mobile client.
+export interface UsageMetricsEvent {
+  type: "usage.metrics"
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  inputAudioTokens?: number
+  outputAudioTokens?: number
 }
 
 export interface ErrorEvent {
