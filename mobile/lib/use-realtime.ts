@@ -42,15 +42,27 @@ export interface RealtimeControls {
   sessionId: string | null
 }
 
+// Gate mobile telemetry forwarding. Defaults off so production/TestFlight
+// builds never phone home with latency measurements — dev machines opt in
+// by setting EXPO_PUBLIC_ENABLE_TRACING=1.
+const TRACING_ENABLED = process.env.EXPO_PUBLIC_ENABLE_TRACING === '1'
+
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
   const userStoppedRef = useRef(false)
   const mutedRef = useRef(false)
+  const turnStartedAtRef = useRef<number | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
+
+  const sendTiming = useCallback((phase: string, ms: number) => {
+    if (!TRACING_ENABLED) return
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(JSON.stringify({ type: 'client.timing', phase, ms }))
+  }, [])
 
   // Clean up on unmount
   useEffect(() => {
@@ -105,6 +117,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'audio.delta':
         // Forward to native module for playback
         ExpoRealtimeAudioModule.playAudio(data.data)
+        if (turnStartedAtRef.current != null) {
+          sendTiming('ttft_audio', Date.now() - turnStartedAtRef.current)
+          turnStartedAtRef.current = null
+        }
         break
 
       case 'transcript.delta':
@@ -126,6 +142,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'turn.started':
         // Barge-in: stop playback when user starts speaking
         ExpoRealtimeAudioModule.stopPlayback()
+        turnStartedAtRef.current = Date.now()
         cb.onTurnStarted?.()
         break
 
