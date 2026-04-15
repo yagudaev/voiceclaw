@@ -20,16 +20,18 @@ type STTProviderValue = 'apple' | 'deepgram'
 type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
-const OPENAI_REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
+const OPENAI_REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'marin', 'sage', 'shimmer', 'verse'] as const
 const OPENAI_REALTIME_VOICE_LABELS: Record<typeof OPENAI_REALTIME_VOICES[number], string> = {
-  alloy: 'alloy (F)',
-  ash: 'ash (M)',
-  ballad: 'ballad (M)',
-  coral: 'coral (F)',
-  echo: 'echo (M)',
-  sage: 'sage (F)',
-  shimmer: 'shimmer (F)',
-  verse: 'verse (M)',
+  alloy: 'Alloy (F)',
+  ash: 'Ash (M)',
+  ballad: 'Ballad (M)',
+  cedar: 'Cedar (M)',
+  coral: 'Coral (F)',
+  echo: 'Echo (M)',
+  marin: 'Marin (F)',
+  sage: 'Sage (F)',
+  shimmer: 'Shimmer (F)',
+  verse: 'Verse (M)',
 }
 
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
@@ -78,7 +80,7 @@ export default function SettingsScreen() {
 
   // Realtime mode settings
   const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
-  const [realtimeVoice, setRealtimeVoice] = useState<string>('sage')
+  const [realtimeVoice, setRealtimeVoice] = useState<string>('marin')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
   const [realtimeModel, setRealtimeModel] = useState<RealtimeModel>('gemini-3.1-flash-live-preview')
@@ -308,7 +310,7 @@ export default function SettingsScreen() {
     if (isGemini && !currentIsGemini) {
       updateRealtimeVoice('Zephyr')
     } else if (!isGemini && currentIsGemini) {
-      updateRealtimeVoice('sage')
+      updateRealtimeVoice('marin')
     }
   }, [saveImmediate, realtimeVoice, updateRealtimeVoice])
 

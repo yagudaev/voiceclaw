@@ -167,7 +167,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       session: {
         modalities: ["text", "audio"],
         instructions,
-        voice: config.voice || "sage",
+        voice: config.voice || "marin",
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: {
