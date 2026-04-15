@@ -84,10 +84,10 @@ export function getTestPageHTML(host: string): string {
       <option value="ballad" data-provider="openai">Ballad (M)</option>
       <option value="coral" data-provider="openai">Coral (F)</option>
       <option value="echo" data-provider="openai">Echo (M)</option>
-      <option value="sage" data-provider="openai" selected>Sage (F)</option>
+      <option value="sage" data-provider="openai">Sage (F)</option>
       <option value="shimmer" data-provider="openai">Shimmer (F)</option>
       <option value="verse" data-provider="openai">Verse (M)</option>
-      <option value="marin" data-provider="openai">Marin (F)</option>
+      <option value="marin" data-provider="openai" selected>Marin (F)</option>
       <option value="cedar" data-provider="openai">Cedar (M)</option>
       <option value="Puck" data-provider="gemini">Puck (M, upbeat)</option>
       <option value="Charon" data-provider="gemini">Charon (M, informative)</option>
@@ -129,7 +129,7 @@ export function getTestPageHTML(host: string): string {
     const voiceSel = document.getElementById("voice")
 
     const DEFAULT_MODEL = { openai: "gpt-realtime-mini", gemini: "gemini-3.1-flash-live-preview" }
-    const DEFAULT_VOICE = { openai: "sage", gemini: "Zephyr" }
+    const DEFAULT_VOICE = { openai: "marin", gemini: "Zephyr" }
 
     function syncForProvider() {
       // Echo is a loopback with no upstream model/voice; treat it as openai for option visibility,

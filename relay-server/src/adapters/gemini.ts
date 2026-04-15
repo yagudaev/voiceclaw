@@ -31,8 +31,10 @@ const GEMINI_VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Oru
 // Map OpenAI voice names → Gemini equivalents
 const VOICE_MAP: Record<string, string> = {
   alloy: "Kore",
+  cedar: "Charon",
   echo: "Charon",
   fable: "Fenrir",
+  marin: "Aoede",
   onyx: "Orus",
   nova: "Aoede",
   shimmer: "Leda",
