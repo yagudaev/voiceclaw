@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto"
 import { propagateAttributes, startObservation, type LangfuseAgent, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
+import { log } from "../log.js"
 
 /**
  * Handle for recording events against the child `openclaw-agent` span that
@@ -73,6 +74,9 @@ export class TurnTracer {
       { input },
       { asType: "agent" },
     )
+    const parentCtx = parent.otelSpan.spanContext()
+    const agentCtx = agent.otelSpan.spanContext()
+    log(`[tracer] openclaw-agent span traceId=${agentCtx.traceId} spanId=${agentCtx.spanId} parentSpanId=${parentCtx.spanId} toolCallId=${callId}`)
 
     return {
       recordStep(summary, details) {
@@ -120,6 +124,7 @@ export class TurnTracer {
     this.activeTurnId = randomUUID()
     propagateAttributes(
       {
+        traceName: "voice-turn",
         ...(this.sessionId ? { sessionId: this.sessionId } : {}),
         ...(this.userId ? { userId: this.userId } : {}),
       },
@@ -134,6 +139,8 @@ export class TurnTracer {
         )
       },
     )
+    const ctx = this.activeGeneration?.otelSpan.spanContext()
+    log(`[tracer] voice-turn span traceId=${ctx?.traceId} spanId=${ctx?.spanId} turnId=${this.activeTurnId}`)
   }
 
   appendUserText(text: string) {
@@ -157,6 +164,9 @@ export class TurnTracer {
       { asType: "tool" },
     )
     this.activeToolSpans.set(callId, span)
+    const parentCtx = this.activeGeneration.otelSpan.spanContext()
+    const toolCtx = span.otelSpan.spanContext()
+    log(`[tracer] tool span name=${name} traceId=${toolCtx.traceId} spanId=${toolCtx.spanId} parentSpanId=${parentCtx.spanId}`)
   }
 
   endToolCall(callId: string, output: string, error?: string) {
