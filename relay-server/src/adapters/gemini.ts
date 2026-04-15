@@ -425,6 +425,15 @@ export class GeminiAdapter implements ProviderAdapter {
 
     if (msg.usageMetadata) {
       log(`[gemini] Usage: ${JSON.stringify(msg.usageMetadata)}`)
+      const u = msg.usageMetadata
+      this.sendToClient?.({
+        type: "usage.metrics",
+        promptTokens: u.promptTokenCount,
+        completionTokens: u.responseTokenCount,
+        totalTokens: u.totalTokenCount,
+        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
+        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
+      })
       return
     }
   }
@@ -682,4 +691,11 @@ function downsample24to16(base64Audio: string): string {
   }
 
   return outputBuf.toString("base64")
+}
+
+function findModalityTokens(
+  details: { modality?: string, tokenCount?: number }[] | undefined,
+  modality: string,
+): number | undefined {
+  return details?.find((d) => d.modality === modality)?.tokenCount
 }

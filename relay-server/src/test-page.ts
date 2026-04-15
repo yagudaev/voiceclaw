@@ -40,15 +40,6 @@ export function getTestPageHTML(host: string): string {
   <p class="subtitle">Test the realtime voice pipeline from your browser</p>
 
   <div class="section">
-    <label>Provider</label>
-    <select id="provider">
-      <option value="echo">Echo (loopback test)</option>
-      <option value="openai" selected>OpenAI Realtime</option>
-      <option value="gemini">Gemini Live</option>
-    </select>
-  </div>
-
-  <div class="section">
     <label>Brain Agent</label>
     <select id="brain-agent">
       <option value="none">None</option>
@@ -68,33 +59,44 @@ export function getTestPageHTML(host: string): string {
   </div>
 
   <div class="section">
+    <label>Provider</label>
+    <select id="provider">
+      <option value="echo">Echo (loopback test)</option>
+      <option value="openai" selected>OpenAI Realtime</option>
+      <option value="gemini">Gemini Live</option>
+    </select>
+  </div>
+
+  <div class="section">
     <label>Model</label>
     <select id="model">
-      <option value="gpt-realtime-mini" selected>GPT Realtime Mini</option>
-      <option value="gpt-realtime-1.5">GPT Realtime 1.5</option>
-      <option value="gemini-3.1-flash-live-preview">Gemini 3.1 Flash Live</option>
+      <option value="gpt-realtime-mini" data-provider="openai" selected>GPT Realtime Mini</option>
+      <option value="gpt-realtime-1.5" data-provider="openai">GPT Realtime 1.5</option>
+      <option value="gemini-3.1-flash-live-preview" data-provider="gemini">Gemini 3.1 Flash Live</option>
     </select>
   </div>
 
   <div class="section">
     <label>Voice</label>
     <select id="voice">
-      <option value="alloy">Alloy (F)</option>
-      <option value="ash">Ash (M)</option>
-      <option value="ballad">Ballad (M)</option>
-      <option value="coral">Coral (F)</option>
-      <option value="echo">Echo (M)</option>
-      <option value="sage" selected>Sage (F)</option>
-      <option value="shimmer">Shimmer (F)</option>
-      <option value="verse">Verse (M)</option>
-      <option value="Puck">Puck (M) — Gemini</option>
-      <option value="Charon">Charon (M) — Gemini</option>
-      <option value="Kore">Kore (F) — Gemini</option>
-      <option value="Fenrir">Fenrir (M) — Gemini</option>
-      <option value="Aoede">Aoede (F) — Gemini</option>
-      <option value="Leda">Leda (F) — Gemini</option>
-      <option value="Orus">Orus (M) — Gemini</option>
-      <option value="Zephyr">Zephyr (M) — Gemini</option>
+      <option value="alloy" data-provider="openai">Alloy (N)</option>
+      <option value="ash" data-provider="openai">Ash (M)</option>
+      <option value="ballad" data-provider="openai">Ballad (M)</option>
+      <option value="coral" data-provider="openai">Coral (F)</option>
+      <option value="echo" data-provider="openai">Echo (M)</option>
+      <option value="sage" data-provider="openai" selected>Sage (F)</option>
+      <option value="shimmer" data-provider="openai">Shimmer (F)</option>
+      <option value="verse" data-provider="openai">Verse (M)</option>
+      <option value="marin" data-provider="openai">Marin (F)</option>
+      <option value="cedar" data-provider="openai">Cedar (M)</option>
+      <option value="Puck" data-provider="gemini">Puck (M, upbeat)</option>
+      <option value="Charon" data-provider="gemini">Charon (M, informative)</option>
+      <option value="Fenrir" data-provider="gemini">Fenrir (M, excitable)</option>
+      <option value="Orus" data-provider="gemini">Orus (M, firm)</option>
+      <option value="Kore" data-provider="gemini">Kore (F, firm)</option>
+      <option value="Aoede" data-provider="gemini">Aoede (F, breezy)</option>
+      <option value="Leda" data-provider="gemini">Leda (F, youthful)</option>
+      <option value="Zephyr" data-provider="gemini">Zephyr (F, bright)</option>
     </select>
   </div>
 
@@ -122,6 +124,38 @@ export function getTestPageHTML(host: string): string {
     const statusEl = document.getElementById("status")
     const transcriptEl = document.getElementById("transcript")
     const levelBar = document.getElementById("level-bar")
+    const providerSel = document.getElementById("provider")
+    const modelSel = document.getElementById("model")
+    const voiceSel = document.getElementById("voice")
+
+    const DEFAULT_MODEL = { openai: "gpt-realtime-mini", gemini: "gemini-3.1-flash-live-preview" }
+    const DEFAULT_VOICE = { openai: "sage", gemini: "Zephyr" }
+
+    function syncForProvider() {
+      // Echo is a loopback with no upstream model/voice; treat it as openai for option visibility,
+      // since the echo adapter ignores both fields.
+      const provider = providerSel.value === "gemini" ? "gemini" : "openai"
+
+      let modelOk = false
+      for (const opt of modelSel.options) {
+        const match = opt.dataset.provider === provider
+        opt.hidden = !match
+        opt.disabled = !match
+        if (match && opt.value === modelSel.value) modelOk = true
+      }
+      if (!modelOk) modelSel.value = DEFAULT_MODEL[provider]
+
+      let voiceOk = false
+      for (const opt of voiceSel.options) {
+        const match = opt.dataset.provider === provider
+        opt.hidden = !match
+        opt.disabled = !match
+        if (match && opt.value === voiceSel.value) voiceOk = true
+      }
+      if (!voiceOk) voiceSel.value = DEFAULT_VOICE[provider]
+    }
+    providerSel.addEventListener("change", syncForProvider)
+    syncForProvider()
 
     function setStatus(msg, type = "") {
       statusEl.textContent = msg
@@ -170,8 +204,8 @@ export function getTestPageHTML(host: string): string {
 
         ws.onopen = () => {
           setStatus("Connected, configuring session...", "ok")
-          const selectedModel = document.getElementById("model").value
-          const provider = selectedModel.startsWith("gemini-") ? "gemini" : document.getElementById("provider").value
+          const selectedModel = modelSel.value
+          const provider = providerSel.value
           ws.send(JSON.stringify({
             type: "session.config",
             provider: provider,

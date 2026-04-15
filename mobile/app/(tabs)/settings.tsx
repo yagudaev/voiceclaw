@@ -91,6 +91,9 @@ export default function SettingsScreen() {
   // Show latency
   const [showLatency, setShowLatencyState] = useState(false)
 
+  // Langfuse tracing — defaults on in dev builds, off in release
+  const [tracingEnabled, setTracingEnabled] = useState<boolean>(__DEV__)
+
   // Kokoro model download state
   const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
 
@@ -230,6 +233,9 @@ export default function SettingsScreen() {
       if (dm === 'true') setDebugMode(true)
       const sl = await getSetting('show_latency')
       if (sl === 'true') setShowLatencyState(true)
+      const tr = await getSetting('tracing_enabled')
+      if (tr === 'true') setTracingEnabled(true)
+      else if (tr === 'false') setTracingEnabled(false)
 
       loadedRef.current = true
     })()
@@ -411,6 +417,11 @@ export default function SettingsScreen() {
   const toggleShowLatency = useCallback((v: boolean) => {
     setShowLatencyState(v)
     setSetting('show_latency', v ? 'true' : 'false')
+  }, [])
+
+  const toggleTracing = useCallback((v: boolean) => {
+    setTracingEnabled(v)
+    setSetting('tracing_enabled', v ? 'true' : 'false')
   }, [])
 
   return (
@@ -831,6 +842,24 @@ export default function SettingsScreen() {
               testID="show-latency-toggle"
               value={showLatency}
               onValueChange={toggleShowLatency}
+            />
+          </View>
+        </Card>
+
+        <Card testID="tracing-card" className="gap-2 p-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1">
+              <Text className="text-lg font-semibold text-foreground">Send Latency Traces</Text>
+              <Text className="text-sm text-muted-foreground">
+                Post per-turn latency measurements to the relay so they
+                show up in Langfuse. Dev builds default on; release
+                builds default off.
+              </Text>
+            </View>
+            <Switch
+              testID="tracing-toggle"
+              value={tracingEnabled}
+              onValueChange={toggleTracing}
             />
           </View>
         </Card>

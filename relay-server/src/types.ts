@@ -8,6 +8,7 @@ export type ClientEvent =
   | ResponseCreateEvent
   | ResponseCancelEvent
   | ToolResultEvent
+  | ClientTimingEvent
 
 export interface SessionConfigEvent {
   type: "session.config"
@@ -52,6 +53,18 @@ export interface ToolResultEvent {
   output: string
 }
 
+// Emitted by the mobile client to attribute latency across the pipeline
+// (e.g., mic-open → first-audio-chunk, turn-started → first-tts-sample).
+// Relay attaches these to the Langfuse generation span identified by turnId.
+// turnId is issued by the relay in TurnStartedEvent; echoing it back avoids
+// attributing a late-arriving timing to the wrong turn.
+export interface ClientTimingEvent {
+  type: "client.timing"
+  phase: string
+  ms: number
+  turnId?: string
+}
+
 // Relay → Client events
 export type RelayEvent =
   | SessionReadyEvent
@@ -65,6 +78,7 @@ export type RelayEvent =
   | SessionEndedEvent
   | SessionRotatingEvent
   | SessionRotatedEvent
+  | UsageMetricsEvent
   | ErrorEvent
 
 export interface SessionReadyEvent {
@@ -104,6 +118,7 @@ export interface ToolProgressEvent {
 
 export interface TurnStartedEvent {
   type: "turn.started"
+  turnId?: string
 }
 
 export interface TurnEndedEvent {
@@ -124,6 +139,18 @@ export interface SessionRotatingEvent {
 export interface SessionRotatedEvent {
   type: "session.rotated"
   sessionId: string
+}
+
+// Emitted by adapters with per-turn token/audio usage. Consumed internally
+// by the tracer to attribute cost on Langfuse generations; not forwarded to
+// the mobile client.
+export interface UsageMetricsEvent {
+  type: "usage.metrics"
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  inputAudioTokens?: number
+  outputAudioTokens?: number
 }
 
 export interface ErrorEvent {
