@@ -19,6 +19,7 @@ export interface RealtimeConfig {
   }
   instructionsOverride?: string
   conversationHistory?: { role: 'user' | 'assistant', text: string }[]
+  tracingEnabled?: boolean
 }
 
 export interface RealtimeCallbacks {
@@ -47,10 +48,18 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const configRef = useRef<RealtimeConfig | null>(null)
   const userStoppedRef = useRef(false)
   const mutedRef = useRef(false)
+  const turnStartedAtRef = useRef<number | null>(null)
+  const turnIdRef = useRef<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
+
+  const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
+    if (!configRef.current?.tracingEnabled) return
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(JSON.stringify({ type: 'client.timing', phase, ms, turnId: turnId ?? undefined }))
+  }, [])
 
   // Clean up on unmount
   useEffect(() => {
@@ -105,6 +114,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'audio.delta':
         // Forward to native module for playback
         ExpoRealtimeAudioModule.playAudio(data.data)
+        if (turnStartedAtRef.current != null) {
+          sendTiming('ttft_audio', Date.now() - turnStartedAtRef.current, turnIdRef.current)
+          turnStartedAtRef.current = null
+        }
         break
 
       case 'transcript.delta':
@@ -126,6 +139,8 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'turn.started':
         // Barge-in: stop playback when user starts speaking
         ExpoRealtimeAudioModule.stopPlayback()
+        turnStartedAtRef.current = Date.now()
+        turnIdRef.current = data.turnId ?? null
         cb.onTurnStarted?.()
         break
 

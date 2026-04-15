@@ -12,6 +12,7 @@ import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
 import { log, error as logError } from "./log.js"
+import { TurnTracer } from "./tracing/turn-tracer.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
@@ -21,6 +22,7 @@ export class RelaySession {
   private config: SessionConfigEvent | null = null
   private startedAt: number = Date.now()
   private turnCount: number = 0
+  private tracer = new TurnTracer()
 
   constructor(ws: WebSocket) {
     this.ws = ws
@@ -44,6 +46,27 @@ export class RelaySession {
   }
 
   private handleRelayEvent(event: RelayEvent) {
+    // Tracing side-effects — don't alter the forwarded event stream.
+    switch (event.type) {
+      case "turn.started":
+        this.tracer.startTurn()
+        break
+      case "transcript.delta":
+        if (event.role === "user") this.tracer.appendUserText(event.text)
+        else this.tracer.appendAssistantText(event.text)
+        break
+      case "tool.call":
+        this.tracer.startToolCall(event.callId, event.name, event.arguments)
+        break
+      case "turn.ended":
+        this.tracer.endTurn()
+        break
+      case "usage.metrics":
+        this.tracer.attachUsage(event)
+        // Internal only — do not forward to client
+        return
+    }
+
     // Intercept tool calls — handle server-side tools, forward the rest to client
     if (event.type === "tool.call" && SERVER_SIDE_TOOLS.has(event.name)) {
       this.handleServerToolCall(event.callId, event.name, event.arguments)
@@ -55,6 +78,16 @@ export class RelaySession {
       this.turnCount++
     }
 
+    // Stamp the active turnId onto outbound turn.started so the client can
+    // echo it back in client.timing events and we can attribute correctly.
+    if (event.type === "turn.started") {
+      const turnId = this.tracer.getActiveTurnId()
+      if (turnId) {
+        this.send({ ...event, turnId })
+        return
+      }
+    }
+
     this.send(event)
   }
 
@@ -64,6 +97,7 @@ export class RelaySession {
     // Synchronous tools
     const syncResult = handleToolCall(name, args)
     if (syncResult !== null) {
+      this.tracer.endToolCall(callId, syncResult)
       this.adapter?.sendToolResult(callId, syncResult)
       return
     }
@@ -107,11 +141,14 @@ export class RelaySession {
 
       const brainMs = Date.now() - brainStart
       log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
+      this.tracer.endToolCall(callId, result)
       this.adapter?.sendToolResult(callId, result)
     } catch (err) {
       const message = err instanceof Error ? err.message : "brain agent call failed"
       logError(`[session:${this.id}] ask_brain error:`, message)
-      this.adapter?.sendToolResult(callId, JSON.stringify({ error: message }))
+      const errorPayload = JSON.stringify({ error: message })
+      this.tracer.endToolCall(callId, errorPayload, message)
+      this.adapter?.sendToolResult(callId, errorPayload)
     }
   }
 
@@ -141,7 +178,11 @@ export class RelaySession {
         this.adapter?.cancelResponse()
         break
       case "tool.result":
+        this.tracer.endToolCall(event.callId, event.output)
         this.adapter?.sendToolResult(event.callId, event.output)
+        break
+      case "client.timing":
+        this.tracer.attachClientTiming(event.phase, event.ms, event.turnId)
         break
       default:
         this.sendError(`unknown event type: ${(event as { type: string }).type}`, 400)
@@ -154,6 +195,11 @@ export class RelaySession {
       log(`[session:${this.id}] Replacing existing adapter`)
       this.adapter.disconnect()
       this.adapter = null
+      // Close out any spans still attributed to the old logical session before
+      // startSession() overwrites session metadata. Otherwise leftover
+      // generations/tool spans stay open and late tool results land on the
+      // wrong session.
+      this.tracer.endSession()
     }
 
     // Validate API key
@@ -168,6 +214,7 @@ export class RelaySession {
     log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter (model=${config.model || "default"})`)
     this.config = config
     this.startedAt = Date.now()
+    this.tracer.startSession(config.sessionKey ?? this.id, null, config.model ?? null)
 
     try {
       this.adapter = createAdapter(config.provider)
@@ -184,6 +231,7 @@ export class RelaySession {
 
   private cleanup() {
     log(`[session:${this.id}] Disconnecting`)
+    this.tracer.endSession()
     this.syncTranscriptToBrain()
     this.adapter?.disconnect()
     this.adapter = null

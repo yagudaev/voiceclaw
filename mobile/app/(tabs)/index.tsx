@@ -913,6 +913,10 @@ export default function ChatScreen() {
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
     const systemPrompt = (await getSetting('system_prompt')) || ''
+    const tracingPref = await getSetting('tracing_enabled')
+    const tracingEnabled = tracingPref === null || tracingPref === undefined
+      ? __DEV__
+      : tracingPref === 'true'
 
     if (!apiKey) {
       await addMessage(conversationId, 'assistant', 'Please configure your API key in the Realtime settings first.')
@@ -952,6 +956,7 @@ export default function ChatScreen() {
       },
       instructionsOverride: systemPrompt || undefined,
       conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
+      tracingEnabled,
     })
 
     return true

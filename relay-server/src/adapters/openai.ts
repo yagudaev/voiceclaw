@@ -386,9 +386,21 @@ export class OpenAIAdapter implements ProviderAdapter {
       // Response lifecycle
       case "response.created":
         break
-      case "response.done":
+      case "response.done": {
         this.sendToClient?.({ type: "turn.ended" })
+        const usage = event.response?.usage
+        if (usage) {
+          this.sendToClient?.({
+            type: "usage.metrics",
+            promptTokens: usage.input_tokens,
+            completionTokens: usage.output_tokens,
+            totalTokens: usage.total_tokens,
+            inputAudioTokens: usage.input_token_details?.audio_tokens,
+            outputAudioTokens: usage.output_token_details?.audio_tokens,
+          })
+        }
         break
+      }
 
       // Errors
       case "error":
