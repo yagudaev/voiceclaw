@@ -9,7 +9,10 @@ interface BrainConfig {
   gatewayUrl: string
   authToken: string
   sessionId: string
-  traceparent?: string | null
+}
+
+export interface BrainStepListener {
+  onStep?: (summary: string) => void
 }
 
 export async function askBrain(
@@ -17,6 +20,7 @@ export async function askBrain(
   config: BrainConfig,
   sendToClient: SendToClient,
   callId: string,
+  listener?: BrainStepListener,
 ): Promise<string> {
   const url = `${config.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`
 
@@ -25,20 +29,15 @@ export async function askBrain(
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000) // 2 min — gateway may need exec approval
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${config.authToken}`,
-    "x-openclaw-session-key": config.sessionId,
-  }
-  if (config.traceparent) {
-    headers["traceparent"] = config.traceparent
-  }
-
   let response: Response
   try {
     response = await fetch(url, {
       method: "POST",
-      headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${config.authToken}`,
+        "x-openclaw-session-key": config.sessionId,
+      },
       body: JSON.stringify({
         model: "openclaw",
         messages: [
@@ -97,6 +96,7 @@ export async function askBrain(
             callId,
             summary: parsed.summary,
           })
+          listener?.onStep?.(parsed.summary)
           continue
         }
 

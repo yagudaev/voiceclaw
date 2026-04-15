@@ -133,17 +133,27 @@ export class RelaySession {
       log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
 
       const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
-      const result = await askBrain(query, {
-        gatewayUrl,
-        authToken,
-        sessionId: sessionKey,
-        traceparent: this.tracer.getToolTraceparent(callId),
-      }, sendToClient, callId)
+      const brainTrace = this.tracer.startBrainAgent(callId, { query })
 
-      const brainMs = Date.now() - brainStart
-      log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
-      this.tracer.endToolCall(callId, result)
-      this.adapter?.sendToolResult(callId, result)
+      try {
+        const result = await askBrain(
+          query,
+          { gatewayUrl, authToken, sessionId: sessionKey },
+          sendToClient,
+          callId,
+          { onStep: (summary) => brainTrace.recordStep(summary) },
+        )
+
+        const brainMs = Date.now() - brainStart
+        log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
+        brainTrace.end({ response: result, durationMs: brainMs })
+        this.tracer.endToolCall(callId, result)
+        this.adapter?.sendToolResult(callId, result)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "brain agent call failed"
+        brainTrace.end({ error: message }, message)
+        throw err
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "brain agent call failed"
       logError(`[session:${this.id}] ask_brain error:`, message)

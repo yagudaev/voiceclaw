@@ -14,8 +14,22 @@
 // need to guard every site.
 
 import { randomUUID } from "node:crypto"
-import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
+import { propagateAttributes, startObservation, type LangfuseAgent, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
+
+/**
+ * Handle for recording events against the child `openclaw-agent` span that
+ * lives under an `ask_brain` tool call. Returned by {@link TurnTracer.startBrainAgent}.
+ */
+export interface BrainAgentTrace {
+  recordStep: (summary: string, details?: Record<string, unknown>) => void
+  end: (output: unknown, error?: string) => void
+}
+
+const NOOP_BRAIN_TRACE: BrainAgentTrace = {
+  recordStep: () => {},
+  end: () => {},
+}
 
 // How long to keep the generation object around after endTurn() so trailing
 // usage.metrics / client.timing events from the same turn can still attach.
@@ -43,17 +57,42 @@ export class TurnTracer {
   }
 
   /**
-   * W3C traceparent for an in-flight tool span, so downstream services
-   * (e.g. openclaw) can attach their observations as children of the same
-   * trace. Returns null if Langfuse is disabled or no such tool span exists.
+   * Start a child `openclaw-agent` span under an in-flight `ask_brain` tool
+   * call. Each step signaled by openclaw's SSE stream (`step_complete`) is
+   * recorded as a nested event so the trace mirrors the brain's reasoning
+   * flow. Returns a no-op handle when Langfuse is disabled or the tool span
+   * is not active, so callers don't have to guard.
    */
-  getToolTraceparent(callId: string): string | null {
-    const span = this.activeToolSpans.get(callId)
-    if (!span) return null
-    const ctx = span.otelSpan.spanContext()
-    if (!ctx.traceId || !ctx.spanId) return null
-    const flags = (ctx.traceFlags & 0xff).toString(16).padStart(2, "0")
-    return `00-${ctx.traceId}-${ctx.spanId}-${flags}`
+  startBrainAgent(callId: string, input: unknown): BrainAgentTrace {
+    if (!isLangfuseEnabled()) return NOOP_BRAIN_TRACE
+    const parent = this.activeToolSpans.get(callId)
+    if (!parent) return NOOP_BRAIN_TRACE
+
+    const agent: LangfuseAgent = parent.startObservation(
+      "openclaw-agent",
+      { input },
+      { asType: "agent" },
+    )
+
+    return {
+      recordStep(summary, details) {
+        agent.startObservation(
+          "step",
+          {
+            input: summary,
+            ...(details ? { metadata: details } : {}),
+          },
+          { asType: "event" },
+        )
+      },
+      end(output, error) {
+        agent.update({
+          output,
+          ...(error ? { level: "ERROR" as const, statusMessage: error } : {}),
+        })
+        agent.end()
+      },
+    }
   }
 
   startSession(sessionId: string, userId: string | null, model: string | null) {
