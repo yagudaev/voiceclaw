@@ -137,6 +137,7 @@ export class RelaySession {
         gatewayUrl,
         authToken,
         sessionId: sessionKey,
+        traceparent: this.tracer.getToolTraceparent(callId),
       }, sendToClient, callId)
 
       const brainMs = Date.now() - brainStart

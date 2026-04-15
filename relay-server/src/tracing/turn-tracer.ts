@@ -42,6 +42,20 @@ export class TurnTracer {
     return this.activeTurnId
   }
 
+  /**
+   * W3C traceparent for an in-flight tool span, so downstream services
+   * (e.g. openclaw) can attach their observations as children of the same
+   * trace. Returns null if Langfuse is disabled or no such tool span exists.
+   */
+  getToolTraceparent(callId: string): string | null {
+    const span = this.activeToolSpans.get(callId)
+    if (!span) return null
+    const ctx = span.otelSpan.spanContext()
+    if (!ctx.traceId || !ctx.spanId) return null
+    const flags = (ctx.traceFlags & 0xff).toString(16).padStart(2, "0")
+    return `00-${ctx.traceId}-${ctx.spanId}-${flags}`
+  }
+
   startSession(sessionId: string, userId: string | null, model: string | null) {
     this.sessionId = sessionId
     this.userId = userId

@@ -9,6 +9,7 @@ interface BrainConfig {
   gatewayUrl: string
   authToken: string
   sessionId: string
+  traceparent?: string | null
 }
 
 export async function askBrain(
@@ -24,15 +25,20 @@ export async function askBrain(
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000) // 2 min — gateway may need exec approval
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${config.authToken}`,
+    "x-openclaw-session-key": config.sessionId,
+  }
+  if (config.traceparent) {
+    headers["traceparent"] = config.traceparent
+  }
+
   let response: Response
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.authToken}`,
-        "x-openclaw-session-key": config.sessionId,
-      },
+      headers,
       body: JSON.stringify({
         model: "openclaw",
         messages: [
