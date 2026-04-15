@@ -49,7 +49,7 @@ class AudioCoordinator {
             try session.setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                options: [.allowBluetooth]
             )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
