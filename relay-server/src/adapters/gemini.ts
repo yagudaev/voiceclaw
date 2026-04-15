@@ -372,7 +372,13 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     if (msg.toolCallCancellation) {
-      log("[gemini] Tool call cancelled")
+      const ids: string[] = Array.isArray(msg.toolCallCancellation.ids)
+        ? msg.toolCallCancellation.ids.filter((id: unknown): id is string => typeof id === "string")
+        : []
+      log(`[gemini] Tool call cancelled: ${ids.join(", ") || "(no ids)"}`)
+      if (ids.length > 0) {
+        this.sendToClient?.({ type: "tool.cancelled", callIds: ids })
+      }
       this.pendingToolCalls = 0
       this.resetWatchdog()
       return
