@@ -27,23 +27,7 @@ const MAX_PENDING_AUDIO = 50
 const MAX_PENDING_CONTROL = 20
 
 const GEMINI_VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
-
-// Map OpenAI voice names → Gemini equivalents
-const VOICE_MAP: Record<string, string> = {
-  alloy: "Kore",
-  cedar: "Charon",
-  echo: "Charon",
-  fable: "Fenrir",
-  marin: "Aoede",
-  onyx: "Orus",
-  nova: "Aoede",
-  shimmer: "Leda",
-  sage: "Puck",
-  ash: "Zephyr",
-  ballad: "Kore",
-  coral: "Aoede",
-  verse: "Puck",
-}
+const DEFAULT_GEMINI_VOICE = "Zephyr"
 
 export class GeminiAdapter implements ProviderAdapter {
   private upstream: WebSocket | null = null
@@ -663,12 +647,13 @@ function parseTimeLeftMs(timeLeft: unknown): number {
 }
 
 function resolveVoice(voice?: string): string {
-  if (!voice) return "Zephyr"
-  // If it's already a Gemini voice name, normalize casing
+  if (!voice) return DEFAULT_GEMINI_VOICE
   const match = GEMINI_VOICES.find((v) => v.toLowerCase() === voice.toLowerCase())
-  if (match) return match
-  // Map from OpenAI voice names
-  return VOICE_MAP[voice.toLowerCase()] || "Zephyr"
+  if (!match) {
+    log(`[gemini] Unknown voice "${voice}"; falling back to ${DEFAULT_GEMINI_VOICE}`)
+    return DEFAULT_GEMINI_VOICE
+  }
+  return match
 }
 
 function downsample24to16(base64Audio: string): string {
