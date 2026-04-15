@@ -60,7 +60,7 @@ export function buildInstructions(config: SessionConfigEvent): string {
   const parts: string[] = []
 
   if (config.brainAgent !== "none") {
-    const identity = loadAgentIdentity()
+    const identity = loadAgentIdentity(config.provider)
     log(`[instructions] Loaded agent identity (${identity.length} chars): ${identity.substring(0, 100)}...`)
     parts.push(identity)
     parts.push(BRAIN_CAPABILITIES)
@@ -95,9 +95,13 @@ export function buildInstructions(config: SessionConfigEvent): string {
 
 // --- helpers ---
 
-function loadAgentIdentity(): string {
-  const name = loadAgentName()
+function loadAgentIdentity(provider: SessionConfigEvent["provider"]): string {
+  const profile = loadAgentProfile()
   const soul = loadFile("SOUL.md")
+
+  if (provider === "openai") {
+    return buildOpenAIVoiceIdentity(profile, soul)
+  }
 
   if (soul) {
     // Strip meta lines that don't apply to voice (markdown links, "this file is yours" footer)
@@ -107,19 +111,19 @@ function loadAgentIdentity(): string {
       .replace(/---[\s\S]*$/, "") // remove trailing --- and everything after
       .trim()
 
-    return `You are ${name}, a personal AI assistant in voice mode. You are the same ${name} from text chat, just speaking instead of typing.\n\n${cleaned}`
+    return `You are ${profile.name}, a personal AI assistant in voice mode. You are the same ${profile.name} from text chat, just speaking instead of typing.\n\n${cleaned}`
   }
 
-  return `You are ${name}, a personal AI assistant in voice mode. Keep your responses conversational and concise.`
+  return `You are ${profile.name}, a personal AI assistant in voice mode. Keep your responses conversational and concise.`
 }
 
-function loadAgentName(): string {
+function loadAgentProfile() {
   const identity = loadFile("IDENTITY.md")
-  if (identity) {
-    const match = identity.match(/\*\*Name:\*\*\s*(.+)/i)
-    if (match) return match[1].trim()
+  return {
+    name: readIdentityField(identity, "Name") || "Assistant",
+    creature: readIdentityField(identity, "Creature"),
+    vibe: readIdentityField(identity, "Vibe"),
   }
-  return "Assistant"
 }
 
 function loadFile(filename: string): string | null {
@@ -131,4 +135,150 @@ function loadFile(filename: string): string | null {
     warn(`[instructions] Failed to read ${path}`)
     return null
   }
+}
+
+function buildOpenAIVoiceIdentity(
+  profile: { name: string, creature: string | null, vibe: string | null },
+  soul: string | null
+): string {
+  const role = profile.creature || "a private voice companion"
+  const coreTruths = extractPromptLines(extractSection(soul, "Core Truths"), 3)
+  const boundaries = extractPromptLines(extractSection(soul, "Boundaries"), 3)
+  const vibeLines = extractPromptLines(extractSection(soul, "Vibe"), 12)
+  const relationship = vibeLines.filter((line) => (
+    /role is|presence matters|helping with|protect .* attention|slow down|verify|low-risk|high-risk/i.test(line)
+  ))
+  const safetyRelationship = relationship.filter((line) => /slow down|verify|low-risk|high-risk/i.test(line))
+  const behaviorRelationship = relationship.filter((line) => !safetyRelationship.includes(line))
+  const toneDetails = vibeLines.filter((line) => !relationship.includes(line))
+
+  const personalityLines = compactLines([
+    `You are ${profile.name}, ${role}, speaking live in a voice conversation.`,
+    profile.vibe ? `Core vibe: ${stripMarkdown(profile.vibe)}` : null,
+    ...toneDetails,
+  ], 4)
+
+  const behaviorLines = compactLines([
+    ...coreTruths,
+    ...behaviorRelationship,
+  ], 4)
+
+  const guardrailLines = compactLines([
+    ...boundaries,
+    ...safetyRelationship,
+  ], 4)
+
+  const sections = [
+    buildSection("Personality & Tone", personalityLines),
+    buildSection("Instructions", behaviorLines),
+    buildSection("Safety & Boundaries", guardrailLines),
+  ].filter(Boolean)
+
+  if (sections.length === 0) {
+    return `## Personality & Tone\n- You are ${profile.name}, ${role}, speaking live in a voice conversation.\n- Keep the delivery warm, concise, and natural for spoken audio.`
+  }
+
+  return sections.join("\n\n")
+}
+
+function buildSection(title: string, lines: string[]): string {
+  if (lines.length === 0) return ""
+  return `## ${title}\n${lines.map((line) => `- ${line}`).join("\n")}`
+}
+
+function compactLines(lines: Array<string | null>, limit: number): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+
+  for (const line of lines) {
+    if (!line) continue
+    const cleaned = normalizeLine(line)
+    if (!cleaned || seen.has(cleaned)) continue
+    seen.add(cleaned)
+    result.push(cleaned)
+    if (result.length >= limit) break
+  }
+
+  return result
+}
+
+function extractSection(markdown: string | null, title: string): string {
+  if (!markdown) return ""
+
+  const lines = markdown.split("\n")
+  const heading = `## ${title}`
+  const startIndex = lines.findIndex((line) => line.trim() === heading)
+  if (startIndex === -1) return ""
+
+  const sectionLines: string[] = []
+  for (const line of lines.slice(startIndex + 1)) {
+    if (line.startsWith("## ")) break
+    sectionLines.push(line)
+  }
+
+  return sectionLines.join("\n").trim()
+}
+
+function extractPromptLines(markdown: string, limit: number): string[] {
+  if (!markdown) return []
+
+  const plain = stripMarkdown(markdown)
+  const lines = plain
+    .split("\n")
+    .flatMap((line) => splitIntoSentences(line))
+    .map((line) => normalizeLine(line))
+    .filter(Boolean)
+
+  return compactLines(lines, limit)
+}
+
+function splitIntoSentences(text: string): string[] {
+  const cleaned = text.trim()
+  if (!cleaned) return []
+
+  const parts = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const merged: string[] = []
+  for (const part of parts) {
+    if (part.length <= 12 && merged.length > 0) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]} ${part}`.trim()
+      continue
+    }
+    merged.push(part)
+  }
+
+  return merged
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#+\s*/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^---$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function normalizeLine(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.!?])/g, "$1")
+    .trim()
+}
+
+function readIdentityField(identity: string | null, field: string): string | null {
+  if (!identity) return null
+  const match = identity.match(new RegExp(`\\*\\*${escapeRegex(field)}:\\*\\*\\s*(.+)`, "i"))
+  return match?.[1]?.trim() || null
+}
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
