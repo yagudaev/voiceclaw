@@ -19,6 +19,10 @@ export class EchoAdapter implements ProviderAdapter {
     // no-op for echo
   }
 
+  injectContext(_text: string) {
+    // no-op for echo
+  }
+
   commitAudio() {
     // no-op for echo
   }

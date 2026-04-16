@@ -27,6 +27,9 @@ export interface ProviderAdapter {
   /** Send a tool result back to the provider */
   sendToolResult(callId: string, output: string): void
 
+  /** Inject context into the conversation (e.g. async tool results) */
+  injectContext(text: string): void
+
   /** Get the conversation transcript so far */
   getTranscript(): { role: "user" | "assistant", text: string }[]
 
