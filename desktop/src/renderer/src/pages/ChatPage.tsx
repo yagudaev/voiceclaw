@@ -81,8 +81,15 @@ export function ChatPage() {
       setIsCallActive(true)
     },
     onTranscriptDelta: (text, role) => {
-      setStreamingRole(role)
-      setStreamingText((prev) => prev + text)
+      setStreamingRole((prevRole) => {
+        if (prevRole !== role) {
+          // Role switched (user→assistant or vice versa) — reset the buffer
+          setStreamingText(text)
+        } else {
+          setStreamingText((prev) => prev + text)
+        }
+        return role
+      })
       if (role === 'assistant') setIsThinking(false)
     },
     onTranscriptDone: async (text, role) => {
