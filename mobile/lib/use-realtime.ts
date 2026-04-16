@@ -12,6 +12,9 @@ export interface RealtimeConfig {
   apiKey: string
   sessionKey?: string
   volume?: number
+  echoGateEnabled?: boolean
+  echoGateThreshold?: number
+  debugMode?: boolean
   deviceContext?: {
     timezone?: string
     locale?: string
@@ -20,6 +23,14 @@ export interface RealtimeConfig {
   instructionsOverride?: string
   conversationHistory?: { role: 'user' | 'assistant', text: string }[]
   tracingEnabled?: boolean
+}
+
+export interface RmsMetrics {
+  rms: number
+  playbackActive: boolean
+  gated: boolean
+  threshold: number
+  route: string
 }
 
 export interface RealtimeCallbacks {
@@ -33,6 +44,7 @@ export interface RealtimeCallbacks {
   onSessionEnded?: (summary: string) => void
   onDisconnect?: () => void
   onError?: (message: string, code: number) => void
+  onRmsMetrics?: (metrics: RmsMetrics) => void
 }
 
 export interface RealtimeControls {
@@ -80,6 +92,17 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     return () => sub.remove()
   }, [])
 
+  // Forward RMS metrics to callback
+  useEffect(() => {
+    const sub = ExpoRealtimeAudioModule.addListener(
+      'onRmsMetrics',
+      (event: RmsMetrics) => {
+        callbacksRef.current.onRmsMetrics?.(event)
+      },
+    )
+    return () => sub.remove()
+  }, [])
+
   // Listen for audio from native module and forward to WebSocket
   useEffect(() => {
     const subscription = ExpoRealtimeAudioModule.addListener(
@@ -105,9 +128,16 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       case 'session.ready':
         setSessionId(data.sessionId)
         setIsConnected(true)
-        if (configRef.current?.volume && typeof ExpoRealtimeAudioModule.setVolume === 'function') {
+        if (configRef.current?.volume != null) {
           ExpoRealtimeAudioModule.setVolume(configRef.current.volume)
         }
+        if (configRef.current?.echoGateEnabled != null) {
+          ExpoRealtimeAudioModule.setEchoGateEnabled(configRef.current.echoGateEnabled)
+        }
+        if (configRef.current?.echoGateThreshold != null) {
+          ExpoRealtimeAudioModule.setEchoGateThreshold(configRef.current.echoGateThreshold)
+        }
+        ExpoRealtimeAudioModule.setDebugMetricsEnabled(configRef.current?.debugMode ?? false)
         cb.onSessionReady?.(data.sessionId)
         break
 
