@@ -302,6 +302,18 @@ export class GeminiAdapter implements ProviderAdapter {
     }
   }
 
+  injectContext(text: string) {
+    this.sendUpstream({
+      clientContent: {
+        turns: [{
+          role: "user",
+          parts: [{ text }],
+        }],
+        turnComplete: true,
+      },
+    })
+  }
+
   getTranscript() {
     return [...this.transcript]
   }
