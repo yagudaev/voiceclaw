@@ -265,7 +265,9 @@ export class GeminiAdapter implements ProviderAdapter {
         },
       },
     }, "video")
-    this.resetWatchdog()
+    // Do NOT reset the watchdog here — video frames at 1 FPS should not
+    // count as user activity. Only audio activity pets the watchdog so the
+    // "are you still there?" prompt fires correctly during silent screen sharing.
   }
 
   commitAudio() {
@@ -379,13 +381,13 @@ export class GeminiAdapter implements ProviderAdapter {
       setup.tools = [{ functionDeclarations: tools }]
     }
 
-    // Enable context window compression when video frames are in use.
-    // Without this, audio+video sessions are limited to ~2 minutes.
-    if (this.hasVideoInput) {
-      setup.contextWindowCompression = {
-        slidingWindow: {},
-        triggerTokens: 10000,
-      }
+    // Enable context window compression unconditionally. hasVideoInput is only
+    // set when sendFrame() is called, which happens after setup, so gating on
+    // it here would miss sessions that share screen immediately after connecting.
+    // Compression is lightweight and harmless for audio-only sessions.
+    setup.contextWindowCompression = {
+      slidingWindow: {},
+      triggerTokens: 10000,
     }
 
     log(`[gemini] Setup: model=${model}, voice=${voice}, tools=${tools.length}`)
