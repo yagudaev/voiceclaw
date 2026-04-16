@@ -145,6 +145,9 @@ export function registerIpcHandlers() {
 
   // Network: test relay server connection from main process (avoids CORS)
   ipcMain.handle('net:healthCheck', async (_e, url: string) => {
+    if (!isHttpUrl(url)) {
+      return { ok: false, error: 'Invalid URL: only http/https allowed' }
+    }
     try {
       const response = await net.fetch(url, { method: 'GET' })
       if (response.ok) {
@@ -156,4 +159,17 @@ export function registerIpcHandlers() {
       return { ok: false, error: err instanceof Error ? err.message : 'Connection failed' }
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function isHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
 }
