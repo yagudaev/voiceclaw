@@ -302,6 +302,18 @@ export class GeminiAdapter implements ProviderAdapter {
     }
   }
 
+  injectContext(text: string) {
+    // Use realtimeInput.text — clientContent is not supported mid-session on
+    // Gemini 3.1 Flash Live and triggers 1007. realtimeInput.text can be sent
+    // concurrently with audio streaming without conflict.
+    log(`[gemini] Injecting context via realtimeInput.text (${text.length} chars)`)
+    this.sendUpstream({
+      realtimeInput: {
+        text,
+      },
+    })
+  }
+
   getTranscript() {
     return [...this.transcript]
   }
@@ -648,12 +660,8 @@ export class GeminiAdapter implements ProviderAdapter {
     this.watchdogTimer = setTimeout(() => {
       log("[gemini] Watchdog: no audio for 20s, injecting prompt")
       this.sendUpstream({
-        clientContent: {
-          turns: [{
-            role: "user",
-            parts: [{ text: "(The user has been silent for a while. If you were mid-conversation, gently check if they're still there. If the conversation had naturally ended, stay quiet.)" }],
-          }],
-          turnComplete: true,
+        realtimeInput: {
+          text: "(The user has been silent for a while. If you were mid-conversation, gently check if they're still there. If the conversation had naturally ended, stay quiet.)",
         },
       })
     }, WATCHDOG_TIMEOUT_MS)

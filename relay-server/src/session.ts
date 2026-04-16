@@ -116,58 +116,75 @@ export class RelaySession {
 
   }
 
-  private async handleAskBrain(callId: string, args: string) {
+  private handleAskBrain(callId: string, args: string) {
     if (!this.config) return
 
     const controller = new AbortController()
     this.inFlightTools.set(callId, controller)
 
+    let query: string
     try {
       const parsed = JSON.parse(args)
-      const query = parsed.query
+      query = parsed.query
+      if (typeof query !== "string" || query.trim() === "") {
+        throw new Error("missing or empty query")
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "invalid arguments"
+      const errorPayload = JSON.stringify({ error: msg })
+      this.tracer.endToolCall(callId, errorPayload, msg)
+      this.adapter?.sendToolResult(callId, errorPayload)
+      this.inFlightTools.delete(callId)
+      return
+    }
 
-      // Send progress so the user knows the agent is thinking
-      this.send({
-        type: "transcript.delta",
-        text: "Let me check on that...\n",
-        role: "assistant",
-      })
+    // Immediately unblock Gemini so the user can keep talking.
+    // Gemini will naturally say something like "Let me check on that."
+    this.adapter?.sendToolResult(callId, JSON.stringify({
+      status: "searching",
+      message: "Looking into it now. I'll share what I find in a moment.",
+    }))
+    this.tracer.endToolCall(callId, '{"status":"searching"}')
 
-      const sendToClient: SendToClient = (event) => this.send(event)
+    // Run the brain agent in the background.
+    // Keep the controller in inFlightTools so cleanup() can abort it on disconnect.
+    const sendToClient: SendToClient = (event) => this.send(event)
+    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
+    const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
 
-      const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
-      const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+    const brainStart = Date.now()
+    log(`[session:${this.id}] ask_brain (async) → ${gatewayUrl}`)
 
-      const brainStart = Date.now()
-      log(`[session:${this.id}] ask_brain → ${gatewayUrl}`)
-
-      const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
-      const result = await askBrain(query, {
-        gatewayUrl,
-        authToken,
-        sessionId: sessionKey,
-      }, sendToClient, callId, controller.signal)
-
+    askBrain(query, {
+      gatewayUrl,
+      authToken,
+      sessionId: sessionKey,
+    }, sendToClient, callId, controller.signal).then((result) => {
       const brainMs = Date.now() - brainStart
       log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
-      // If the upstream cancelled mid-flight, the callId is dead — don't echo
-      // a result back; it would be rejected and may confuse the model state.
+
       if (controller.signal.aborted) {
         log(`[session:${this.id}] ask_brain (${callId}) was cancelled — discarding result`)
-        this.tracer.endToolCall(callId, result, "cancelled")
         return
       }
-      this.tracer.endToolCall(callId, result)
-      this.adapter?.sendToolResult(callId, result)
-    } catch (err) {
+
+      // Inject the result back into the conversation so Gemini speaks it
+      this.adapter?.injectContext(
+        `[Brain agent result for query: "${query}"]\n${result}\n\nPlease share this information with the user naturally.`
+      )
+    }).catch((err) => {
       const message = err instanceof Error ? err.message : "brain agent call failed"
       logError(`[session:${this.id}] ask_brain error:`, message)
-      const errorPayload = JSON.stringify({ error: message })
-      this.tracer.endToolCall(callId, errorPayload, message)
-      this.adapter?.sendToolResult(callId, errorPayload)
-    } finally {
+
+      if (!controller.signal.aborted) {
+        this.adapter?.injectContext(
+          `[Brain agent failed for query: "${query}": ${message}]\nLet the user know the search didn't work and offer to try again.`
+        )
+      }
+    }).finally(() => {
       this.inFlightTools.delete(callId)
-    }
+    })
   }
 
   private handleToolCancelled(callIds: string[]) {
