@@ -47,6 +47,9 @@ export interface RealtimeControls {
   sessionId: string | null
 }
 
+const MAX_RECONNECT_ATTEMPTS = 3
+const RECONNECT_DELAYS = [1000, 3000, 5000]
+
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
@@ -54,6 +57,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const userStoppedRef = useRef(false)
   const turnStartedAtRef = useRef<number | null>(null)
   const turnIdRef = useRef<string | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const connectionIdRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -70,6 +76,11 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      userStoppedRef.current = true
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       engineRef.current?.destroy()
       wsRef.current?.close()
       wsRef.current = null
@@ -83,6 +94,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
       switch (data.type) {
         case 'session.ready':
+          reconnectAttemptsRef.current = 0
           setSessionId(data.sessionId)
           setIsConnected(true)
           cb.onSessionReady?.(data.sessionId)
@@ -139,8 +151,22 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const start = useCallback(
     (config: RealtimeConfig) => {
+      // Cancel any pending reconnect timer so a stale timeout can't race with this call
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+
+      // Bump connection ID so any in-flight onclose from the previous ws is ignored
+      const myConnectionId = connectionIdRef.current + 1
+      connectionIdRef.current = myConnectionId
+
+      // Tear down previous connection
       if (wsRef.current) {
         wsRef.current.close()
+      }
+      if (engineRef.current) {
+        engineRef.current.destroy()
       }
 
       configRef.current = config
@@ -196,17 +222,36 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       ws.onmessage = handleMessage
 
       ws.onerror = () => {
-        callbacksRef.current.onError?.('WebSocket connection error', 0)
+        callbacksRef.current.onError?.('Could not connect to relay server. Is it running?', 0)
       }
 
       ws.onclose = () => {
+        // Ignore close events from superseded connections (e.g. old ws closed by a new start() call)
+        if (connectionIdRef.current !== myConnectionId) return
+
         console.log('[useRealtime] WebSocket closed, userStopped:', userStoppedRef.current)
         setIsConnected(false)
         setSessionId(null)
         engine.stopCapture()
         engine.stopPlayback()
         if (!userStoppedRef.current) {
-          callbacksRef.current.onDisconnect?.()
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            const attempt = reconnectAttemptsRef.current
+            const delay = RECONNECT_DELAYS[attempt]
+            reconnectAttemptsRef.current += 1
+            console.log(
+              `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`,
+            )
+            reconnectTimerRef.current = setTimeout(() => {
+              reconnectTimerRef.current = null
+              if (!userStoppedRef.current && configRef.current) {
+                start(configRef.current)
+              }
+            }, delay)
+          } else {
+            console.log('[useRealtime] Max reconnect attempts reached, giving up')
+            callbacksRef.current.onDisconnect?.()
+          }
         }
       }
     },
@@ -215,6 +260,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const stop = useCallback(() => {
     userStoppedRef.current = true
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
     engineRef.current?.destroy()
     engineRef.current = null
     wsRef.current?.close()
