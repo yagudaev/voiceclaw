@@ -20,6 +20,7 @@ import {
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
+  const conversationIdRef = useRef<number | null>(null)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -56,6 +57,7 @@ export function ChatPage() {
   const loadLatestConversation = async () => {
     const conv = await getLatestConversation()
     if (conv) {
+      conversationIdRef.current = conv.id
       setConversationId(conv.id)
       const msgs = await getMessages(conv.id)
       setMessages(msgs)
@@ -63,14 +65,16 @@ export function ChatPage() {
   }
 
   const loadConversation = async (id: number) => {
+    conversationIdRef.current = id
     setConversationId(id)
     const msgs = await getMessages(id)
     setMessages(msgs)
   }
 
   const ensureConversation = async (): Promise<number> => {
-    if (conversationId) return conversationId
+    if (conversationIdRef.current) return conversationIdRef.current
     const conv = await createConversation()
+    conversationIdRef.current = conv.id
     setConversationId(conv.id)
     return conv.id
   }
@@ -189,6 +193,7 @@ export function ChatPage() {
 
   const newConversation = useCallback(() => {
     if (isCallActive) endCall()
+    conversationIdRef.current = null
     setConversationId(null)
     setMessages([])
   }, [isCallActive, endCall])
@@ -334,7 +339,7 @@ export function ChatPage() {
         {!isCallActive && !isConnecting ? (
           <Button
             onClick={startCall}
-            className="bg-green-600 hover:bg-green-700 text-white px-6"
+            className="bg-green-500 hover:bg-green-600 text-white px-6"
           >
             <Phone size={18} className="mr-2" />
             Start Call

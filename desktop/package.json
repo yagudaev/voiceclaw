@@ -11,7 +11,8 @@
   "dependencies": {
     "better-sqlite3": "^11.7.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

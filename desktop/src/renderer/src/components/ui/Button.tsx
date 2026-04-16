@@ -1,4 +1,5 @@
 import { type ButtonHTMLAttributes, forwardRef } from 'react'
+import { cn } from '../../lib/cn'
 
 type Variant = 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline'
 type Size = 'default' | 'sm' | 'lg' | 'icon'
@@ -29,13 +30,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled}
-        className={`
-          inline-flex items-center justify-center rounded-lg font-medium
-          transition-colors duration-150 focus-visible:outline-none
-          focus-visible:ring-2 focus-visible:ring-primary/50
-          disabled:opacity-50 disabled:pointer-events-none
-          ${variantStyles[variant]} ${sizeStyles[size]} ${className}
-        `}
+        className={cn(
+          'inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:pointer-events-none',
+          variantStyles[variant],
+          sizeStyles[size],
+          className,
+        )}
         {...props}
       />
     )
