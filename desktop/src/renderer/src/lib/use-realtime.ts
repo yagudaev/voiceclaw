@@ -47,6 +47,9 @@ export interface RealtimeControls {
   sessionId: string | null
 }
 
+const MAX_RECONNECT_ATTEMPTS = 3
+const RECONNECT_DELAYS = [1000, 3000, 5000]
+
 export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const wsRef = useRef<WebSocket | null>(null)
   const configRef = useRef<RealtimeConfig | null>(null)
@@ -54,6 +57,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const userStoppedRef = useRef(false)
   const turnStartedAtRef = useRef<number | null>(null)
   const turnIdRef = useRef<string | null>(null)
+  const reconnectAttemptsRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -83,6 +87,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
       switch (data.type) {
         case 'session.ready':
+          reconnectAttemptsRef.current = 0
           setSessionId(data.sessionId)
           setIsConnected(true)
           cb.onSessionReady?.(data.sessionId)
@@ -206,7 +211,22 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         engine.stopCapture()
         engine.stopPlayback()
         if (!userStoppedRef.current) {
-          callbacksRef.current.onDisconnect?.()
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            const attempt = reconnectAttemptsRef.current
+            const delay = RECONNECT_DELAYS[attempt]
+            reconnectAttemptsRef.current += 1
+            console.log(
+              `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`,
+            )
+            setTimeout(() => {
+              if (!userStoppedRef.current && configRef.current) {
+                start(configRef.current)
+              }
+            }, delay)
+          } else {
+            console.log('[useRealtime] Max reconnect attempts reached, giving up')
+            callbacksRef.current.onDisconnect?.()
+          }
         }
       }
     },
