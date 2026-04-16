@@ -1,5 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
+import { registerIpcHandlers } from './ipc-handlers'
+import { closeDb } from './db'
 
 const isDev = !app.isPackaged
 
@@ -38,6 +40,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  registerIpcHandlers()
   createWindow()
 
   app.on('activate', () => {
@@ -51,4 +54,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  closeDb()
 })
