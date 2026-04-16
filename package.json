@@ -4,7 +4,8 @@
   "workspaces": [
     "mobile",
     "website",
-    "relay-server"
+    "relay-server",
+    "desktop"
   ],
   "scripts": {
     "dev": "concurrently --names mobile,web,server \"yarn dev:mobile\" \"yarn dev:web\" \"yarn dev:server\"",
@@ -18,7 +19,8 @@
     "ios:device": "cd mobile && yarn ios:device",
     "ios:release": "cd mobile && yarn ios:release",
     "prebuild": "cd mobile && npx expo prebuild --clean",
-    "clean:mobile": "cd mobile && yarn clean"
+    "clean:mobile": "cd mobile && yarn clean",
+    "dev:desktop": "cd desktop && yarn dev"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
