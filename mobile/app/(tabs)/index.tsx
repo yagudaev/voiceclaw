@@ -286,8 +286,14 @@ export default function ChatScreen() {
     },
     onTranscriptDelta: (text, role) => {
       if (role === 'user') setIsUserSpeaking(false)
-      setStreamingRole(role)
-      setStreamingText(prev => (prev ?? '') + text)
+      setStreamingRole((prevRole) => {
+        if (prevRole !== role) {
+          setStreamingText(text)
+        } else {
+          setStreamingText(prev => (prev ?? '') + text)
+        }
+        return role
+      })
     },
     onTranscriptDone: (text, role) => {
       setStreamingText(null)

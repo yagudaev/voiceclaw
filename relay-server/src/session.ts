@@ -198,6 +198,9 @@ export class RelaySession {
       case "audio.commit":
         this.adapter?.commitAudio()
         break
+      case "frame.append":
+        this.adapter?.sendFrame(event.data, event.mimeType)
+        break
       case "response.create":
         this.adapter?.createResponse()
         break
