@@ -217,6 +217,35 @@ export function ChatPage() {
     }
   }, [isCallActive, isScreenSharing, stopScreenShare])
 
+  // Keyboard shortcuts: Cmd+N (new), Cmd+M (mute), Cmd+E (end call)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey
+      if (!meta) return
+
+      switch (e.key) {
+        case 'n':
+          e.preventDefault()
+          newConversation()
+          break
+        case 'm':
+          if (isCallActive) {
+            e.preventDefault()
+            toggleMute()
+          }
+          break
+        case 'e':
+          if (isCallActive) {
+            e.preventDefault()
+            endCall()
+          }
+          break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isCallActive, newConversation, toggleMute, endCall])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
