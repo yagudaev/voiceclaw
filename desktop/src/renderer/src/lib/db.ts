@@ -65,6 +65,9 @@ declare global {
         setSetting: (key: string, value: string) => Promise<void>
         getAllSettings: () => Promise<Record<string, string>>
       }
+      net: {
+        healthCheck: (url: string) => Promise<{ ok: boolean, error?: string }>
+      }
     }
   }
 }

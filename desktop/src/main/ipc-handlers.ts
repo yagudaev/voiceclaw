@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, net } from 'electron'
 import { getDb } from './db'
 
 export function registerIpcHandlers() {
@@ -141,5 +141,19 @@ export function registerIpcHandlers() {
     const db = getDb()
     const rows = db.prepare('SELECT * FROM settings').all() as { key: string, value: string }[]
     return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+  })
+
+  // Network: test relay server connection from main process (avoids CORS)
+  ipcMain.handle('net:healthCheck', async (_e, url: string) => {
+    try {
+      const response = await net.fetch(url, { method: 'GET' })
+      if (response.ok) {
+        const body = await response.json()
+        if (body.status === 'ok') return { ok: true }
+      }
+      return { ok: false, error: `Server returned ${response.status}` }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Connection failed' }
+    }
   })
 }
