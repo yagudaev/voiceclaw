@@ -1,6 +1,13 @@
-import Database from 'better-sqlite3'
+import type Database from 'better-sqlite3'
 import { app } from 'electron'
+import { createRequire } from 'module'
 import { join } from 'path'
+
+// Use createRequire to load better-sqlite3 at runtime, bypassing the
+// bundler. electron-vite forces ssr.noExternal=true which bundles all
+// deps — native modules with .node bindings break when inlined.
+const require = createRequire(import.meta.url)
+const BetterSqlite3 = require('better-sqlite3') as typeof import('better-sqlite3').default
 
 let _db: Database.Database | null = null
 
@@ -8,7 +15,7 @@ export function getDb(): Database.Database {
   if (_db) return _db
 
   const dbPath = join(app.getPath('userData'), 'voiceclaw.db')
-  _db = new Database(dbPath)
+  _db = new BetterSqlite3(dbPath)
   _db.pragma('journal_mode = WAL')
   _db.pragma('foreign_keys = ON')
 
