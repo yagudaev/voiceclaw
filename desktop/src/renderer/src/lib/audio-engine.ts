@@ -18,6 +18,7 @@ export class AudioEngine {
   private source: MediaStreamAudioSourceNode | null = null
   private gainNode: GainNode | null = null
   private playbackQueue: Float32Array[] = []
+  private activeSource: AudioBufferSourceNode | null = null
   private isPlaying = false
   private muted = false
   private currentRms = 0
@@ -99,6 +100,10 @@ export class AudioEngine {
   stopPlayback() {
     this.playbackQueue = []
     this.isPlaying = false
+    if (this.activeSource) {
+      try { this.activeSource.stop() } catch { /* already stopped */ }
+      this.activeSource = null
+    }
   }
 
   setVolume(volume: number) {
@@ -145,7 +150,11 @@ export class AudioEngine {
     const source = this.audioCtx.createBufferSource()
     source.buffer = buffer
     source.connect(this.gainNode)
-    source.onended = () => this.drainPlaybackQueue()
+    source.onended = () => {
+      if (this.activeSource === source) this.activeSource = null
+      this.drainPlaybackQueue()
+    }
+    this.activeSource = source
     source.start()
   }
 }

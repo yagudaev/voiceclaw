@@ -15868,6 +15868,7 @@ __metadata:
     postcss: "npm:^8.5.3"
     react: "npm:^19.1.0"
     react-dom: "npm:^19.1.0"
+    tailwind-merge: "npm:^3.5.0"
     tailwindcss: "npm:^3.4.17"
     typescript: "npm:^5.8.3"
     vite: "npm:^6.3.5"
