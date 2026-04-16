@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, PhoneOff, Plus, Phone } from 'lucide-react'
+import { Mic, MicOff, PhoneOff, Plus, Phone, Monitor, MonitorOff } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { MessageBubble } from '../components/MessageBubble'
 import { ThinkingDots } from '../components/ThinkingDots'
 import { AudioLevelMeter } from '../components/AudioLevelMeter'
+import { ScreenSharePicker } from '../components/ScreenSharePicker'
+import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
 import { useConversationContext } from '../lib/conversation-context'
 import {
@@ -25,6 +27,10 @@ export function ChatPage() {
   const [streamingText, setStreamingText] = useState('')
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
+  const [showScreenPicker, setShowScreenPicker] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [screenSourceName, setScreenSourceName] = useState('')
+  const screenCaptureRef = useRef<ScreenCapture | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { selectedConversationId, selectConversation } = useConversationContext()
 
@@ -180,6 +186,37 @@ export function ChatPage() {
     setMessages([])
   }, [isCallActive, endCall])
 
+  const startScreenShare = useCallback(async (source: ScreenSource) => {
+    setShowScreenPicker(false)
+    const capture = new ScreenCapture()
+    capture.setSourceName(source.name)
+    screenCaptureRef.current = capture
+    try {
+      await capture.start(source.id, (base64Jpeg) => {
+        realtime.sendFrame(base64Jpeg)
+      })
+      setIsScreenSharing(true)
+      setScreenSourceName(source.name)
+    } catch (err) {
+      console.error('[ChatPage] Screen capture failed:', err)
+      screenCaptureRef.current = null
+    }
+  }, [realtime])
+
+  const stopScreenShare = useCallback(() => {
+    screenCaptureRef.current?.stop()
+    screenCaptureRef.current = null
+    setIsScreenSharing(false)
+    setScreenSourceName('')
+  }, [])
+
+  // Clean up screen capture when call ends
+  useEffect(() => {
+    if (!isCallActive && isScreenSharing) {
+      stopScreenShare()
+    }
+  }, [isCallActive, isScreenSharing, stopScreenShare])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
@@ -235,6 +272,20 @@ export function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Screen sharing indicator */}
+      {isScreenSharing && (
+        <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-green-500">
+          <Monitor size={14} />
+          <span className="truncate">Sharing: {screenSourceName}</span>
+          <button
+            onClick={stopScreenShare}
+            className="ml-auto text-muted-foreground hover:text-destructive transition-colors"
+          >
+            Stop
+          </button>
+        </div>
+      )}
+
       {/* Audio level meter */}
       {isCallActive && (
         <div className="px-4">
@@ -263,6 +314,15 @@ export function ChatPage() {
               {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
             <Button
+              variant="ghost"
+              size="icon"
+              onClick={isScreenSharing ? stopScreenShare : () => setShowScreenPicker(true)}
+              className={isScreenSharing ? 'text-green-500' : 'text-foreground'}
+              disabled={isConnecting}
+            >
+              {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
+            </Button>
+            <Button
               variant="destructive"
               size="icon"
               onClick={endCall}
@@ -276,6 +336,14 @@ export function ChatPage() {
           </>
         )}
       </div>
+
+      {/* Screen share picker modal */}
+      {showScreenPicker && (
+        <ScreenSharePicker
+          onSelect={startScreenShare}
+          onCancel={() => setShowScreenPicker(false)}
+        />
+      )}
     </div>
   )
 }

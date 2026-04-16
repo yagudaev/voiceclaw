@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
+import { registerScreenCaptureHandlers } from './screen-capture'
 import { closeDb } from './db'
 
 const isDev = !app.isPackaged
@@ -41,6 +42,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerIpcHandlers()
+  registerScreenCaptureHandlers()
   createWindow()
 
   app.on('activate', () => {

@@ -15,6 +15,10 @@ export class EchoAdapter implements ProviderAdapter {
     this.sendToClient?.({ type: "audio.delta", data })
   }
 
+  sendFrame(_data: string, _mimeType?: string) {
+    // no-op for echo
+  }
+
   commitAudio() {
     // no-op for echo
   }

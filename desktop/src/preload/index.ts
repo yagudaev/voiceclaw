@@ -26,6 +26,9 @@ const electronAPI = {
     setSetting: (key: string, value: string) => ipcRenderer.invoke('db:setSetting', key, value),
     getAllSettings: () => ipcRenderer.invoke('db:getAllSettings'),
   },
+  screen: {
+    getSources: () => ipcRenderer.invoke('screen:getSources'),
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

@@ -25,6 +25,7 @@ const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1012, 1013])
 // MUST reach the upstream to unblock the model.
 const MAX_PENDING_AUDIO = 50
 const MAX_PENDING_CONTROL = 20
+const MAX_PENDING_VIDEO = 5
 
 const GEMINI_VOICES = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
 const DEFAULT_GEMINI_VOICE = "Zephyr"
@@ -39,6 +40,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private currentAssistantText = ""
   private currentUserText = ""
   private userSpeaking = false
+  private hasVideoInput = false
 
   // Session resumption state
   private resumptionHandle: string | null = null
@@ -50,6 +52,7 @@ export class GeminiAdapter implements ProviderAdapter {
   // Bounded queues for messages written during the reconnect window.
   // Flushed on the resumed connection's setupComplete.
   private pendingAudio: string[] = []
+  private pendingVideo: string[] = []
   private pendingControl: string[] = []
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
@@ -250,6 +253,19 @@ export class GeminiAdapter implements ProviderAdapter {
     this.resetWatchdog()
   }
 
+  sendFrame(data: string, mimeType?: string) {
+    this.hasVideoInput = true
+    this.sendUpstream({
+      realtimeInput: {
+        video: {
+          data,
+          mimeType: mimeType || "image/jpeg",
+        },
+      },
+    }, "video")
+    this.resetWatchdog()
+  }
+
   commitAudio() {
     // Gemini uses automatic VAD — no explicit commit needed
   }
@@ -347,6 +363,15 @@ export class GeminiAdapter implements ProviderAdapter {
 
     if (tools.length > 0) {
       setup.tools = [{ functionDeclarations: tools }]
+    }
+
+    // Enable context window compression when video frames are in use.
+    // Without this, audio+video sessions are limited to ~2 minutes.
+    if (this.hasVideoInput) {
+      setup.contextWindowCompression = {
+        slidingWindow: {},
+        triggerTokens: 10000,
+      }
     }
 
     log(`[gemini] Setup: model=${model}, voice=${voice}, tools=${tools.length}`)
@@ -563,7 +588,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // --- upstream comms ---
 
-  private sendUpstream(msg: Record<string, unknown>, kind: "audio" | "control" = "control") {
+  private sendUpstream(msg: Record<string, unknown>, kind: "audio" | "video" | "control" = "control") {
     const payload = JSON.stringify(msg)
     // While rotating, always queue — the resumed socket may be OPEN before
     // setupComplete lands, and writing between CONNECTED and SETUP would
@@ -574,6 +599,10 @@ export class GeminiAdapter implements ProviderAdapter {
         // than a short loss does.
         if (this.pendingAudio.length >= MAX_PENDING_AUDIO) this.pendingAudio.shift()
         this.pendingAudio.push(payload)
+      } else if (kind === "video") {
+        // Oldest-drop: stale frames have less value than fresh ones.
+        if (this.pendingVideo.length >= MAX_PENDING_VIDEO) this.pendingVideo.shift()
+        this.pendingVideo.push(payload)
       } else {
         // Control messages (toolResponse, clientContent) must reach the upstream
         // to unblock the model. If we somehow overflow, drop the newest so the
@@ -593,16 +622,19 @@ export class GeminiAdapter implements ProviderAdapter {
 
   private flushPending() {
     if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return
-    // Control first so the model unblocks before we flood it with audio.
+    // Control first so the model unblocks before we flood it with media.
     const control = this.pendingControl
     const audio = this.pendingAudio
+    const video = this.pendingVideo
     this.pendingControl = []
     this.pendingAudio = []
-    if (control.length > 0 || audio.length > 0) {
-      log(`[gemini] Flushing reconnect queue (${control.length} control, ${audio.length} audio)`)
+    this.pendingVideo = []
+    if (control.length > 0 || audio.length > 0 || video.length > 0) {
+      log(`[gemini] Flushing reconnect queue (${control.length} control, ${audio.length} audio, ${video.length} video)`)
     }
     for (const p of control) this.upstream.send(p)
     for (const p of audio) this.upstream.send(p)
+    for (const p of video) this.upstream.send(p)
   }
 
   // --- watchdog ---

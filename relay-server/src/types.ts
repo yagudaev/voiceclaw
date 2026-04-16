@@ -5,6 +5,7 @@ export type ClientEvent =
   | SessionConfigEvent
   | AudioAppendEvent
   | AudioCommitEvent
+  | FrameAppendEvent
   | ResponseCreateEvent
   | ResponseCancelEvent
   | ToolResultEvent
@@ -37,6 +38,12 @@ export interface AudioAppendEvent {
 
 export interface AudioCommitEvent {
   type: "audio.commit"
+}
+
+export interface FrameAppendEvent {
+  type: "frame.append"
+  data: string // base64 JPEG
+  mimeType?: string // default "image/jpeg"
 }
 
 export interface ResponseCreateEvent {
