@@ -145,8 +145,12 @@ export function registerIpcHandlers() {
 
   // Network: test relay server connection from main process (avoids CORS)
   ipcMain.handle('net:healthCheck', async (_e, url: string) => {
+    const httpUrl = toHealthUrl(url)
+    if (!httpUrl) {
+      return { ok: false, error: 'Invalid URL: only ws:// and wss:// allowed' }
+    }
     try {
-      const response = await net.fetch(url, { method: 'GET' })
+      const response = await net.fetch(httpUrl, { method: 'GET' })
       if (response.ok) {
         const body = await response.json()
         if (body.status === 'ok') return { ok: true }
@@ -156,4 +160,23 @@ export function registerIpcHandlers() {
       return { ok: false, error: err instanceof Error ? err.message : 'Connection failed' }
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toHealthUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'ws:') parsed.protocol = 'http:'
+    else if (parsed.protocol === 'wss:') parsed.protocol = 'https:'
+    else return null
+    // Strip /ws path and append /health
+    parsed.pathname = parsed.pathname.replace(/\/ws\/?$/, '')
+    parsed.pathname = parsed.pathname.replace(/\/$/, '') + '/health'
+    return parsed.toString()
+  } catch {
+    return null
+  }
 }
