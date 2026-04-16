@@ -47,6 +47,10 @@ export class OpenAIAdapter implements ProviderAdapter {
     // OpenAI Realtime does not support video input
   }
 
+  injectContext(_text: string) {
+    // TODO: implement for OpenAI if needed
+  }
+
   commitAudio() {
     this.sendUpstream({ type: "input_audio_buffer.commit" })
   }
