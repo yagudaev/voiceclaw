@@ -30,9 +30,13 @@ export function HistoryPage() {
     loadConversations()
   }, [loadConversations])
 
-  // Reload periodically to stay fresh
+  // Reload periodically, but skip when the window is hidden to avoid wasted DB calls
   useEffect(() => {
-    const interval = setInterval(loadConversations, 2000)
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        loadConversations()
+      }
+    }, 10_000)
     return () => clearInterval(interval)
   }, [loadConversations])
 
