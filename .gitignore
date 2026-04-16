@@ -1,6 +1,7 @@
 node_modules/
 .yarn/
 dist/
+out/
 
 # macOS
 .DS_Store
