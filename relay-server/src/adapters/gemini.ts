@@ -306,12 +306,17 @@ export class GeminiAdapter implements ProviderAdapter {
     // Use realtimeInput.text — clientContent is not supported mid-session on
     // Gemini 3.1 Flash Live and triggers 1007. realtimeInput.text can be sent
     // concurrently with audio streaming without conflict.
+    //
+    // Wrap with activityStart/activityEnd so Gemini's VAD treats this as a
+    // discrete user turn that requires a model response.
     log(`[gemini] Injecting context via realtimeInput.text (${text.length} chars)`)
+    this.sendUpstream({ realtimeInput: { activityStart: {} } })
     this.sendUpstream({
       realtimeInput: {
-        text,
+        text: `${text}\n\nPlease tell me about this now.`,
       },
     })
+    this.sendUpstream({ realtimeInput: { activityEnd: {} } })
   }
 
   getTranscript() {
