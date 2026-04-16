@@ -87,63 +87,65 @@ export async function askBrain(
   let buffer = ""
 
   let readCount = 0
-  while (true) {
-    let read: ReadableStreamReadResult<Uint8Array>
-    try {
-      read = await reader.read()
-    } catch (err) {
-      clearTimeout(timeout)
-      externalSignal?.removeEventListener("abort", onExternalAbort)
-      const elapsed = Date.now() - requestStart
-      logError(`[brain] reader.read() threw after ${elapsed}ms readCount=${readCount} aborted=${controller.signal.aborted}:`, err)
-      if (controller.signal.aborted) {
-        const reason = controller.signal.reason
-        if (reason instanceof Error) throw reason
-        return JSON.stringify({ error: "Brain agent request aborted" })
-      }
-      throw err
-    }
-    readCount++
-    const { done, value } = read
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() ?? ""
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue
-      const data = line.slice(6).trim()
-
-      if (data === "[DONE]") continue
-
+  try {
+    while (true) {
+      let read: ReadableStreamReadResult<Uint8Array>
       try {
-        const parsed = JSON.parse(data)
-
-        // Check for step completion signals (live progress injection)
-        if (parsed.type === "step_complete" && parsed.summary) {
-          log(`[brain] Step complete: ${parsed.summary}`)
-          sendToClient({
-            type: "tool.progress",
-            callId,
-            summary: parsed.summary,
-          })
-          continue
+        read = await reader.read()
+      } catch (err) {
+        const elapsed = Date.now() - requestStart
+        logError(`[brain] reader.read() threw after ${elapsed}ms readCount=${readCount} aborted=${controller.signal.aborted}:`, err)
+        if (controller.signal.aborted) {
+          const reason = controller.signal.reason
+          if (reason instanceof Error) throw reason
+          return JSON.stringify({ error: "Brain agent request aborted" })
         }
+        throw err
+      }
+      readCount++
+      const { done, value } = read
+      if (done) break
 
-        // Standard OpenAI-compatible SSE chunk
-        const delta = parsed.choices?.[0]?.delta?.content
-        if (delta) {
-          fullResponse += delta
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() ?? ""
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue
+        const data = line.slice(6).trim()
+
+        if (data === "[DONE]") continue
+
+        try {
+          const parsed = JSON.parse(data)
+
+          // Check for step completion signals (live progress injection)
+          if (parsed.type === "step_complete" && parsed.summary) {
+            log(`[brain] Step complete: ${parsed.summary}`)
+            sendToClient({
+              type: "tool.progress",
+              callId,
+              summary: parsed.summary,
+            })
+            continue
+          }
+
+          // Standard OpenAI-compatible SSE chunk
+          const delta = parsed.choices?.[0]?.delta?.content
+          if (delta) {
+            fullResponse += delta
+          }
+        } catch {
+          // Skip unparseable chunks
         }
-      } catch {
-        // Skip unparseable chunks
       }
     }
+  } finally {
+    reader.cancel().catch(() => {})
+    clearTimeout(timeout)
+    externalSignal?.removeEventListener("abort", onExternalAbort)
   }
 
-  clearTimeout(timeout)
-  externalSignal?.removeEventListener("abort", onExternalAbort)
   log(`[brain] Response: ${fullResponse.substring(0, 100)}...`)
   return fullResponse || JSON.stringify({ error: "Empty response from brain agent" })
 }
