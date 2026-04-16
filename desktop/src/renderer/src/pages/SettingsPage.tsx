@@ -49,8 +49,6 @@ export function SettingsPage() {
   const [tracingEnabled, setTracingEnabled] = useState(false)
 
   const loadedRef = useRef(false)
-  const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const pendingValues = useRef<Map<string, string>>(new Map())
 
   // Load all settings on mount
   useEffect(() => {
@@ -80,79 +78,57 @@ export function SettingsPage() {
     })()
 
     enumerateAudioDevices().then(setAudioDevices).catch(console.error)
-
-    // Flush any pending debounced saves on unmount
-    return () => {
-      for (const timer of debounceTimers.current.values()) {
-        clearTimeout(timer)
-      }
-      for (const [key, value] of pendingValues.current.entries()) {
-        setSetting(key, value)
-      }
-    }
   }, [])
 
-  // Debounced save for text inputs
-  const saveDebounced = useCallback((key: string, value: string) => {
-    pendingValues.current.set(key, value)
-    const existing = debounceTimers.current.get(key)
-    if (existing) clearTimeout(existing)
-    debounceTimers.current.set(key, setTimeout(() => {
-      setSetting(key, value)
-      debounceTimers.current.delete(key)
-      pendingValues.current.delete(key)
-    }, 500))
-  }, [])
-
-  // Immediate save for toggles/selects
-  const saveImmediate = useCallback((key: string, value: string) => {
+  // Save setting to DB immediately
+  const save = useCallback((key: string, value: string) => {
     setSetting(key, value)
   }, [])
 
   const updateServerUrl = useCallback((v: string) => {
     setServerUrl(v)
-    if (loadedRef.current) saveDebounced('realtime_server_url', v)
-  }, [saveDebounced])
+    if (loadedRef.current) save('realtime_server_url', v)
+  }, [save])
 
   const updateApiKey = useCallback((v: string) => {
     setApiKey(v)
-    if (loadedRef.current) saveDebounced('realtime_api_key', v)
-  }, [saveDebounced])
+    if (loadedRef.current) save('realtime_api_key', v)
+  }, [save])
 
   const updateModel = useCallback((v: RealtimeModel) => {
     setModel(v)
-    if (loadedRef.current) saveImmediate('realtime_model', v)
+    if (loadedRef.current) save('realtime_model', v)
     // Reset voice when switching providers
     const isGemini = v.startsWith('gemini-')
     const currentIsGemini = (GEMINI_VOICES as readonly string[]).includes(voice)
     if (isGemini && !currentIsGemini) {
       setVoice('Zephyr')
-      saveImmediate('realtime_voice', 'Zephyr')
+      save('realtime_voice', 'Zephyr')
     } else if (!isGemini && currentIsGemini) {
       setVoice('marin')
-      saveImmediate('realtime_voice', 'marin')
+      save('realtime_voice', 'marin')
     }
-  }, [saveImmediate, voice])
+  }, [save, voice])
 
   const updateVoice = useCallback((v: string) => {
     setVoice(v)
-    if (loadedRef.current) saveImmediate('realtime_voice', v)
-  }, [saveImmediate])
+    if (loadedRef.current) save('realtime_voice', v)
+  }, [save])
 
   const updateVolume = useCallback((v: number) => {
     setVolume(v)
-    if (loadedRef.current) saveImmediate('realtime_volume', String(v))
-  }, [saveImmediate])
+    if (loadedRef.current) save('realtime_volume', String(v))
+  }, [save])
 
   const updateInputDevice = useCallback((v: string) => {
     setInputDeviceId(v)
-    if (loadedRef.current) saveImmediate('input_device_id', v)
-  }, [saveImmediate])
+    if (loadedRef.current) save('input_device_id', v)
+  }, [save])
 
   const updateOutputDevice = useCallback((v: string) => {
     setOutputDeviceId(v)
-    if (loadedRef.current) saveImmediate('output_device_id', v)
-  }, [saveImmediate])
+    if (loadedRef.current) save('output_device_id', v)
+  }, [save])
 
   const toggleDebugMode = useCallback((v: boolean) => {
     setDebugMode(v)
