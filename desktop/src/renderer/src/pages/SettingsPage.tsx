@@ -149,12 +149,8 @@ export function SettingsPage() {
     setTestStatus('testing')
     setTestError('')
     try {
-      const httpUrl = serverUrl
-        .replace(/^wss:\/\//, 'https://')
-        .replace(/^ws:\/\//, 'http://')
-        .replace(/\/ws\/?$/, '')
-      // Route through main process to avoid CORS restrictions
-      const result = await window.electronAPI.net.healthCheck(`${httpUrl}/health`)
+      // Pass ws URL directly — main process converts to http and appends /health
+      const result = await window.electronAPI.net.healthCheck(serverUrl)
       if (result.ok) {
         setTestStatus('ok')
       } else {
