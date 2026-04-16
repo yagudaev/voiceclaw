@@ -16,9 +16,11 @@ const RECONNECT_BACKOFF_MS = 500
 // Close codes that warrant a transparent reconnect (vs. surfacing to the client).
 // Gemini's graceful end-of-session path is goAway → we reconnect proactively
 // before the close lands. These codes cover transport-level drops (network,
-// server restart, rate limit). 1011 is intentionally excluded: it usually
-// signals a server error that's not helped by replaying the resumption handle.
-const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1012, 1013])
+// server restart, rate limit). 1007 is included because Gemini can send it after
+// a goAway rotation, likely triggered by stale video frames flushed into the new
+// session (invalid argument). 1011 is intentionally excluded: it usually signals
+// a server error that's not helped by replaying the resumption handle.
+const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1007, 1012, 1013])
 // Bounded send queues for the reconnect window.
 // Audio: ~1s at 50Hz — older chunks are dropped first since stale audio
 // smears VAD. Control: small buffer for toolResponse / clientContent which
@@ -159,7 +161,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
   /**
    * Handle an unexpected upstream close after the session was established.
-   * For reconnectable codes (1001/1006/1011/1012/1013) with a resumption handle
+   * For reconnectable codes (1001/1006/1007/1012/1013) with a resumption handle
    * available, silently re-open the session. Otherwise surface an error.
    */
   private handleUpstreamClose(code: number) {
@@ -640,13 +642,18 @@ export class GeminiAdapter implements ProviderAdapter {
     const video = this.pendingVideo
     this.pendingControl = []
     this.pendingAudio = []
+    // Drop video frames — they are stale by the time we reconnect and sending
+    // them can trigger a 1007 (invalid argument) from Gemini. The client
+    // refreshes screen-share frames within ~1 s anyway.
     this.pendingVideo = []
-    if (control.length > 0 || audio.length > 0 || video.length > 0) {
-      log(`[gemini] Flushing reconnect queue (${control.length} control, ${audio.length} audio, ${video.length} video)`)
+    if (control.length > 0 || audio.length > 0) {
+      log(`[gemini] Flushing reconnect queue (${control.length} control, ${audio.length} audio)`)
+    }
+    if (video.length > 0) {
+      log(`[gemini] Dropping ${video.length} stale video frame(s) from reconnect queue`)
     }
     for (const p of control) this.upstream.send(p)
     for (const p of audio) this.upstream.send(p)
-    for (const p of video) this.upstream.send(p)
   }
 
   // --- watchdog ---
