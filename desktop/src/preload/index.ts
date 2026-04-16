@@ -29,6 +29,9 @@ const electronAPI = {
   screen: {
     getSources: () => ipcRenderer.invoke('screen:getSources'),
   },
+  net: {
+    healthCheck: (url: string) => ipcRenderer.invoke('net:healthCheck', url) as Promise<{ ok: boolean, error?: string }>,
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

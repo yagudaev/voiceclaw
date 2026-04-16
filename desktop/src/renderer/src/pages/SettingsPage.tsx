@@ -50,6 +50,7 @@ export function SettingsPage() {
 
   const loadedRef = useRef(false)
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const pendingValues = useRef<Map<string, string>>(new Map())
 
   // Load all settings on mount
   useEffect(() => {
@@ -79,15 +80,27 @@ export function SettingsPage() {
     })()
 
     enumerateAudioDevices().then(setAudioDevices).catch(console.error)
+
+    // Flush any pending debounced saves on unmount
+    return () => {
+      for (const timer of debounceTimers.current.values()) {
+        clearTimeout(timer)
+      }
+      for (const [key, value] of pendingValues.current.entries()) {
+        setSetting(key, value)
+      }
+    }
   }, [])
 
   // Debounced save for text inputs
   const saveDebounced = useCallback((key: string, value: string) => {
+    pendingValues.current.set(key, value)
     const existing = debounceTimers.current.get(key)
     if (existing) clearTimeout(existing)
     debounceTimers.current.set(key, setTimeout(() => {
       setSetting(key, value)
       debounceTimers.current.delete(key)
+      pendingValues.current.delete(key)
     }, 500))
   }, [])
 
@@ -164,16 +177,14 @@ export function SettingsPage() {
         .replace(/^wss:\/\//, 'https://')
         .replace(/^ws:\/\//, 'http://')
         .replace(/\/ws\/?$/, '')
-      const res = await fetch(`${httpUrl}/health`, { method: 'GET' })
-      if (res.ok) {
-        const body = await res.json()
-        if (body.status === 'ok') {
-          setTestStatus('ok')
-          return
-        }
+      // Route through main process to avoid CORS restrictions
+      const result = await window.electronAPI.net.healthCheck(`${httpUrl}/health`)
+      if (result.ok) {
+        setTestStatus('ok')
+      } else {
+        setTestStatus('error')
+        setTestError(result.error || 'Connection failed')
       }
-      setTestStatus('error')
-      setTestError(`Server returned ${res.status}`)
     } catch (err) {
       setTestStatus('error')
       setTestError(err instanceof Error ? err.message : 'Connection failed')
