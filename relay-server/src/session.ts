@@ -161,11 +161,6 @@ export class RelaySession {
       this.adapter?.sendToolResult(callId, result)
     } catch (err) {
       const message = err instanceof Error ? err.message : "brain agent call failed"
-      if (controller.signal.aborted) {
-        log(`[session:${this.id}] ask_brain (${callId}) aborted: ${message}`)
-        this.tracer.endToolCall(callId, JSON.stringify({ error: message }), message)
-        return
-      }
       logError(`[session:${this.id}] ask_brain error:`, message)
       const errorPayload = JSON.stringify({ error: message })
       this.tracer.endToolCall(callId, errorPayload, message)
