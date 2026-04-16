@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { TabBar, type TabId } from './components/TabBar'
 import { ChatPage } from './pages/ChatPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -10,6 +10,35 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('chat')
   // Initialize theme system (applies dark/light class to html)
   useTheme()
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey
+      if (!meta) return
+
+      switch (e.key) {
+        case ',':
+          e.preventDefault()
+          setActiveTab('settings')
+          break
+        case '1':
+          e.preventDefault()
+          setActiveTab('chat')
+          break
+        case '2':
+          e.preventDefault()
+          setActiveTab('history')
+          break
+        case '3':
+          e.preventDefault()
+          setActiveTab('settings')
+          break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   return (
     <ConversationProvider>
