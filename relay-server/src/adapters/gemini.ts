@@ -161,7 +161,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
   /**
    * Handle an unexpected upstream close after the session was established.
-   * For reconnectable codes (1001/1006/1011/1012/1013) with a resumption handle
+   * For reconnectable codes (1001/1006/1007/1012/1013) with a resumption handle
    * available, silently re-open the session. Otherwise surface an error.
    */
   private handleUpstreamClose(code: number) {
