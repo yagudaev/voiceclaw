@@ -66,9 +66,7 @@ export async function askBrain(
     })
   } catch (err) {
     cleanup()
-    if (err instanceof DOMException && err.name === "AbortError") {
-      const reason = controller.signal.reason
-      if (reason instanceof Error) throw reason
+    if (controller.signal.aborted) {
       return JSON.stringify({ error: "Brain agent request aborted" })
     }
     throw err
@@ -101,8 +99,6 @@ export async function askBrain(
       const elapsed = Date.now() - requestStart
       logError(`[brain] reader.read() threw after ${elapsed}ms readCount=${readCount} aborted=${controller.signal.aborted}:`, err)
       if (controller.signal.aborted) {
-        const reason = controller.signal.reason
-        if (reason instanceof Error) throw reason
         return JSON.stringify({ error: "Brain agent request aborted" })
       }
       throw err
