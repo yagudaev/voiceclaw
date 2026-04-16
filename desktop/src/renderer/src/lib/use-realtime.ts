@@ -58,6 +58,8 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const turnStartedAtRef = useRef<number | null>(null)
   const turnIdRef = useRef<string | null>(null)
   const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const connectionIdRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const callbacksRef = useRef(callbacks)
@@ -74,6 +76,11 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      userStoppedRef.current = true
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       engineRef.current?.destroy()
       wsRef.current?.close()
       wsRef.current = null
@@ -144,8 +151,22 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const start = useCallback(
     (config: RealtimeConfig) => {
+      // Cancel any pending reconnect timer so a stale timeout can't race with this call
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+
+      // Bump connection ID so any in-flight onclose from the previous ws is ignored
+      const myConnectionId = connectionIdRef.current + 1
+      connectionIdRef.current = myConnectionId
+
+      // Tear down previous connection
       if (wsRef.current) {
         wsRef.current.close()
+      }
+      if (engineRef.current) {
+        engineRef.current.destroy()
       }
 
       configRef.current = config
@@ -205,6 +226,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       }
 
       ws.onclose = () => {
+        // Ignore close events from superseded connections (e.g. old ws closed by a new start() call)
+        if (connectionIdRef.current !== myConnectionId) return
+
         console.log('[useRealtime] WebSocket closed, userStopped:', userStoppedRef.current)
         setIsConnected(false)
         setSessionId(null)
@@ -218,7 +242,8 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             console.log(
               `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`,
             )
-            setTimeout(() => {
+            reconnectTimerRef.current = setTimeout(() => {
+              reconnectTimerRef.current = null
               if (!userStoppedRef.current && configRef.current) {
                 start(configRef.current)
               }
@@ -235,6 +260,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const stop = useCallback(() => {
     userStoppedRef.current = true
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
     engineRef.current?.destroy()
     engineRef.current = null
     wsRef.current?.close()
