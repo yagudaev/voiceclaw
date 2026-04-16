@@ -44,10 +44,16 @@ export function App() {
     <ConversationProvider>
       <div className="h-screen flex flex-col bg-background text-foreground">
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {activeTab === 'chat' && <ChatPage />}
-          {activeTab === 'history' && <HistoryPage />}
-          {activeTab === 'settings' && <SettingsPage />}
+        <main className="flex-1 flex flex-col overflow-hidden relative">
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'chat' ? 'hidden' : ''}`}>
+            <ChatPage />
+          </div>
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'history' ? 'hidden' : ''}`}>
+            <HistoryPage />
+          </div>
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'settings' ? 'hidden' : ''}`}>
+            <SettingsPage />
+          </div>
         </main>
       </div>
     </ConversationProvider>
