@@ -49,7 +49,7 @@ export function App() {
             <ChatPage />
           </div>
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'history' ? 'hidden' : ''}`}>
-            <HistoryPage />
+            <HistoryPage isVisible={activeTab === 'history'} />
           </div>
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'settings' ? 'hidden' : ''}`}>
             <SettingsPage />
