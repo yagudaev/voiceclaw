@@ -15,6 +15,9 @@ export interface ProviderAdapter {
   /** Commit the audio buffer (provider-specific) */
   commitAudio(): void
 
+  /** Forward a video frame from client to provider */
+  sendFrame(data: string, mimeType?: string): void
+
   /** Request a response from the provider */
   createResponse(): void
 
