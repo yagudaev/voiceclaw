@@ -126,9 +126,13 @@ export class RelaySession {
     try {
       const parsed = JSON.parse(args)
       query = parsed.query
-    } catch {
-      const errorPayload = JSON.stringify({ error: "invalid arguments" })
-      this.tracer.endToolCall(callId, errorPayload, "invalid arguments")
+      if (typeof query !== "string" || query.trim() === "") {
+        throw new Error("missing or empty query")
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "invalid arguments"
+      const errorPayload = JSON.stringify({ error: msg })
+      this.tracer.endToolCall(callId, errorPayload, msg)
       this.adapter?.sendToolResult(callId, errorPayload)
       this.inFlightTools.delete(callId)
       return
