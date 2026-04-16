@@ -28,6 +28,7 @@ export function ChatPage() {
   const [streamingText, setStreamingText] = useState('')
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
+  const [connectionError, setConnectionError] = useState('')
   const [showScreenPicker, setShowScreenPicker] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [screenSourceName, setScreenSourceName] = useState('')
@@ -141,13 +142,16 @@ export function ChatPage() {
     },
     onError: (message) => {
       console.error('[ChatPage] Relay error:', message)
+      setConnectionError(message)
       setIsConnecting(false)
+      setIsCallActive(false)
     },
   }
 
   const realtime = useRealtime(realtimeCallbacks)
 
   const startCall = useCallback(async () => {
+    setConnectionError('')
     setIsConnecting(true)
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const voice = (await getSetting('realtime_voice')) || 'Zephyr'
@@ -331,6 +335,13 @@ export function ChatPage() {
       {isCallActive && (
         <div className="px-4">
           <AudioLevelMeter getLevel={realtime.getInputLevel} active={isCallActive && !isMuted} />
+        </div>
+      )}
+
+      {/* Connection error */}
+      {connectionError && (
+        <div className="mx-4 mt-2 px-3 py-2 rounded-md bg-destructive/10 text-destructive text-sm text-center">
+          {connectionError}
         </div>
       )}
 
