@@ -222,7 +222,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       ws.onmessage = handleMessage
 
       ws.onerror = () => {
-        callbacksRef.current.onError?.('WebSocket connection error', 0)
+        callbacksRef.current.onError?.('Could not connect to relay server. Is it running?', 0)
       }
 
       ws.onclose = () => {
