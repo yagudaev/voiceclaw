@@ -8,8 +8,8 @@
   ],
   "scripts": {
     "dev": "concurrently --names mobile,web,server \"yarn dev:mobile\" \"yarn dev:web\" \"yarn dev:server\"",
-    "dev:server": "cd relay-server && yarn dev",
-    "dev:mobile": "cd mobile && yarn dev",
+    "dev:server": "cd relay-server && yarn dev 2>&1 | tee ../logs/relay.log",
+    "dev:mobile": "cd mobile && yarn dev 2>&1 | tee ../logs/mobile.log",
     "dev:web": "cd website && yarn dev",
     "build:web": "cd website && yarn build",
     "start:web": "cd website && yarn start",

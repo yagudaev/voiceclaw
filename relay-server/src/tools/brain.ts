@@ -1,7 +1,6 @@
 // Brain agent tool — sends queries to OpenClaw via /v1/chat/completions
 // Uses SSE streaming to get responses, signals step completions for live progress injection
 
-import type { SessionConfigEvent } from "../types.js"
 import type { SendToClient } from "../adapters/types.js"
 import { log, error as logError } from "../log.js"
 
@@ -16,13 +15,36 @@ export async function askBrain(
   config: BrainConfig,
   sendToClient: SendToClient,
   callId: string,
+  externalSignal?: AbortSignal,
 ): Promise<string> {
   const url = `${config.gatewayUrl.replace(/\/$/, "")}/v1/chat/completions`
 
   log(`[brain] Sending query to ${url}: ${query.substring(0, 80)}...`)
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 120_000) // 2 min — gateway may need exec approval
+  const timeout = setTimeout(() => controller.abort(new Error("local 120s timeout")), 120_000) // 2 min — gateway may need exec approval
+  const requestStart = Date.now()
+  const onExternalAbort = () => {
+    const reason = externalSignal?.reason
+    controller.abort(reason instanceof Error ? reason : new Error(String(reason ?? "external abort")))
+  }
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      onExternalAbort()
+    } else {
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true })
+    }
+  }
+  controller.signal.addEventListener("abort", () => {
+    const reason = controller.signal.reason
+    const reasonMsg = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason)
+    logError(`[brain] signal aborted after ${Date.now() - requestStart}ms — reason: ${reasonMsg}`)
+  })
+
+  const cleanup = () => {
+    clearTimeout(timeout)
+    externalSignal?.removeEventListener("abort", onExternalAbort)
+  }
 
   let response: Response
   try {
@@ -43,9 +65,9 @@ export async function askBrain(
       signal: controller.signal,
     })
   } catch (err) {
-    clearTimeout(timeout)
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return JSON.stringify({ error: "Brain agent request timed out" })
+    cleanup()
+    if (controller.signal.aborted) {
+      return JSON.stringify({ error: "Brain agent request aborted" })
     }
     throw err
   }
@@ -66,8 +88,23 @@ export async function askBrain(
   let fullResponse = ""
   let buffer = ""
 
+  let readCount = 0
   while (true) {
-    const { done, value } = await reader.read()
+    let read: ReadableStreamReadResult<Uint8Array>
+    try {
+      read = await reader.read()
+    } catch (err) {
+      reader.cancel().catch(() => {})
+      cleanup()
+      const elapsed = Date.now() - requestStart
+      logError(`[brain] reader.read() threw after ${elapsed}ms readCount=${readCount} aborted=${controller.signal.aborted}:`, err)
+      if (controller.signal.aborted) {
+        return JSON.stringify({ error: "Brain agent request aborted" })
+      }
+      throw err
+    }
+    readCount++
+    const { done, value } = read
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
@@ -105,7 +142,7 @@ export async function askBrain(
     }
   }
 
-  clearTimeout(timeout)
+  cleanup()
   log(`[brain] Response: ${fullResponse.substring(0, 100)}...`)
   return fullResponse || JSON.stringify({ error: "Empty response from brain agent" })
 }

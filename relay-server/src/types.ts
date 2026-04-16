@@ -79,6 +79,7 @@ export type RelayEvent =
   | SessionRotatingEvent
   | SessionRotatedEvent
   | UsageMetricsEvent
+  | ToolCancelledEvent
   | ErrorEvent
 
 export interface SessionReadyEvent {
@@ -151,6 +152,16 @@ export interface UsageMetricsEvent {
   totalTokens?: number
   inputAudioTokens?: number
   outputAudioTokens?: number
+}
+
+// Adapter signals that the upstream model gave up on a tool call
+// (e.g., Gemini toolCallCancellation). Session uses this to abort the matching
+// in-flight server-side fetch so the gateway slot is released, then forwards
+// the event to the client so it can update UI (drop speculative prefixes,
+// clear spinners, etc.).
+export interface ToolCancelledEvent {
+  type: "tool.cancelled"
+  callIds: string[]
 }
 
 export interface ErrorEvent {
