@@ -47,8 +47,17 @@ export class OpenAIAdapter implements ProviderAdapter {
     // OpenAI Realtime does not support video input
   }
 
-  injectContext(_text: string) {
-    // TODO: implement for OpenAI if needed
+  injectContext(text: string) {
+    log(`[openai] Injecting context via conversation.item.create (${text.length} chars)`)
+    this.sendUpstream({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text }],
+      },
+    })
+    this.requestResponse("injectContext")
   }
 
   commitAudio() {
