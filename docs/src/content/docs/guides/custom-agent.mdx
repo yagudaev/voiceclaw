@@ -1,0 +1,232 @@
+---
+title: Custom Brain Agent
+description: Connect any OpenAI-compatible agent as your VoiceClaw brain
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+VoiceClaw's brain agent integration works with any server that implements the OpenAI chat completions API with SSE streaming. This means you can plug in your own agent built with LangChain, CrewAI, a raw Flask/Express server, or anything else that speaks the right protocol.
+
+The key idea: VoiceClaw is a thin voice layer. You bring the agent, VoiceClaw gives it a voice.
+
+## What the relay expects
+
+The relay sends a `POST` request to your agent's `/v1/chat/completions` endpoint with streaming enabled. Your server needs to handle this and return an SSE stream in the OpenAI format.
+
+### Request format
+
+```http
+POST /v1/chat/completions HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer <BRAIN_GATEWAY_AUTH_TOKEN>
+
+{
+  "model": "openclaw",
+  "messages": [
+    { "role": "user", "content": "What's on my calendar today?" }
+  ],
+  "stream": true
+}
+```
+
+Headers sent by the relay:
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/json` |
+| `Authorization` | `Bearer <BRAIN_GATEWAY_AUTH_TOKEN>` |
+| `x-openclaw-session-key` | Session identifier for multi-turn context |
+
+<Aside type="note">
+The `model` field is always `"openclaw"` -- your server can ignore it or use it to route to different backends.
+</Aside>
+
+### Response format
+
+Your server must return an SSE stream. Each chunk follows the OpenAI format:
+
+```
+data: {"choices":[{"delta":{"content":"The capital"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":" of France"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":" is Paris."},"index":0}]}
+
+data: [DONE]
+```
+
+The relay reads `choices[0].delta.content` from each chunk and concatenates it into the final response.
+
+### Optional: progress events
+
+If your agent performs multi-step work (web search, tool calls), you can emit progress events so VoiceClaw clients show live status updates:
+
+```
+data: {"type":"step_complete","summary":"Searching the web for calendar events..."}
+```
+
+These are forwarded to the client as `tool.progress` messages.
+
+## Configuration
+
+In your relay server `.env` file:
+
+```bash
+BRAIN_GATEWAY_URL=http://localhost:YOUR_PORT/v1
+BRAIN_GATEWAY_AUTH_TOKEN=your-secret-token
+```
+
+Replace `YOUR_PORT` with whatever port your agent server runs on. The relay appends `/chat/completions` to the URL automatically, so if your full endpoint is `http://localhost:3000/v1/chat/completions`, set `BRAIN_GATEWAY_URL=http://localhost:3000/v1`.
+
+<Aside type="caution">
+The relay has a 2-minute timeout on brain agent requests. If your agent takes longer, the request will be aborted.
+</Aside>
+
+## System prompt template
+
+Give your agent this system prompt so it knows how to respond appropriately for voice:
+
+```text
+You are the brain behind a voice assistant called VoiceClaw.
+
+You receive questions via the ask_brain tool when the realtime voice model
+needs help with tasks beyond basic conversation.
+
+Guidelines:
+- Respond concisely. Your answers will be spoken aloud, not read on a screen.
+- Keep responses to 2-3 sentences when possible. The user is listening.
+- Skip formatting (no markdown, no bullet lists, no headers). Plain text only.
+- Lead with the answer, then add context if needed.
+- If you performed an action, confirm it in one sentence.
+- If you do not know something, say so briefly rather than guessing.
+```
+
+Adapt this to mention your agent's specific capabilities (web search, database access, API integrations, etc.).
+
+## Examples with popular frameworks
+
+### LangChain (Python)
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from langchain_openai import ChatOpenAI
+import json
+
+app = FastAPI()
+llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)
+
+@app.post("/v1/chat/completions")
+async def chat(request: Request):
+    body = await request.json()
+    messages = body["messages"]
+
+    async def generate():
+        async for chunk in llm.astream(messages):
+            data = {
+                "choices": [{
+                    "delta": {"content": chunk.content},
+                    "index": 0
+                }]
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+```
+
+### Express (Node.js)
+
+```javascript
+const express = require("express")
+const OpenAI = require("openai")
+
+const app = express()
+app.use(express.json())
+
+const openai = new OpenAI()
+
+app.post("/v1/chat/completions", async (req, res) => {
+  const { messages } = req.body
+
+  res.setHeader("Content-Type", "text/event-stream")
+  res.setHeader("Cache-Control", "no-cache")
+
+  const stream = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages,
+    stream: true,
+  })
+
+  for await (const chunk of stream) {
+    const data = JSON.stringify(chunk)
+    res.write(`data: ${data}\n\n`)
+  }
+
+  res.write("data: [DONE]\n\n")
+  res.end()
+})
+
+app.listen(3000)
+```
+
+### CrewAI (Python)
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from crewai import Agent, Task, Crew
+import json
+
+app = FastAPI()
+
+researcher = Agent(
+    role="Research Assistant",
+    goal="Answer questions accurately and concisely for voice output",
+    backstory="You are the brain behind a voice assistant. Keep answers brief.",
+)
+
+@app.post("/v1/chat/completions")
+async def chat(request: Request):
+    body = await request.json()
+    query = body["messages"][-1]["content"]
+
+    task = Task(
+        description=query,
+        agent=researcher,
+        expected_output="A concise 1-3 sentence answer suitable for voice",
+    )
+
+    crew = Crew(agents=[researcher], tasks=[task])
+    result = crew.kickoff()
+
+    # CrewAI doesn't stream natively, so wrap the result
+    def generate():
+        data = {
+            "choices": [{
+                "delta": {"content": str(result)},
+                "index": 0
+            }]
+        }
+        yield f"data: {json.dumps(data)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+```
+
+## Testing your endpoint
+
+You can test your brain agent endpoint directly with curl:
+
+```bash
+curl -N http://localhost:YOUR_PORT/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
+  -d '{
+    "model": "openclaw",
+    "messages": [{"role": "user", "content": "What is 2 + 2?"}],
+    "stream": true
+  }'
+```
+
+You should see SSE chunks streaming back. Once that works, configure the relay and test end-to-end with a VoiceClaw client.
