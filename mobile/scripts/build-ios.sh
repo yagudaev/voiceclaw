@@ -12,8 +12,12 @@ EXPORT_DIR="${BUILD_DIR}/export"
 EXPORT_PLIST="${MOBILE_DIR}/scripts/ExportOptions.plist"
 
 echo "==> Building VoiceClaw ($VARIANT)"
-echo "==> Step 1: Prebuild with APP_VARIANT=$VARIANT"
+
+echo "==> Step 0: Ensure vendored frameworks are present"
 cd "$MOBILE_DIR"
+./scripts/download-daily-sdk.sh
+
+echo "==> Step 1: Prebuild with APP_VARIANT=$VARIANT"
 APP_VARIANT="$VARIANT" npx expo prebuild --clean
 
 echo "==> Step 2: Archive"
@@ -33,7 +37,7 @@ xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_PLIST" \
-  -quiet
+  -allowProvisioningUpdates
 
 IPA_PATH=$(find "$EXPORT_DIR" -name "*.ipa" -print -quit)
 echo "==> Build complete: $IPA_PATH"
