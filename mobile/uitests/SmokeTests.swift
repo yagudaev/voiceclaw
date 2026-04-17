@@ -56,7 +56,7 @@ final class SmokeTests: VoiceClawUITests {
   func testSettingsScreenHasCards() throws {
     navigateToTab("Settings")
     assertExists(testID: "voice-pipeline-card")
-    assertExists(testID: "openclaw-config-card")
+    assertExists(testID: "brain-config-card")
     assertExists(testID: "latency-stats-card")
     takeScreenshot(name: "settings-cards")
   }

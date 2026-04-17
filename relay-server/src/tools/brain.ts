@@ -1,4 +1,4 @@
-// Brain agent tool — sends queries to OpenClaw via /v1/chat/completions
+// Brain agent tool — sends queries to the brain gateway via /v1/chat/completions
 // Uses SSE streaming to get responses, signals step completions for live progress injection
 
 import type { SendToClient } from "../adapters/types.js"

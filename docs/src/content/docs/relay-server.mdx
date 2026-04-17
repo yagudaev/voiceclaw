@@ -42,8 +42,8 @@ Environment variables (see `.env.example`):
 | `OPENAI_API_KEY` | Yes (for OpenAI) | OpenAI API key |
 | `RELAY_API_KEY` | Recommended | Shared secret clients must send in `session.config.apiKey` |
 | `PORT` | No | Server port (default: `8080`) |
-| `OPENCLAW_GATEWAY_URL` | No | Brain agent gateway URL (default: `http://localhost:18789`) |
-| `OPENCLAW_GATEWAY_AUTH_TOKEN` | No | Auth token for the brain agent gateway |
+| `BRAIN_GATEWAY_URL` | No | Brain agent gateway URL (default: `http://localhost:18789`) |
+| `BRAIN_GATEWAY_AUTH_TOKEN` | No | Auth token for the brain agent gateway |
 | `ROTATION_INTERVAL_MS` | No | OpenAI session rotation interval (default: `3000000` / 50 min) |
 | `LANGFUSE_BASE_URL` | No | Langfuse endpoint for tracing |
 | `LANGFUSE_PUBLIC_KEY` | No | Langfuse public key |
@@ -352,7 +352,7 @@ Common error codes:
 
 ## Brain Agent
 
-The brain agent (`ask_brain` tool) connects to an [OpenClaw](https://github.com/yagudaev/openclaw) gateway to give the voice AI extended capabilities:
+The brain agent (`ask_brain` tool) connects to any OpenAI-compatible chat completions endpoint (e.g. [OpenClaw](https://github.com/yagudaev/openclaw)) to give the voice AI extended capabilities:
 
 - Web search and browsing
 - Calendar management

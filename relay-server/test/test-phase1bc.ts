@@ -188,7 +188,7 @@ async function main() {
   console.log(`Relay: ${RELAY_URL}`)
 
   const gateway = await startMockGateway()
-  console.log("Mock OpenClaw gateway started")
+  console.log("Mock brain agent gateway started")
 
   try {
     await testOpenAIConnection()

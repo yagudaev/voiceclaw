@@ -1,6 +1,6 @@
-// Validate OpenClaw auth token by hitting the gateway's /v1/models endpoint
+// Validate brain agent auth token by hitting the gateway's /v1/models endpoint
 
-export async function validateOpenClawToken(
+export async function validateBrainGatewayToken(
   gatewayUrl: string,
   authToken: string,
 ): Promise<boolean> {
