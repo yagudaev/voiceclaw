@@ -1,5 +1,5 @@
 // Build the system instructions for the STS session
-// Loads agent identity from OpenClaw workspace, adds conversation rules and context
+// Loads agent identity from brain agent workspace, adds conversation rules and context
 
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
@@ -7,7 +7,8 @@ import { homedir } from "node:os"
 import type { SessionConfigEvent } from "./types.js"
 import { log, warn } from "./log.js"
 
-const OPENCLAW_WORKSPACE = process.env.OPENCLAW_WORKSPACE
+const BRAIN_WORKSPACE = process.env.BRAIN_WORKSPACE
+  || process.env.OPENCLAW_WORKSPACE  // backward compat
   || join(homedir(), ".openclaw", "workspace")
 
 const CONVERSATION_RULES = `
@@ -127,7 +128,7 @@ function loadAgentProfile() {
 }
 
 function loadFile(filename: string): string | null {
-  const path = join(OPENCLAW_WORKSPACE, filename)
+  const path = join(BRAIN_WORKSPACE, filename)
   if (!existsSync(path)) return null
   try {
     return readFileSync(path, "utf-8")

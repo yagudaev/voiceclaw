@@ -26,8 +26,8 @@ export function addPluginStatusListener(listener: PluginStatusListener): () => v
 }
 
 export async function connectPlugin(baseUrl?: string, token?: string): Promise<void> {
-  const gatewayBaseUrl = normalizeBaseUrl(baseUrl ?? await getSetting('openclaw_gateway_url'))
-  const authToken = token ?? await getSetting('openclaw_auth_token')
+  const gatewayBaseUrl = normalizeBaseUrl(baseUrl ?? (await getSetting('brain_gateway_url')) ?? (await getSetting('openclaw_gateway_url')))
+  const authToken = token ?? (await getSetting('brain_auth_token')) ?? (await getSetting('openclaw_auth_token'))
 
   if (!gatewayBaseUrl) {
     setStatus('error')
@@ -133,8 +133,8 @@ export function pluginStreamCompletion(
 }
 
 export async function getPluginConfig() {
-  const gatewayBaseUrl = normalizeBaseUrl(await getSetting('openclaw_gateway_url'))
-  const authToken = await getSetting('openclaw_auth_token')
+  const gatewayBaseUrl = normalizeBaseUrl((await getSetting('brain_gateway_url')) || (await getSetting('openclaw_gateway_url')))
+  const authToken = (await getSetting('brain_auth_token')) || (await getSetting('openclaw_auth_token'))
   const model = (await getSetting('default_model')) || 'openclaw:voice'
   return { gatewayBaseUrl, authToken, model }
 }
