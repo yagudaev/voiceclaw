@@ -164,6 +164,28 @@ Always build, deploy, and test on a device before committing.
 - **Mobile**: test on a real iOS device or simulator with Expo Go -- do not test on web
 - **Desktop**: run `yarn dev` and verify audio capture, playback, and screen sharing
 
+## Authoring Diagrams
+
+Architecture and flow diagrams in the docs are written in [Mermaid](https://mermaid.js.org/), rendered client-side via [`astro-mermaid`](https://www.npmjs.com/package/astro-mermaid).
+
+To add or edit a diagram:
+
+1. Write a fenced code block with the `mermaid` language tag in any `.mdx` page:
+
+   ````markdown
+   ```mermaid
+   flowchart LR
+     A[Client] --> B[Relay]
+     B --> C[Provider]
+   ```
+   ````
+
+2. Preview and iterate visually at [mermaid.live](https://mermaid.live/) -- the diagrams already in the docs include an *"Edit this diagram ↗"* link underneath that opens the diagram source in the live editor.
+
+3. Paste the finalized source back into the `.mdx` file and regenerate the live-editor link if needed (the link is a `pako`-compressed, url-safe base64 encoding of the diagram state).
+
+Brand theming (fills, borders, sequence colors) is configured once in `docs/astro.config.mjs` under the `mermaid()` integration's `mermaidConfig.themeVariables`. Individual diagrams can still override specific nodes with `classDef` / `class` statements.
+
 ## Making Changes
 
 <Steps>

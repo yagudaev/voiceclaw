@@ -9,43 +9,31 @@ VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay serve
 
 ## System Overview
 
-```
-+------------------+
-|   Mobile App     |   React Native / Expo
-|   (iOS)          |   Native audio I/O via system audio route
-+--------+---------+
-         |
-         | WebSocket (relay protocol)
-         | ws://<relay>:8080/ws
-         |
-+--------+---------+
-|   Relay Server   |   TypeScript / Node.js
-|                  |
-|   - Session mgmt |   One RelaySession per WebSocket connection
-|   - Adapter      |   Provider-specific protocol translation
-|   - Brain agent  |   Async tool calls via brain agent gateway
-|   - Tracing      |   Langfuse OTEL integration
-+--------+---------+
-         |
-         | Provider WebSocket
-         | (Gemini BidiGenerateContent / OpenAI Realtime)
-         |
-+--------+---------+
-|   AI Provider    |   Gemini Live or OpenAI Realtime API
-|                  |   Voice activity detection (VAD)
-|                  |   Speech-to-text + text-to-speech
-+------------------+
+```mermaid
+flowchart LR
+    subgraph Clients["Clients"]
+      direction TB
+      Mobile["Mobile App<br/>(React Native / Expo, iOS)<br/>Native audio I/O"]
+      Desktop["Desktop App<br/>(Electron + React + Tailwind, macOS)<br/>Web Audio + screen share"]
+    end
 
-+------------------+
-|   Desktop App    |   Electron + React + Tailwind
-|   (macOS)        |   Web Audio API for capture/playback
-|   + screen share |   desktopCapturer for screen frames
-+--------+---------+
-         |
-         | WebSocket (same relay protocol)
-         |
-         +-------> Relay Server (same as above)
+    Relay["Relay Server<br/>(TypeScript / Node.js)<br/><br/>- Session mgmt<br/>- Provider adapter<br/>- Brain agent<br/>- Tracing (Langfuse / OTEL)"]
+
+    Provider["AI Provider<br/>(Gemini Live / OpenAI Realtime)<br/><br/>- Voice activity detection<br/>- Speech-to-text<br/>- Text-to-speech"]
+
+    Mobile -- "WebSocket<br/>relay protocol" --> Relay
+    Desktop -- "WebSocket<br/>relay protocol" --> Relay
+    Relay -- "Provider WebSocket<br/>(BidiGenerateContent / Realtime)" --> Provider
+
+    classDef clientStyle fill:#1c1636,stroke:#6c63ff,color:#f5f3ff
+    classDef relayStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
+    classDef providerStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    class Mobile,Desktop clientStyle
+    class Relay relayStyle
+    class Provider providerStyle
 ```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqdlG9v2jAQxr_KyX1D1TDKylAXTZXoH1WVWJkK2qSNvTD2BTwS27INLav63XfESQh7M2m8COez_bvnnovyyoSRyFKW5eZZrLgLMH6aa6Cf3yyWjtsV3OQKdfA_5qyK5uxnPAIglUMRlNEwu65zn81C5UjHYwAjaz8tXO-q84RcBHjkQW0RenD3Yk0CajI9LberPN9IZeChN2lVuUW_DsYSsooOzLuc6juqfwYRfwYzrvJnpWUCBRc1_RsuYFSiz8ALh6jBU7vYVEEt5zqGT5jzHRUr_2GKbosuVpvtLE6FUzaQ_kdy7t0vH_nlo0uHvd-7USyLUKW-OLNVEh1wyW2oSF24dlxp4EsytMrMHBdKL6Ez5nqZbfzeo8nsbnxaaozSahipGz00qyjuHgulFYyjuxOLmo6QKXlQBR6p_GqUIKdpcFsVdiAxxCHWTVhEseoG0w340qijcJ_y5WZLUjXlbhfmjFyeGrHGeMmV_llnghEmnzM6cxXNjTfrYf7H1Tia8mLj7zGhc62kukeNjge8MTqQ0WRL40fFrG_X3Yice3-LGQX7d30adtRbpvI8PemL_vBimHh63daYngzF8CLLEpJnXHqSfcho9Rej7KKNGPCLTH5sEGIg-v9A2ErfkZBB__w9byiXi8vBgRKZLUo1oKR2u9VY-1R09KC4vddYfKSGJaxAV3AlWfrKwgqL_YdEcrdmbwnjm2CmOy1YGtwGE7axkgZxqzh9VIo6abn-bkx7uUe9sPQ8YTt6Eud3ud9_-wMH_Yvl)*
 
 ## Audio Flow
 
@@ -67,11 +55,31 @@ All audio travels as **PCM16 at 24kHz**, base64-encoded over WebSocket JSON mess
 3. Client decodes base64 PCM16 and plays through speakers
 4. On barge-in (user starts talking), client receives `turn.started` and stops playback
 
+```mermaid
+flowchart LR
+    Mic(["Microphone"]) --> PCM1["PCM16<br/>24 kHz"]
+    PCM1 --> B64a["base64<br/>encode"]
+    B64a --> Append["audio.append"]
+    Append --> Relay1["Relay"]
+    Relay1 --> ProviderFmt["Provider<br/>format"]
+    ProviderFmt --> AI1(["AI"])
+
+    AI2(["AI"]) --> ModelAudio["Model<br/>audio"]
+    ModelAudio --> Relay2["Relay"]
+    Relay2 --> Delta["audio.delta"]
+    Delta --> B64b["base64<br/>decode"]
+    B64b --> PCM2["PCM16<br/>decode"]
+    PCM2 --> Speakers(["Speakers"])
+
+    classDef devStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
+    classDef stepStyle fill:#1c1636,stroke:#6c63ff,color:#e6e3ff
+    classDef relayStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    class Mic,Speakers,AI1,AI2 devStyle
+    class PCM1,PCM2,B64a,B64b,Append,Delta,ProviderFmt,ModelAudio stepStyle
+    class Relay1,Relay2 relayStyle
 ```
-Mic -> PCM16 24kHz -> base64 -> audio.append -> [Relay] -> provider format -> [AI]
-                                                                                |
-[Speakers] <- PCM16 decode <- base64 <- audio.delta <- [Relay] <- model audio <-+
-```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptU2FvmzAQ_SvI-bJK7lYIRR2qKqWLpkZapCr51mUfjH1uUAxGxmmXVv3v9ZlgSDYkMOd7PL97d7wTrgWQnEilX_mWGRv9Wm3qyF3Lkn_5vSFuMbrZ6ho25M9FdHl5Fz3-WMYug0t2W5hvd0ka7R7eXL77EhMeeJ-lzAEL1kKWeiTUeF5AIsAjZ00DtXBYthel_sp8GGBd1gNXoNgBT_cvAdFtd-qMfikFmJ-VRZHHyJ8utamYHXQOyE7EIsaKZwusdFMfz14kw6aHLV0FaoY60R4MPLlXHrgH0CA7-b_sxCPmoCwLBgiMAsznekeLU0cFnDta9E1KTpp0BsS8B64bYDswLVbZv48N4Iq17RxkJOBlbQ8KIlkqlU9SNpXiO22t0TvIJzzlsZSUa6VNPpHXcirlGUFroRkzxDzOpllgyHg2HRggg38ZDPp1QpHGVwkLFDfFTTpQdJJGFDjTtK-Runa7Owl1jYFoG0WLKI4oPgraTSH1zaCj2aGjXocSx2TdcNJjs4caCCUVuIksBcnfid1ChX-iYGZHPqgbBKvXh5qT3Jo9ULJvBLMwL9mzYVW_2bD6SetxiFR_SX5FycE9Hc-bz8cfn97oO5Q)*
 
 ## Video / Screen Sharing Flow
 
@@ -127,25 +135,27 @@ Both emit `session.rotating` / `session.rotated` so clients can handle the trans
 
 The brain agent gives the voice AI capabilities beyond conversation -- web search, calendar, tasks, memory, and more. It runs as an async background process.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant AI as AI Model
+    participant S as Relay Session
+    participant B as Brain Agent<br/>Gateway
+
+    AI->>S: tool call: ask_brain
+    S-->>AI: { status: "searching" }<br/>(immediate, unblocks AI)
+    Note over AI: AI can now say<br/>"Let me check on that..."
+
+    S->>B: POST /v1/chat/completions
+    B-->>S: SSE: step_complete (progress)
+    S-->>AI: tool.progress (stream to client)
+    B-->>S: SSE: final result
+
+    S->>AI: injectContext(result)
+    AI-->>S: speaks the answer
 ```
-[AI Model] -- tool call: ask_brain --> [Relay Session]
-                                           |
-                                           | 1. Immediately return "searching" to unblock AI
-                                           | 2. POST /v1/chat/completions to brain agent gateway
-                                           |
-                                           v
-                                    [Brain Agent Gateway]
-                                           |
-                                           | SSE streaming response
-                                           | (step_complete events for progress)
-                                           |
-                                           v
-                                    [Relay Session]
-                                           |
-                                           | injectContext() -- feeds result back to AI
-                                           v
-                                    [AI speaks the answer]
-```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptkttqGzEQhl9l0JUNa7u5FcVgpyEYeqLbq7IQxtqprVqHrTQbZ2v87h15nRCa6kKgmX8-5h_NSZnYktIq0--egqEPFncJfRNADvYcQ--3lMZ3h4mtsR0GhtUGMJf7kwDc23xd0t_I4QA15WxjeKtZF806oQ2w2lHg99u0WN4j0xGH5qpfbWbLZa2BY3Rg0DktRYeHbakaFfVMFKuNhhNkRu6zhkb8YDJ7G3aNgvOFO7HeU2uFXkEfti6aQ-l_OkI-RyaIj5SgkMSWwQAhHiHjcClv1Edi8ARmT-YAMQDvkefzeaOal0aWy7WGr1_q77B4vFkYESxM9J0jFv95VK1no6G6vtPSMHUPVwnBpEtxl2Ra03-cFfPz5yRMMidCL1Ewzsrcpv8h_7QBHYi-d_y6wYKz4RcZvo2B6Ykno2b6Mu4RkjtCGRDvCTDkIyVVKU_Jo22VPimJ-7I3LaaDOleqrEo9BKM0p54q1XetTPq6Tc9B-fQfMb5-FtST0u8qNcgtnD-X_M35L4QR194)*
 
 Key design decisions:
 - The initial `ask_brain` tool result is returned immediately with `{"status": "searching"}` so the AI can say something like "Let me check on that..." while the brain works
