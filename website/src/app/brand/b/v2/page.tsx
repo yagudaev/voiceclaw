@@ -115,14 +115,9 @@ function HeroSection() {
       <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.1fr)_380px] lg:gap-16">
         <div>
           <div className="flex flex-wrap items-center gap-3 font-[family-name:var(--font-jetbrains)] text-[10px] uppercase tracking-[0.26em] text-[var(--muted)]">
-            <span className="inline-flex h-5 items-center rounded-full border border-[var(--line-strong)] px-2 text-[9px] text-[var(--accent)]">
-              B
+            <span className="text-[var(--accent)]">
+              Open source. Voice-first. BYO-brain.
             </span>
-            Editorial Quiet
-            <span className="text-[var(--line-strong)]">/</span>
-            Codex
-            <span className="text-[var(--line-strong)]">/</span>
-            Restraint wins
           </div>
 
           <div className="mt-10 flex items-start gap-5">
@@ -142,9 +137,9 @@ function HeroSection() {
           </div>
 
           <p className="mt-8 max-w-2xl font-[family-name:var(--font-geist-sans)] text-lg leading-8 text-[var(--muted)] md:text-xl">
-            A thin voice layer for any OpenAI-compatible assistant across iOS
-            and macOS. Precise, composed, and instrument-like instead of
-            performative.
+            Talk to your own agent on iPhone and Mac. Point VoiceClaw at any
+            OpenAI-compatible endpoint and it minds the mic, the route, and the
+            transcript while your agent does the real work.
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
@@ -153,9 +148,8 @@ function HeroSection() {
                 Thesis
               </p>
               <p className="mt-3 max-w-2xl font-[family-name:var(--font-fraunces)] text-2xl leading-[1.2] tracking-[-0.03em] text-[var(--ink)] sm:text-[2rem]">
-                Confidence through silence: warm paper, serif headlines, a
-                disciplined grid, and one surgical accent carrying the only
-                moment of heat.
+                Warm paper, calm type, clean lines, and one rust signal for the
+                part that actually needs your attention.
               </p>
             </div>
 
@@ -178,11 +172,10 @@ function HeroSection() {
             <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
               <div>
                 <p className="font-[family-name:var(--font-jetbrains)] text-[10px] uppercase tracking-[0.26em] text-[var(--muted)]">
-                  Interaction grammar
+                  Session flow
                 </p>
                 <p className="mt-2 font-[family-name:var(--font-geist-sans)] text-sm leading-6 text-[var(--muted)]">
-                  Everything resolves into measured choices: record, route,
-                  return.
+                  Talk, hand it off, read it back.
                 </p>
               </div>
               <span className="font-[family-name:var(--font-jetbrains)] text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
@@ -191,14 +184,14 @@ function HeroSection() {
             </div>
 
             <div className="mt-5 space-y-4">
-              <StepRow index="01" title="Capture">
-                Local mic state is obvious and non-theatrical.
+              <StepRow index="01" title="Talk">
+                You can tell at a glance when the mic is live.
               </StepRow>
-              <StepRow index="02" title="Bridge">
-                VoiceClaw hands audio to your existing agent endpoint.
+              <StepRow index="02" title="Route">
+                VoiceClaw sends the audio to your agent and keeps the handoff tidy.
               </StepRow>
-              <StepRow index="03" title="Return">
-                Transcripts and controls stay legible under pressure.
+              <StepRow index="03" title="Read">
+                The reply comes back as transcript, playback, and controls you can skim.
               </StepRow>
             </div>
           </div>
@@ -566,9 +559,9 @@ function IOSStoreSection() {
 
           <div className="px-6 py-6 md:px-8">
             <p className="max-w-3xl font-[family-name:var(--font-geist-sans)] text-[15px] leading-7 text-[var(--muted)]">
-              VoiceClaw gives your existing agent a fast, composed voice
-              surface. Connect to any OpenAI-compatible endpoint, monitor
-              latency, and keep transcripts structured across mobile sessions.
+              VoiceClaw gives your existing agent a clean voice front end.
+              Connect any OpenAI-compatible endpoint, watch latency, and keep
+              transcripts tidy across mobile sessions.
             </p>
 
             <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -614,9 +607,9 @@ function MacStoreSection() {
                   </div>
                 </div>
                 <p className="mt-6 max-w-3xl font-[family-name:var(--font-geist-sans)] text-[15px] leading-7 text-[var(--muted)]">
-                  Thin voice control for your own agent on macOS. Route any
-                  compatible backend, monitor state in a compact desktop window,
-                  and keep the tool itself deliberately quiet.
+                  Voice on macOS for the agent you already run. Route any
+                  compatible backend, watch state in a compact desktop window,
+                  and keep the app itself out of your way.
                 </p>
               </div>
             </div>
@@ -755,12 +748,14 @@ function DocsSection() {
                 Table of contents
               </p>
               <nav className="mt-5 space-y-4 font-[family-name:var(--font-geist-sans)] text-sm text-[var(--muted)]">
-                <p className="text-[var(--ink)]">Getting Started</p>
-                <p>Connect an agent</p>
-                <p>Configure voice routes</p>
-                <p>Monitor latency</p>
-                <p>Render transcripts</p>
-                <p>Electron desktop notes</p>
+                <p className="text-[var(--ink)]">Quickstart</p>
+                <p>Agent endpoint</p>
+                <p>Routing basics</p>
+                <p>Audio devices</p>
+                <p>Transcripts</p>
+                <p>Latency and logs</p>
+                <p>macOS app</p>
+                <p>iOS app</p>
               </nav>
             </aside>
 

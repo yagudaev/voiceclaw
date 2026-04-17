@@ -9,25 +9,34 @@ export const Mark = ({ size = 120, className = "" }: { size?: number, className?
     xmlns="http://www.w3.org/2000/svg"
     className={className}
   >
-    {/* Abstract Grip Mark - Outer Brackets */}
-    <path d="M 10 30 L 10 10 L 30 10" stroke="currentColor" strokeWidth="4" fill="none" />
-    <path d="M 70 10 L 90 10 L 90 30" stroke="currentColor" strokeWidth="4" fill="none" />
-    <path d="M 10 70 L 10 90 L 30 90" stroke="currentColor" strokeWidth="4" fill="none" />
-    <path d="M 70 90 L 90 90 L 90 70" stroke="currentColor" strokeWidth="4" fill="none" />
-
-    {/* Calibration Ticks */}
-    <line x1="50" y1="5" x2="50" y2="12" stroke="currentColor" strokeWidth="2" />
-    <line x1="50" y1="88" x2="50" y2="95" stroke="currentColor" strokeWidth="2" />
-    <line x1="5" y1="50" x2="12" y2="50" stroke="currentColor" strokeWidth="2" />
-    <line x1="88" y1="50" x2="95" y2="50" stroke="currentColor" strokeWidth="2" />
-
-    {/* Center element - "The Signal" */}
-    <rect x="42" y="42" width="16" height="16" fill="currentColor" rx="1" />
-    <circle cx="50" cy="50" r="2" fill="#121214" />
+    {/* Background Track */}
+    <rect x="44" y="10" width="12" height="80" rx="6" fill="currentColor" fillOpacity="0.1" />
+    <rect x="48" y="15" width="4" height="70" rx="2" fill="currentColor" fillOpacity="0.2" />
     
-    {/* Inner Precision Crosshair */}
-    <line x1="40" y1="50" x2="60" y2="50" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
-    <line x1="50" y1="40" x2="50" y2="60" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
+    {/* Scale Ticks */}
+    <g stroke="currentColor" strokeWidth="1" opacity="0.4">
+      <line x1="30" y1="20" x2="40" y2="20" />
+      <line x1="30" y1="35" x2="40" y2="35" />
+      <line x1="30" y1="50" x2="40" y2="50" strokeWidth="2" opacity="0.8" />
+      <line x1="30" y1="65" x2="40" y2="65" />
+      <line x1="30" y1="80" x2="40" y2="80" />
+      
+      <line x1="60" y1="20" x2="70" y2="20" />
+      <line x1="60" y1="35" x2="70" y2="35" />
+      <line x1="60" y1="50" x2="70" y2="50" strokeWidth="2" opacity="0.8" />
+      <line x1="60" y1="65" x2="70" y2="65" />
+      <line x1="60" y1="80" x2="70" y2="80" />
+    </g>
+
+    {/* Fader Cap (The "Claw" / Grip) */}
+    <g transform="translate(0, 5)">
+        {/* Cap Body */}
+        <rect x="25" y="40" width="50" height="20" rx="2" fill="currentColor" />
+        {/* Center Groove */}
+        <rect x="48" y="42" width="4" height="16" rx="1" fill="#121214" />
+        {/* Accent Line */}
+        <line x1="25" y1="50" x2="75" y2="50" stroke="#121214" strokeWidth="0.5" opacity="0.5" />
+    </g>
   </svg>
 );
 
