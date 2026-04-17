@@ -38,6 +38,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       CFBundleDisplayName: variant.displayName,
       ITSAppUsesNonExemptEncryption: false,
       NSMicrophoneUsageDescription: 'VoiceClaw needs microphone access for voice calls with your AI assistant.',
+      NSCameraUsageDescription: 'VoiceClaw may use the camera for video calls with your AI assistant.',
+      NSPhotoLibraryUsageDescription: 'VoiceClaw may access your photo library to share images during conversations.',
       NSSpeechRecognitionUsageDescription: 'VoiceClaw uses speech recognition to transcribe your voice for the AI assistant.',
       UIBackgroundModes: ['audio', 'voip'],
     },
