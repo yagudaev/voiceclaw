@@ -1,0 +1,87 @@
+---
+layout: default
+title: Desktop App
+nav_order: 4
+---
+
+# Desktop App
+
+The desktop app is a macOS Electron application that provides a voice assistant interface with screen sharing capabilities. It connects to the relay server using the same WebSocket protocol as the mobile app.
+
+## Features
+
+- **Voice conversations** -- full-duplex audio with barge-in support via Web Audio API
+- **Screen sharing** -- share any window or your entire screen with the AI (Gemini only)
+- **Conversation history** -- local SQLite database stores all conversations with searchable transcripts
+- **Audio device selection** -- choose input and output devices
+- **Volume control** -- adjustable playback volume
+- **Dark/light theme** -- follows system preference or manual toggle
+- **Tab navigation** -- Chat, History, and Settings pages
+- **Auto-reconnect** -- reconnects up to 3 times on unexpected disconnects
+
+## Tech Stack
+
+- **Electron** 35 -- desktop runtime
+- **React** 19 -- UI framework
+- **Tailwind CSS** 3 -- styling
+- **electron-vite** -- build tooling (Vite for renderer, esbuild for main)
+- **better-sqlite3** -- local conversation storage
+- **lucide-react** -- icons
+- **Web Audio API** -- microphone capture and audio playback
+
+## Building from Source
+
+```bash
+cd desktop
+yarn install
+yarn dev          # start in development mode (hot reload)
+```
+
+For production builds:
+
+```bash
+yarn build        # compile renderer + main process
+yarn typecheck    # run TypeScript type checking
+```
+
+## Screen Sharing
+
+Screen sharing lets the AI see your screen content in real time. This uses Electron's `desktopCapturer` API.
+
+How it works:
+
+1. Click the screen share button in the chat interface
+2. Pick a screen source from the available windows/displays
+3. The `ScreenCapture` class captures frames at **1 FPS**
+4. Frames are resized to max 768px and exported as JPEG (70% quality)
+5. Sent to the relay server as `frame.append` messages
+6. The relay forwards frames to the AI provider
+
+Notes:
+- Screen sharing is only supported with the **Gemini** provider (OpenAI Realtime does not accept video input)
+- Context window compression is enabled on the Gemini side to handle the steady stream of image tokens
+- Screen frames do not count as user activity for the watchdog timer
+
+## Audio Engine
+
+The desktop app uses the Web Audio API for audio:
+
+- **Capture**: `getUserMedia` at 24kHz mono with echo cancellation and noise suppression
+- **Playback**: `AudioBufferSourceNode` chain with a `GainNode` for volume control
+- **Format**: PCM16 at 24kHz, base64 encoded (matching the relay protocol)
+- **Frame size**: 2400 samples (100ms chunks)
+- **Input level**: RMS computed per capture frame for the level meter UI
+
+## Settings
+
+Configurable via the Settings page:
+
+- **Server URL** -- relay server WebSocket address
+- **API Key** -- relay server authentication key
+- **Provider** -- Gemini or OpenAI
+- **Model** -- provider-specific model identifier
+- **Voice** -- voice selection
+- **Brain Agent** -- enable/disable the brain agent
+- **Audio devices** -- input and output device selection
+- **Volume** -- playback volume slider
+- **Theme** -- dark, light, or system
