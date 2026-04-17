@@ -22,13 +22,14 @@ const OPTIONS = [
     match: "/brand/a",
   },
   {
-    href: "/brand/b/v2",
+    href: "/brand/b/v3",
     letter: "B",
     name: "Editorial Quiet",
     thesis: "Restraint wins — confidence in silence",
     versions: [
       { href: "/brand/b/v1", label: "v1 · original" },
       { href: "/brand/b/v2", label: "v2 · iterated" },
+      { href: "/brand/b/v3", label: "v3 · grid fix" },
     ],
     match: "/brand/b",
   },
