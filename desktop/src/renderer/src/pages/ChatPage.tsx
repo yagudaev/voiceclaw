@@ -385,6 +385,9 @@ export function ChatPage() {
             {isConnecting && (
               <span className="text-sm text-muted-foreground animate-pulse">Connecting...</span>
             )}
+            {realtime.isReconnecting && (
+              <span className="text-sm text-yellow-500 animate-pulse">Reconnecting...</span>
+            )}
           </>
         )}
       </div>
