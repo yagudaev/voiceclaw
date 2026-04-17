@@ -16,7 +16,11 @@ class RealtimeAudioManager {
 
     // Echo gate: RMS threshold during playback. Speech is typically 0.05-0.3,
     // speaker echo with .default mode is typically 0.01-0.05. Tune as needed.
-    private let echoGateThreshold: Float = 0.06
+    private var echoGateEnabled: Bool = true
+    private var echoGateThreshold: Float = 0.06
+
+    // Debug: emit RMS metrics to JS when enabled
+    private var debugMetricsEnabled: Bool = false
 
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
@@ -29,14 +33,21 @@ class RealtimeAudioManager {
     private let onAudioCaptured: (String) -> Void
     private let onError: (String) -> Void
     private let onLog: (String) -> Void
+    private let onRmsMetrics: (Float, Bool, Bool, Float, String) -> Void
 
     // Playback format: 24kHz Float32 mono (AVAudioEngine works best with Float32)
     private let playbackFormat: AVAudioFormat
 
-    init(onAudioCaptured: @escaping (String) -> Void, onError: @escaping (String) -> Void, onLog: @escaping (String) -> Void) {
+    init(
+        onAudioCaptured: @escaping (String) -> Void,
+        onError: @escaping (String) -> Void,
+        onLog: @escaping (String) -> Void,
+        onRmsMetrics: @escaping (Float, Bool, Bool, Float, String) -> Void
+    ) {
         self.onAudioCaptured = onAudioCaptured
         self.onError = onError
         self.onLog = onLog
+        self.onRmsMetrics = onRmsMetrics
         self.playbackFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: 24000,
@@ -105,17 +116,27 @@ class RealtimeAudioManager {
             for j in 0..<frameCount { sumSquares += channelData[j] * channelData[j] }
             let rms = sqrt(sumSquares / Float(frameCount))
 
+            let playbackActive = self.isPlaybackActive
+            let gateEnabled = self.echoGateEnabled
+            let threshold = self.echoGateThreshold
+            let gated = gateEnabled && playbackActive && rms < threshold
+
             tapCallCount += 1
             if tapCallCount <= 5 {
-                let gated = self.isPlaybackActive
-                self.onLog("[RealtimeAudioManager] Tap #\(tapCallCount): frames=\(frameCount) rms=\(String(format: "%.4f", rms)) playback=\(gated)")
+                self.onLog("[RealtimeAudioManager] Tap #\(tapCallCount): frames=\(frameCount) rms=\(String(format: "%.4f", rms)) playback=\(playbackActive) gateEnabled=\(gateEnabled)")
+            }
+
+            // Emit RMS metrics for debug overlay
+            if self.debugMetricsEnabled {
+                let route = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "unknown"
+                self.onRmsMetrics(rms, playbackActive, gated, threshold, route)
             }
 
             // Echo gate: during active playback, only forward audio above threshold
-            if self.isPlaybackActive && rms < self.echoGateThreshold {
+            if gated {
                 gatedCount += 1
                 if gatedCount <= 3 {
-                    self.onLog("[RealtimeAudioManager] Echo gate: rms=\(String(format: "%.4f", rms)) < \(self.echoGateThreshold), sending silence")
+                    self.onLog("[RealtimeAudioManager] Echo gate: rms=\(String(format: "%.4f", rms)) < \(threshold), sending silence")
                 }
                 // Send silence to keep the audio stream alive
                 self.onAudioCaptured(silenceBase64)
@@ -240,5 +261,19 @@ class RealtimeAudioManager {
 
     func setVolume(_ volume: Float) {
         softwareGain = volume
+    }
+
+    func setEchoGateEnabled(_ enabled: Bool) {
+        echoGateEnabled = enabled
+        onLog("[RealtimeAudioManager] Echo gate \(enabled ? "enabled" : "disabled")")
+    }
+
+    func setEchoGateThreshold(_ threshold: Float) {
+        echoGateThreshold = threshold
+        onLog("[RealtimeAudioManager] Echo gate threshold set to \(String(format: "%.4f", threshold))")
+    }
+
+    func setDebugMetricsEnabled(_ enabled: Bool) {
+        debugMetricsEnabled = enabled
     }
 }

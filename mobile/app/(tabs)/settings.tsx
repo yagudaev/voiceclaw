@@ -90,6 +90,10 @@ export default function SettingsScreen() {
   // Debug mode
   const [debugMode, setDebugMode] = useState(false)
 
+  // Echo gate settings
+  const [echoGateEnabled, setEchoGateEnabled] = useState(true)
+  const [echoGateThreshold, setEchoGateThreshold] = useState(0.06)
+
   // Show latency
   const [showLatency, setShowLatencyState] = useState(false)
 
@@ -233,6 +237,10 @@ export default function SettingsScreen() {
       }
       const dm = await getSetting('debug_mode')
       if (dm === 'true') setDebugMode(true)
+      const ege = await getSetting('echo_gate_enabled')
+      if (ege === 'false') setEchoGateEnabled(false)
+      const egt = await getSetting('echo_gate_threshold')
+      if (egt) setEchoGateThreshold(parseFloat(egt))
       const sl = await getSetting('show_latency')
       if (sl === 'true') setShowLatencyState(true)
       const tr = await getSetting('tracing_enabled')
@@ -414,6 +422,16 @@ export default function SettingsScreen() {
   const toggleDebugMode = useCallback((v: boolean) => {
     setDebugMode(v)
     setSetting('debug_mode', v ? 'true' : 'false')
+  }, [])
+
+  const toggleEchoGate = useCallback((v: boolean) => {
+    setEchoGateEnabled(v)
+    setSetting('echo_gate_enabled', v ? 'true' : 'false')
+  }, [])
+
+  const updateEchoGateThreshold = useCallback((v: number) => {
+    setEchoGateThreshold(v)
+    setSetting('echo_gate_threshold', v.toFixed(4))
   }, [])
 
   const toggleShowLatency = useCallback((v: boolean) => {
@@ -830,6 +848,46 @@ export default function SettingsScreen() {
               onValueChange={toggleDebugMode}
             />
           </View>
+
+          {debugMode && (
+            <View className="mt-2 gap-3 border-t border-border pt-3">
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-foreground">Echo Gate</Text>
+                  <Text className="text-xs text-muted-foreground">
+                    Client-side RMS gate during playback — disable to let Gemini&apos;s server VAD handle interruption
+                  </Text>
+                </View>
+                <Switch
+                  testID="echo-gate-toggle"
+                  value={echoGateEnabled}
+                  onValueChange={toggleEchoGate}
+                />
+              </View>
+
+              {echoGateEnabled && (
+                <View className="gap-1">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-sm font-medium text-foreground">Gate Threshold</Text>
+                    <Text className="text-xs tabular-nums text-muted-foreground">{echoGateThreshold.toFixed(3)}</Text>
+                  </View>
+                  <Slider
+                    testID="echo-gate-threshold-slider"
+                    minimumValue={0.01}
+                    maximumValue={0.2}
+                    step={0.005}
+                    value={echoGateThreshold}
+                    onSlidingComplete={updateEchoGateThreshold}
+                    minimumTrackTintColor="#3b82f6"
+                    maximumTrackTintColor="#6b7280"
+                  />
+                  <Text className="text-xs text-muted-foreground">
+                    Lower = more sensitive to voice during playback. Default: 0.060
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </Card>
 
         <Card testID="show-latency-card" className="gap-2 p-4">

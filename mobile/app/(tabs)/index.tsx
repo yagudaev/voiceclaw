@@ -10,7 +10,7 @@ import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
-import { useRealtime } from '@/lib/use-realtime'
+import { useRealtime, type RmsMetrics } from '@/lib/use-realtime'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
@@ -126,6 +126,7 @@ export default function ChatScreen() {
   const cancelReconnectRef = useRef<(() => void) | null>(null)
   const triggerReconnectRef = useRef<(() => void) | null>(null)
   const [pipelineDebugState, setPipelineDebugState] = useState(INITIAL_PIPELINE_DEBUG_STATE)
+  const [rmsMetrics, setRmsMetrics] = useState<RmsMetrics | null>(null)
   const conversationIdRef = useRef<number | null>(null)
   conversationIdRef.current = conversationId
 
@@ -326,6 +327,9 @@ export default function ChatScreen() {
           addMessage(convId, 'assistant', 'Authentication failed. Check your brain agent gateway URL and auth token in Settings.').then(() => loadMessagesRef.current())
         }
       }
+    },
+    onRmsMetrics: (metrics) => {
+      setRmsMetrics(metrics)
     },
   })
 
@@ -923,6 +927,12 @@ export default function ChatScreen() {
     const tracingEnabled = tracingPref === null || tracingPref === undefined
       ? __DEV__
       : tracingPref === 'true'
+    const echoGatePref = await getSetting('echo_gate_enabled')
+    const echoGateEnabled = echoGatePref === null ? true : echoGatePref === 'true'
+    const echoGateThresholdPref = await getSetting('echo_gate_threshold')
+    const echoGateThreshold = echoGateThresholdPref ? parseFloat(echoGateThresholdPref) : 0.06
+    const debugPref = await getSetting('debug_mode')
+    const isDebug = debugPref === 'true'
 
     if (!apiKey) {
       await addMessage(conversationId, 'assistant', 'Please configure your API key in the Realtime settings first.')
@@ -947,7 +957,7 @@ export default function ChatScreen() {
       .slice(-20)
       .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
 
-    console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length })
+    console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length, echoGateEnabled, echoGateThreshold })
     realtime.start({
       serverUrl,
       voice,
@@ -956,6 +966,9 @@ export default function ChatScreen() {
       apiKey,
       sessionKey: `voiceclaw:${conversationId}`,
       volume,
+      echoGateEnabled,
+      echoGateThreshold,
+      debugMode: isDebug,
       deviceContext: {
         timezone,
         locale,
@@ -1170,6 +1183,51 @@ export default function ChatScreen() {
             <Button testID="simulate-interrupt-transcript-button" variant="secondary" size="sm" onPress={() => simulatePipelineTranscript('Actually stop the dragon story and reply with exactly: redirect successful.')}>
               <Text className="text-xs text-foreground">Redirect Turn</Text>
             </Button>
+          </View>
+        </View>
+      )}
+
+      {debugMode && isCallActive && activeVoiceModeRef.current === 'realtime' && rmsMetrics && (
+        <View testID="rms-debug-panel" className="gap-2 border-t border-dashed border-border bg-background px-4 py-3">
+          <Text className="text-xs font-semibold text-muted-foreground">Audio Debug</Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="w-12 text-xs text-muted-foreground">RMS</Text>
+            <View className="h-4 flex-1 overflow-hidden rounded bg-muted">
+              <View
+                style={{
+                  width: `${Math.min(rmsMetrics.rms * 500, 100)}%`,
+                  backgroundColor: rmsMetrics.gated ? '#ef4444' : rmsMetrics.playbackActive ? '#f59e0b' : '#22c55e',
+                }}
+                className="h-full rounded"
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  left: `${Math.min(rmsMetrics.threshold * 500, 100)}%`,
+                  top: 0,
+                  bottom: 0,
+                  width: 2,
+                  backgroundColor: '#ffffff',
+                }}
+              />
+            </View>
+            <Text className="w-16 text-right text-xs tabular-nums text-muted-foreground">
+              {rmsMetrics.rms.toFixed(4)}
+            </Text>
+          </View>
+          <View className="flex-row flex-wrap gap-3">
+            <Text className="text-xs text-muted-foreground">
+              gate:{rmsMetrics.gated ? 'GATED' : 'open'}
+            </Text>
+            <Text className="text-xs text-muted-foreground">
+              playback:{rmsMetrics.playbackActive ? 'on' : 'off'}
+            </Text>
+            <Text className="text-xs text-muted-foreground">
+              threshold:{rmsMetrics.threshold.toFixed(3)}
+            </Text>
+            <Text className="text-xs text-muted-foreground">
+              route:{rmsMetrics.route}
+            </Text>
           </View>
         </View>
       )}
