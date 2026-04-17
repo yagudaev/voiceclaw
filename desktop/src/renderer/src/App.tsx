@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { TabBar, type TabId } from './components/TabBar'
 import { ChatPage } from './pages/ChatPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -10,6 +10,8 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('chat')
   // Initialize theme system (applies dark/light class to html)
   useTheme()
+
+  const navigateToChat = useCallback(() => setActiveTab('chat'), [])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -49,7 +51,7 @@ export function App() {
             <ChatPage />
           </div>
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'history' ? 'hidden' : ''}`}>
-            <HistoryPage isVisible={activeTab === 'history'} />
+            <HistoryPage isVisible={activeTab === 'history'} onNavigateToChat={navigateToChat} />
           </div>
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'settings' ? 'hidden' : ''}`}>
             <SettingsPage />

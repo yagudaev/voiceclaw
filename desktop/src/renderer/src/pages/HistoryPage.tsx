@@ -17,9 +17,10 @@ type ConversationSection = {
 
 type HistoryPageProps = {
   isVisible: boolean
+  onNavigateToChat: () => void
 }
 
-export function HistoryPage({ isVisible }: HistoryPageProps) {
+export function HistoryPage({ isVisible, onNavigateToChat }: HistoryPageProps) {
   const [conversations, setConversations] = useState<ConversationWithPreview[]>([])
   const { selectConversation } = useConversationContext()
 
@@ -52,8 +53,9 @@ export function HistoryPage({ isVisible }: HistoryPageProps) {
   const handleTap = useCallback(
     (id: number) => {
       selectConversation(id)
+      onNavigateToChat()
     },
-    [selectConversation]
+    [selectConversation, onNavigateToChat]
   )
 
   const handleDelete = useCallback(
