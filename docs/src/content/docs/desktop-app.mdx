@@ -1,10 +1,9 @@
 ---
-layout: default
 title: Desktop App
-nav_order: 4
+description: macOS Electron voice assistant with screen sharing, audio device selection, and conversation history.
 ---
 
-# Desktop App
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
 The desktop app is a macOS Electron application that provides a voice assistant interface with screen sharing capabilities. It connects to the relay server using the same WebSocket protocol as the mobile app.
 
@@ -31,18 +30,21 @@ The desktop app is a macOS Electron application that provides a voice assistant 
 
 ## Building from Source
 
-```bash
-cd desktop
-yarn install
-yarn dev          # start in development mode (hot reload)
-```
-
-For production builds:
-
-```bash
-yarn build        # compile renderer + main process
-yarn typecheck    # run TypeScript type checking
-```
+<Tabs>
+  <TabItem label="Development">
+    ```bash
+    cd desktop
+    yarn install
+    yarn dev          # start in development mode (hot reload)
+    ```
+  </TabItem>
+  <TabItem label="Production">
+    ```bash
+    yarn build        # compile renderer + main process
+    yarn typecheck    # run TypeScript type checking
+    ```
+  </TabItem>
+</Tabs>
 
 ## Screen Sharing
 
@@ -57,10 +59,13 @@ How it works:
 5. Sent to the relay server as `frame.append` messages
 6. The relay forwards frames to the AI provider
 
-Notes:
-- Screen sharing is only supported with the **Gemini** provider (OpenAI Realtime does not accept video input)
-- Context window compression is enabled on the Gemini side to handle the steady stream of image tokens
-- Screen frames do not count as user activity for the watchdog timer
+<Aside type="caution">
+Screen sharing is only supported with the **Gemini** provider. OpenAI Realtime does not accept video input.
+</Aside>
+
+<Aside type="note">
+Context window compression is enabled on the Gemini side to handle the steady stream of image tokens. Screen frames do not count as user activity for the watchdog timer.
+</Aside>
 
 ## Audio Engine
 

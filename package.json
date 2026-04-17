@@ -20,7 +20,8 @@
     "ios:release": "cd mobile && yarn ios:release",
     "prebuild": "cd mobile && npx expo prebuild --clean",
     "clean:mobile": "cd mobile && yarn clean",
-    "dev:desktop": "cd desktop && yarn dev"
+    "dev:desktop": "cd desktop && yarn dev",
+    "dev:docs": "cd docs && npm run dev"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
