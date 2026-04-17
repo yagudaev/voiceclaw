@@ -25,10 +25,12 @@ export class OpenAIAdapter implements ProviderAdapter {
   private pendingResponseCancel = false
   private pendingResponseCreate = false
   private pendingToolCalls = 0
+  private watchdogEnabled = false
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
     this.config = config
+    this.watchdogEnabled = config.watchdog === "enabled"
 
     await this.openUpstream(config)
     this.startRotationTimer()
@@ -323,7 +325,9 @@ export class OpenAIAdapter implements ProviderAdapter {
   private resetWatchdog() {
     if (this.watchdogTimer) {
       clearTimeout(this.watchdogTimer)
+      this.watchdogTimer = null
     }
+    if (!this.watchdogEnabled) return
     this.watchdogTimer = setTimeout(() => this.handleWatchdogTimeout(), WATCHDOG_TIMEOUT_MS)
   }
 
