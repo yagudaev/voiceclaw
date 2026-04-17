@@ -13,27 +13,41 @@ Open-source voice AI assistant. Talk to any AI model in real time from your phon
 
 VoiceClaw connects mobile and desktop clients to AI providers (Gemini Live, OpenAI Realtime) through a WebSocket relay server. The relay handles authentication, provider switching, tool execution, and session tracing -- so clients stay thin and provider-agnostic.
 
+## How it works: the `ask_brain` pattern
+
+Realtime voice models (Gemini Live, OpenAI Realtime) are fast but limited -- they can't search the web, access your calendar, remember past conversations, or use custom tools. VoiceClaw solves this with a simple escalation pattern:
+
+1. You speak to a **realtime voice model** that handles conversation naturally
+2. When the model needs information it doesn't have, it calls the `ask_brain` tool
+3. The relay server routes `ask_brain` to any **OpenAI-compatible agent** running behind an HTTP endpoint
+4. The agent does the heavy lifting (web search, memory lookup, tool execution) and streams results back
+5. The voice model incorporates the answer and keeps talking
+
+The brain agent is **fully pluggable** -- it's just an OpenAI-compatible chat completions endpoint. You can use [OpenClaw](https://github.com/yagudaev/openclaw), [Hermes](https://nousresearch.com/hermes), any MCP-based agent, or your own custom agent. The relay server doesn't care what's behind the endpoint.
+
 ## Architecture
 
 ```
 +------------------+        WebSocket         +----------------+        Streaming API       +------------------+
 |                  | -----------------------> |                | -----------------------> |                  |
-|   Mobile App     |    audio + events        |  Relay Server  |    audio + events        |   AI Provider    |
-|   (Expo / iOS)   | <----------------------- |  (Node.js)     | <----------------------- |   (Gemini Live   |
-|                  |                          |                |                          |    or OpenAI     |
-+------------------+                          |   +----------+ |                          |    Realtime)     |
-                                              |   |  Brain   | |                          +------------------+
-+------------------+                          |   |  Agent   | |
-|                  | -----------------------> |   +----------+ |
-|   Desktop App    |    audio + events        |                |
-|   (Electron)     | <----------------------- +----------------+
-|                  |
-+------------------+
+|   Mobile App     |    audio + events        |  Relay Server  |    audio + events        |  Realtime Voice  |
+|   (Expo / iOS)   | <----------------------- |  (Node.js)     | <----------------------- |  (Gemini Live    |
+|                  |                          |                |                          |   or OpenAI)     |
++------------------+                          |                |                          +------------------+
+                                              |                |
++------------------+                          |  ask_brain     |        HTTP / SSE         +------------------+
+|                  | -----------------------> |  ──────────────|───────────────────────── |                  |
+|   Desktop App    |    audio + events        |                |    OpenAI-compatible      |   Brain Agent    |
+|   (Electron)     | <----------------------- |                |    chat completions       |   (any agent)    |
+|                  |                          +----------------+                           +------------------+
++------------------+                                                                       OpenClaw, Hermes,
+                                                                                           or your own agent
 ```
 
 **Mobile app** -- React Native / Expo iOS app with voice capture and playback.
 **Desktop app** -- Electron + React + Tailwind macOS app with screen sharing support.
-**Relay server** -- TypeScript / Node.js WebSocket server that brokers sessions between clients and AI providers. Includes a "brain agent" for async tool calls (web search, calculations, etc.).
+**Relay server** -- TypeScript / Node.js WebSocket server that brokers sessions between clients and AI providers.
+**Brain agent** -- Any OpenAI-compatible agent endpoint. The relay calls it via `ask_brain` when the voice model needs tools, memory, or external data. Swap in any agent you want.
 
 ## Quick Start
 
@@ -93,8 +107,8 @@ The relay server reads these environment variables from `relay-server/.env`:
 | `OPENAI_API_KEY` | Yes (for OpenAI provider) | OpenAI API key for Realtime API |
 | `GEMINI_API_KEY` | Yes (for Gemini provider) | Google Gemini API key for Live API |
 | `RELAY_API_KEY` | Recommended | API key clients must send to connect. Generate with `openssl rand -hex 24` |
-| `OPENCLAW_GATEWAY_AUTH_TOKEN` | Optional | Auth token for the brain agent (OpenClaw gateway) |
-| `OPENCLAW_GATEWAY_URL` | Optional | Brain agent gateway URL (default: `http://localhost:18789`) |
+| `OPENCLAW_GATEWAY_AUTH_TOKEN` | Optional | Auth token for your brain agent endpoint |
+| `OPENCLAW_GATEWAY_URL` | Optional | Brain agent URL -- any OpenAI-compatible endpoint (default: `http://localhost:18789`) |
 | `PORT` | Optional | Server port (default: `8080`) |
 | `LANGFUSE_PUBLIC_KEY` | Optional | Langfuse tracing public key |
 | `LANGFUSE_SECRET_KEY` | Optional | Langfuse tracing secret key |
