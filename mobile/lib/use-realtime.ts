@@ -51,6 +51,7 @@ export interface RealtimeControls {
   start: (config: RealtimeConfig) => void
   stop: () => void
   setMuted: (muted: boolean) => void
+  sendFrame: (base64Jpeg: string, mimeType?: string) => void
   isConnected: boolean
   sessionId: string | null
 }
@@ -251,5 +252,14 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     mutedRef.current = muted
   }, [])
 
-  return { start, stop, setMuted, isConnected, sessionId }
+  const sendFrame = useCallback((base64Jpeg: string, mimeType = 'image/jpeg') => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(JSON.stringify({
+      type: 'frame.append',
+      data: base64Jpeg,
+      mimeType,
+    }))
+  }, [])
+
+  return { start, stop, setMuted, sendFrame, isConnected, sessionId }
 }

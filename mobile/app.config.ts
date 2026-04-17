@@ -67,6 +67,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ['./plugins/with-ios-icons', { variant: APP_VARIANT }],
     './plugins/with-ui-tests',
     './plugins/with-kokoro-swift',
+    './plugins/with-broadcast-extension',
   ],
   experiments: {
     typedRoutes: true,
