@@ -14,6 +14,7 @@ import {
   getLatestConversation,
   getMessages,
   getSetting,
+  updateConversationTitle,
   type Message,
 } from '../lib/db'
 
@@ -21,6 +22,7 @@ export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
   const conversationIdRef = useRef<number | null>(null)
+  const titleGeneratedRef = useRef(false)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -62,6 +64,7 @@ export function ChatPage() {
       setConversationId(conv.id)
       const msgs = await getMessages(conv.id)
       setMessages(msgs)
+      titleGeneratedRef.current = msgs.length > 0
     }
   }
 
@@ -70,6 +73,7 @@ export function ChatPage() {
     setConversationId(id)
     const msgs = await getMessages(id)
     setMessages(msgs)
+    titleGeneratedRef.current = msgs.length > 0
   }
 
   const ensureConversation = async (): Promise<number> => {
@@ -103,6 +107,14 @@ export function ChatPage() {
       const convId = await ensureConversation()
       const msg = await addMessage(convId, role, text)
       setMessages((prev) => [...prev, msg])
+
+      if (role === 'user' && !titleGeneratedRef.current) {
+        titleGeneratedRef.current = true
+        const title = generateTitle(text)
+        updateConversationTitle(convId, title).catch((err) =>
+          console.warn('[ChatPage] Failed to update title:', err)
+        )
+      }
     },
     onTurnStarted: () => {
       setIsThinking(false)
@@ -200,6 +212,7 @@ export function ChatPage() {
     conversationIdRef.current = null
     setConversationId(null)
     setMessages([])
+    titleGeneratedRef.current = false
   }, [isCallActive, endCall])
 
   const startScreenShare = useCallback(async (source: ScreenSource) => {
@@ -401,4 +414,18 @@ export function ChatPage() {
       )}
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function generateTitle(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= 50) return trimmed
+
+  const truncated = trimmed.slice(0, 50)
+  const lastSpace = truncated.lastIndexOf(' ')
+  const title = lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated
+  return title.trim() + '...'
 }
