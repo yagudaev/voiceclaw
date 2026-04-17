@@ -1,0 +1,11 @@
+services:
+  relay-server:
+    build: .
+    container_name: voiceclaw-relay
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
