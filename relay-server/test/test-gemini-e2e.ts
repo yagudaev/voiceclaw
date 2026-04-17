@@ -106,8 +106,6 @@ async function runTest() {
     voice: "Zephyr",
     apiKey: "test-e2e-key",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: {
       timezone: "America/Los_Angeles",
       locale: "en-US",

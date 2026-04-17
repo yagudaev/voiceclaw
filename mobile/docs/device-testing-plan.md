@@ -2,7 +2,9 @@
 
 ## Goal
 
-Enable Claude Code to autonomously build, deploy, interact with, and verify the VoiceClaw app on a physical iPhone 12 Pro (UDID: `00008101-000D69900150001E`) without requiring manual user intervention.
+Enable Claude Code to autonomously build, deploy, interact with, and verify the VoiceClaw app on a physical iPhone (UDID: `<YOUR_DEVICE_UDID>`) without requiring manual user intervention.
+
+> **Note:** Replace `<YOUR_DEVICE_UDID>` with your own device UDID. Find it with `xcrun xctrace list devices` or `idevice_id -l`.
 
 ## Current Environment
 
@@ -45,7 +47,7 @@ Enable Claude Code to autonomously build, deploy, interact with, and verify the 
 xcodebuild test \
   -workspace ios/voiceclaw.xcworkspace \
   -scheme VoiceClaw \
-  -destination 'platform=iOS,id=00008101-000D69900150001E' \
+  -destination 'platform=iOS,id=<YOUR_DEVICE_UDID>' \
   -only-testing:VoiceClawUITests/TestClassName/testMethodName
 ```
 

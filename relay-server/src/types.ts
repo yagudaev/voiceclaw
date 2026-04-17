@@ -19,8 +19,6 @@ export interface SessionConfigEvent {
   brainAgent: "enabled" | "none"
   apiKey: string
   sessionKey?: string
-  openclawGatewayUrl?: string
-  openclawAuthToken?: string
   deviceContext?: {
     timezone?: string
     locale?: string
