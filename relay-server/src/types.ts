@@ -25,6 +25,7 @@ export interface SessionConfigEvent {
     deviceModel?: string
     location?: string
   }
+  watchdog?: "enabled" | "disabled"
   instructionsOverride?: string
   conversationHistory?: { role: "user" | "assistant", text: string }[]
 }
