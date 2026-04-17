@@ -85,8 +85,6 @@ async function testOpenAIConnection() {
     provider: "openai",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const ready = await waitForMessage(ws)
@@ -110,8 +108,6 @@ async function testAudioFlow() {
     provider: "openai",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const ready = await waitForMessage(ws)
@@ -150,8 +146,6 @@ async function testToolCall() {
     provider: "openai",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const ready = await waitForMessage(ws)

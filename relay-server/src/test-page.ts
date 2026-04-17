@@ -47,17 +47,6 @@ export function getTestPageHTML(host: string): string {
     </select>
   </div>
 
-  <div class="section row">
-    <div>
-      <label>OpenClaw Gateway URL</label>
-      <input id="gateway-url" type="text" placeholder="http://localhost:18789" value="">
-    </div>
-    <div>
-      <label>Auth Token</label>
-      <input id="auth-token" type="password" placeholder="Bearer token">
-    </div>
-  </div>
-
   <div class="section">
     <label>Provider</label>
     <select id="provider">
@@ -212,8 +201,6 @@ export function getTestPageHTML(host: string): string {
             model: selectedModel,
             voice: document.getElementById("voice").value,
             brainAgent: document.getElementById("brain-agent").value,
-            openclawGatewayUrl: document.getElementById("gateway-url").value || "http://localhost:18789",
-            openclawAuthToken: document.getElementById("auth-token").value || "test-token",
             deviceContext: {
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               locale: navigator.language,

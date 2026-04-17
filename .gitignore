@@ -11,6 +11,11 @@ out/
 .env.local
 .mcp.json
 
+# mobile sensitive / build artifacts
+mobile/eas.json
+mobile/build/
+mobile/scripts/ExportOptions.plist
+
 # IDE
 .idea/
 .vscode/
