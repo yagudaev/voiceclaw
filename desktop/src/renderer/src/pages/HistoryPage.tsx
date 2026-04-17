@@ -15,7 +15,11 @@ type ConversationSection = {
   data: ConversationWithPreview[]
 }
 
-export function HistoryPage() {
+type HistoryPageProps = {
+  isVisible: boolean
+}
+
+export function HistoryPage({ isVisible }: HistoryPageProps) {
   const [conversations, setConversations] = useState<ConversationWithPreview[]>([])
   const { selectConversation } = useConversationContext()
 
@@ -26,15 +30,24 @@ export function HistoryPage() {
     setConversations(result)
   }, [])
 
+  // Initial load
   useEffect(() => {
     loadConversations()
   }, [loadConversations])
 
-  // Reload periodically to stay fresh
+  // Refresh immediately when the tab becomes visible so the list is never stale
   useEffect(() => {
-    const interval = setInterval(loadConversations, 2000)
+    if (isVisible) {
+      loadConversations()
+    }
+  }, [isVisible, loadConversations])
+
+  // Poll every 10s while the tab is visible to stay fresh during active use
+  useEffect(() => {
+    if (!isVisible) return
+    const interval = setInterval(loadConversations, 10_000)
     return () => clearInterval(interval)
-  }, [loadConversations])
+  }, [isVisible, loadConversations])
 
   const handleTap = useCallback(
     (id: number) => {
