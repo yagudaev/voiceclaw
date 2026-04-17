@@ -1,10 +1,9 @@
 ---
-layout: default
 title: Mobile App
-nav_order: 5
+description: React Native / Expo iOS voice assistant with native audio I/O, conversation history, and brain agent integration.
 ---
 
-# Mobile App
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
 The mobile app is a React Native application built with Expo, designed as an iOS voice assistant. It connects to the relay server over WebSocket and provides a native voice conversation experience.
 
@@ -30,29 +29,30 @@ The mobile app is a React Native application built with Expo, designed as an iOS
 
 ## Getting Started
 
-```bash
-cd mobile
-yarn install
-yarn dev          # start Expo dev server (clears cache)
-```
-
-### Running on Simulator
-
-```bash
-yarn ios          # launch in iOS simulator (development variant)
-```
-
-### Running on Device
-
-```bash
-yarn ios:device   # build and run on connected iOS device (development variant)
-```
-
-### Release Build
-
-```bash
-yarn ios:release  # build release configuration on device
-```
+<Tabs>
+  <TabItem label="Dev Server">
+    ```bash
+    cd mobile
+    yarn install
+    yarn dev          # start Expo dev server (clears cache)
+    ```
+  </TabItem>
+  <TabItem label="Simulator">
+    ```bash
+    yarn ios          # launch in iOS simulator (development variant)
+    ```
+  </TabItem>
+  <TabItem label="Device">
+    ```bash
+    yarn ios:device   # build and run on connected iOS device (development variant)
+    ```
+  </TabItem>
+  <TabItem label="Release">
+    ```bash
+    yarn ios:release  # build release configuration on device
+    ```
+  </TabItem>
+</Tabs>
 
 ## Scripts
 
@@ -68,8 +68,10 @@ yarn ios:release  # build release configuration on device
 
 ## iOS-Specific Notes
 
-- The app uses the **system audio route** for voice I/O, which means it works correctly with Bluetooth headphones, speaker, and other audio peripherals
-- **Echo cancellation** is handled at the native level
+<Aside type="note">
+The app uses the **system audio route** for voice I/O, which means it works correctly with Bluetooth headphones, speaker, and other audio peripherals. Echo cancellation is handled at the native level.
+</Aside>
+
 - A development build (`APP_VARIANT=development`) is used during development for faster iteration
 - The app requires microphone permission on first launch
 - EAS Build can be used for CI/CD (see `eas.json` for build profiles)
