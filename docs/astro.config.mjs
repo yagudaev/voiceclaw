@@ -35,6 +35,14 @@ export default defineConfig({
             { slug: 'mobile-app' },
           ],
         },
+        {
+          label: 'Brain Agent Guides',
+          items: [
+            { slug: 'guides/openclaw' },
+            { slug: 'guides/hermes' },
+            { slug: 'guides/custom-agent' },
+          ],
+        },
       ],
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
