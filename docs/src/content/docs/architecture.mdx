@@ -17,23 +17,72 @@ flowchart LR
       Desktop["Desktop App<br/>(Electron + React + Tailwind, macOS)<br/>Web Audio + screen share"]
     end
 
-    Relay["Relay Server<br/>(TypeScript / Node.js)<br/><br/>- Session mgmt<br/>- Provider adapter<br/>- Brain agent<br/>- Tracing (Langfuse / OTEL)"]
+    Relay["Relay Server<br/>(TypeScript / Node.js)<br/><br/>- Session mgmt<br/>- Provider adapter<br/>- Brain agent gateway<br/>- Tracing (Langfuse / OTEL)"]
 
-    Provider["AI Provider<br/>(Gemini Live / OpenAI Realtime)<br/><br/>- Voice activity detection<br/>- Speech-to-text<br/>- Text-to-speech"]
+    Provider["Realtime AI Provider<br/>(Gemini Live / OpenAI Realtime)<br/><br/>- Voice activity detection<br/>- Speech-to-text<br/>- Text-to-speech"]
+
+    Brain["Brain AI<br/>(OpenAI-compatible agent)<br/><br/>- Web search<br/>- Calendar / tasks<br/>- Long-term memory"]
 
     Mobile -- "WebSocket<br/>relay protocol" --> Relay
     Desktop -- "WebSocket<br/>relay protocol" --> Relay
-    Relay -- "Provider WebSocket<br/>(BidiGenerateContent / Realtime)" --> Provider
+    Relay <-- "Provider WebSocket<br/>audio + video" --> Provider
+    Provider -- "tool call: ask_brain" --> Relay
+    Relay <-- "POST /v1/chat/completions<br/>(SSE stream)" --> Brain
 
     classDef clientStyle fill:#1c1636,stroke:#6c63ff,color:#f5f3ff
     classDef relayStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
     classDef providerStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    classDef brainStyle fill:#2a1f5c,stroke:#c4c1ff,color:#f5f3ff
     class Mobile,Desktop clientStyle
     class Relay relayStyle
     class Provider providerStyle
+    class Brain brainStyle
 ```
 
-*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqdlG9v2jAQxr_KyX1D1TDKylAXTZXoH1WVWJkK2qSNvTD2BTwS27INLav63XfESQh7M2m8COez_bvnnovyyoSRyFKW5eZZrLgLMH6aa6Cf3yyWjtsV3OQKdfA_5qyK5uxnPAIglUMRlNEwu65zn81C5UjHYwAjaz8tXO-q84RcBHjkQW0RenD3Yk0CajI9LberPN9IZeChN2lVuUW_DsYSsooOzLuc6juqfwYRfwYzrvJnpWUCBRc1_RsuYFSiz8ALh6jBU7vYVEEt5zqGT5jzHRUr_2GKbosuVpvtLE6FUzaQ_kdy7t0vH_nlo0uHvd-7USyLUKW-OLNVEh1wyW2oSF24dlxp4EsytMrMHBdKL6Ez5nqZbfzeo8nsbnxaaozSahipGz00qyjuHgulFYyjuxOLmo6QKXlQBR6p_GqUIKdpcFsVdiAxxCHWTVhEseoG0w340qijcJ_y5WZLUjXlbhfmjFyeGrHGeMmV_llnghEmnzM6cxXNjTfrYf7H1Tia8mLj7zGhc62kukeNjge8MTqQ0WRL40fFrG_X3Yice3-LGQX7d30adtRbpvI8PemL_vBimHh63daYngzF8CLLEpJnXHqSfcho9Rej7KKNGPCLTH5sEGIg-v9A2ErfkZBB__w9byiXi8vBgRKZLUo1oKR2u9VY-1R09KC4vddYfKSGJaxAV3AlWfrKwgqL_YdEcrdmbwnjm2CmOy1YGtwGE7axkgZxqzh9VIo6abn-bkx7uUe9sPQ8YTt6Eud3ud9_-wMH_Yvl)*
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqdVO9v2jAQ_VdO6ZdWDWOsFHWoqtQfaKrEytSg7cMyTRfnAh6JHdmGFlX933eJEwj90ml8AHM-v3v33tkvgdApBeMgy_WTWKJxMH2MFfDHrpOFwXIJt7kk5ezPOGhWcfDLpwCk0pBwUiuY37SxrzqROXG6X8B1WV4mpn91_EgoHDygkxuCPkyeSx2CnEUn9XYTx3UqNdz3Z50qd2RXTpcM2az2mJOc6xuufwoe_hTmKPMnqdIQChQt-g9K4LqGPgUrDJECy-3SrgqpNFZ--Ug5brlY_QsRmQ0ZX22-LSkSRpaO-T-wch_-WI9ff_U42dpKjWJRuCb0zeiNTMkApli6BqkHNwalAlywoLBAR0-4bXbmBoVUCzieolpka1tpNZtPpic1V0-xBa1ZYu5kwTrf78Ke7RcqpJIw9XLPSlKc0qYf0P6upWDp2cmNdFtIyXlX265KIrHsOd1z9Nz2NedlFbL1Zodb3RkT8x1e33syvnxP6KJkoxOei7r3AxqVSZbQiGUTuMWcfUHD9B3alW3CU60WTMUUUFChzbZTvJm5Xg_igOEiLVbkGZvazdJop4XO44BzrrzV_mQ7Wv9x1A_KZX1yZ_chBDazV-3pBqFNPbTUE3Ba5yAwz8fAjf9OKi3fKTyL5tDfDPp8jV2_0jmnykMv2nEUTcA6Q1icNDi1P61uIkdr7yjjRXXHI7dlFTPJ9Y8GYjA6G4V8WK9ofDQSo7MsC1kIbcZH2XnG_95g1Hp1IYZ4lqWfdxBiKAbvQJSNGgdEhoOPn3CHcpFcDPcoHvMNSi1bF-ITDrJz8a9EmmkK29HoaNPN8i7sm-7u7Vw9aKib4a_JnmmsgjAoeLhRpvwwv1S5PA9LKvixGvOS78MqDmL1ynm4djraKhGMnVlTGKzLlN-SO4n8dBc--PoXJp3ykQ)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
++------------------+
+|   Mobile App     |   React Native / Expo
+|   (iOS)          |   Native audio I/O via system audio route
++--------+---------+
+         |
+         | WebSocket (relay protocol)
+         | ws://<relay>:8080/ws
+         |
++--------+---------+
+|   Relay Server   |   TypeScript / Node.js
+|                  |
+|   - Session mgmt |   One RelaySession per WebSocket connection
+|   - Adapter      |   Provider-specific protocol translation
+|   - Brain agent  |   Async tool calls via brain agent gateway
+|   - Tracing      |   Langfuse OTEL integration
++--------+---------+
+         |
+         | Provider WebSocket
+         | (Gemini BidiGenerateContent / OpenAI Realtime)
+         |
++--------+---------+
+|   AI Provider    |   Gemini Live or OpenAI Realtime API
+|                  |   Voice activity detection (VAD)
+|                  |   Speech-to-text + text-to-speech
++------------------+
+
++------------------+
+|   Desktop App    |   Electron + React + Tailwind
+|   (macOS)        |   Web Audio API for capture/playback
+|   + screen share |   desktopCapturer for screen frames
++--------+---------+
+         |
+         | WebSocket (same relay protocol)
+         |
+         +-------> Relay Server (same as above)
+```
+
+</details>
 
 ## Audio Flow
 
@@ -79,7 +128,18 @@ flowchart LR
     class Relay1,Relay2 relayStyle
 ```
 
-*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptU2FvmzAQ_SvI-bJK7lYIRR2qKqWLpkZapCr51mUfjH1uUAxGxmmXVv3v9ZlgSDYkMOd7PL97d7wTrgWQnEilX_mWGRv9Wm3qyF3Lkn_5vSFuMbrZ6ho25M9FdHl5Fz3-WMYug0t2W5hvd0ka7R7eXL77EhMeeJ-lzAEL1kKWeiTUeF5AIsAjZ00DtXBYthel_sp8GGBd1gNXoNgBT_cvAdFtd-qMfikFmJ-VRZHHyJ8utamYHXQOyE7EIsaKZwusdFMfz14kw6aHLV0FaoY60R4MPLlXHrgH0CA7-b_sxCPmoCwLBgiMAsznekeLU0cFnDta9E1KTpp0BsS8B64bYDswLVbZv48N4Iq17RxkJOBlbQ8KIlkqlU9SNpXiO22t0TvIJzzlsZSUa6VNPpHXcirlGUFroRkzxDzOpllgyHg2HRggg38ZDPp1QpHGVwkLFDfFTTpQdJJGFDjTtK-Runa7Owl1jYFoG0WLKI4oPgraTSH1zaCj2aGjXocSx2TdcNJjs4caCCUVuIksBcnfid1ChX-iYGZHPqgbBKvXh5qT3Jo9ULJvBLMwL9mzYVW_2bD6SetxiFR_SX5FycE9Hc-bz8cfn97oO5Q)*
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptU2FvmzAQ_SvI-bJK7lYIRR2qKqWLpkZapCr51mUfjH1uUAxGxmmXVv3v9ZlgSDYkMOd7PL97d7wTrgWQnEilX_mWGRv9Wm3qyF3Lkn_5vSFuMbrZ6ho25M9FdHl5Fz3-WMYug0t2W5hvd0ka7R7eXL77EhMeeJ-lzAEL1kKWeiTUeF5AIsAjZ00DtXBYthel_sp8GGBd1gNXoNgBT_cvAdFtd-qMfikFmJ-VRZHHyJ8utamYHXQOyE7EIsaKZwusdFMfz14kw6aHLV0FaoY60R4MPLlXHrgH0CA7-b_sxCPmoCwLBgiMAsznekeLU0cFnDta9E1KTpp0BsS8B64bYDswLVbZv48N4Iq17RxkJOBlbQ8KIlkqlU9SNpXiO22t0TvIJzzlsZSUa6VNPpHXcirlGUFroRkzxDzOpllgyHg2HRggg38ZDPp1QpHGVwkLFDfFTTpQdJJGFDjTtK-Surb7Owl1jYFoG0WLKI4oPgraTSH1zaCj2aGjXocSx2TdcNJjs4caCCUVuIksBcnfid1ChX-iYGZHPqgbBKvXh5qT3Jo9ULJvBLMwL9mzYVW_2bD6SetxiFR_SX5FycE9Hc-bz8cfn97oO5Q)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
+Mic -> PCM16 24kHz -> base64 -> audio.append -> [Relay] -> provider format -> [AI]
+                                                                                |
+[Speakers] <- PCM16 decode <- base64 <- audio.delta <- [Relay] <- model audio <-+
+```
+
+</details>
 
 ## Video / Screen Sharing Flow
 
@@ -156,6 +216,31 @@ sequenceDiagram
 ```
 
 *[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptkttqGzEQhl9l0JUNa7u5FcVgpyEYeqLbq7IQxtqprVqHrTQbZ2v87h15nRCa6kKgmX8-5h_NSZnYktIq0--egqEPFncJfRNADvYcQ--3lMZ3h4mtsR0GhtUGMJf7kwDc23xd0t_I4QA15WxjeKtZF806oQ2w2lHg99u0WN4j0xGH5qpfbWbLZa2BY3Rg0DktRYeHbakaFfVMFKuNhhNkRu6zhkb8YDJ7G3aNgvOFO7HeU2uFXkEfti6aQ-l_OkI-RyaIj5SgkMSWwQAhHiHjcClv1Edi8ARmT-YAMQDvkefzeaOal0aWy7WGr1_q77B4vFkYESxM9J0jFv95VK1no6G6vtPSMHUPVwnBpEtxl2Ra03-cFfPz5yRMMidCL1Ewzsrcpv8h_7QBHYi-d_y6wYKz4RcZvo2B6Ykno2b6Mu4RkjtCGRDvCTDkIyVVKU_Jo22VPimJ-7I3LaaDOleqrEo9BKM0p54q1XetTPq6Tc9B-fQfMb5-FtST0u8qNcgtnD-X_M35L4QR194)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
+[AI Model] -- tool call: ask_brain --> [Relay Session]
+                                           |
+                                           | 1. Immediately return "searching" to unblock AI
+                                           | 2. POST /v1/chat/completions to brain agent gateway
+                                           |
+                                           v
+                                    [Brain Agent Gateway]
+                                           |
+                                           | SSE streaming response
+                                           | (step_complete events for progress)
+                                           |
+                                           v
+                                    [Relay Session]
+                                           |
+                                           | injectContext() -- feeds result back to AI
+                                           v
+                                    [AI speaks the answer]
+```
+
+</details>
 
 Key design decisions:
 - The initial `ask_brain` tool result is returned immediately with `{"status": "searching"}` so the AI can say something like "Let me check on that..." while the brain works
