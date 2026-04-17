@@ -1,0 +1,370 @@
+---
+layout: default
+title: Relay Server
+nav_order: 3
+---
+
+# Relay Server
+
+The relay server is a TypeScript / Node.js WebSocket server that sits between clients and AI providers. It translates the relay protocol into provider-specific formats (Gemini Live, OpenAI Realtime), handles server-side tool calls, manages session lifecycle, and provides observability via Langfuse.
+
+## Running
+
+```bash
+cd relay-server
+cp .env.example .env    # add your API keys
+yarn install
+yarn dev                # starts with tsx watch (auto-reload)
+```
+
+Production:
+
+```bash
+yarn build
+yarn start              # runs dist/index.js
+```
+
+The server starts on port 8080 by default. It exposes:
+
+- `GET /health` -- health check endpoint (returns `{"status": "ok"}`)
+- `GET /test` -- browser-based test page for quick WebSocket testing
+- `ws://localhost:8080/ws` -- WebSocket endpoint for clients
+
+## Configuration
+
+Environment variables (see `.env.example`):
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | Yes (for Gemini) | Google AI API key |
+| `OPENAI_API_KEY` | Yes (for OpenAI) | OpenAI API key |
+| `RELAY_API_KEY` | Recommended | Shared secret clients must send in `session.config.apiKey` |
+| `PORT` | No | Server port (default: `8080`) |
+| `OPENCLAW_GATEWAY_URL` | No | Brain agent gateway URL (default: `http://localhost:18789`) |
+| `OPENCLAW_GATEWAY_AUTH_TOKEN` | No | Auth token for the brain agent gateway |
+| `ROTATION_INTERVAL_MS` | No | OpenAI session rotation interval (default: `3000000` / 50 min) |
+| `LANGFUSE_BASE_URL` | No | Langfuse endpoint for tracing |
+| `LANGFUSE_PUBLIC_KEY` | No | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | No | Langfuse secret key |
+
+## WebSocket Protocol
+
+All messages are JSON objects with a `type` field. The protocol is symmetric -- clients send `ClientEvent` types, the server sends `RelayEvent` types.
+
+### Client to Relay
+
+#### `session.config`
+
+Must be the first message after connecting. Configures the session.
+
+```json
+{
+  "type": "session.config",
+  "provider": "gemini",
+  "voice": "Zephyr",
+  "model": "gemini-3.1-flash-live-preview",
+  "brainAgent": "enabled",
+  "apiKey": "your-relay-api-key",
+  "sessionKey": "optional-session-identifier",
+  "deviceContext": {
+    "timezone": "America/Los_Angeles",
+    "locale": "en-US",
+    "deviceModel": "iPhone 15 Pro",
+    "location": "San Francisco, CA"
+  },
+  "instructionsOverride": "Optional user-specific context",
+  "conversationHistory": [
+    { "role": "user", "text": "Previous message" },
+    { "role": "assistant", "text": "Previous response" }
+  ]
+}
+```
+
+Fields:
+- `provider` -- `"gemini"` or `"openai"`
+- `voice` -- voice name (Gemini: Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr; OpenAI: any supported voice, default "marin")
+- `model` -- model identifier (default: `gemini-3.1-flash-live-preview` for Gemini, `gpt-realtime-mini` for OpenAI)
+- `brainAgent` -- `"enabled"` or `"none"`
+- `apiKey` -- must match `RELAY_API_KEY` if set on the server
+- `conversationHistory` -- prior messages to inject as context (for continuing conversations)
+
+#### `audio.append`
+
+Stream microphone audio to the provider.
+
+```json
+{
+  "type": "audio.append",
+  "data": "<base64-encoded PCM16 audio>"
+}
+```
+
+Audio format: PCM16, 24kHz, mono. The relay handles downsampling for providers that need it (Gemini requires 16kHz).
+
+#### `audio.commit`
+
+Signal that the current audio buffer is complete (used by OpenAI's manual VAD mode). Gemini uses automatic VAD and ignores this.
+
+```json
+{
+  "type": "audio.commit"
+}
+```
+
+#### `frame.append`
+
+Send a screen capture frame (desktop screen sharing).
+
+```json
+{
+  "type": "frame.append",
+  "data": "<base64-encoded JPEG>",
+  "mimeType": "image/jpeg"
+}
+```
+
+Only supported by Gemini. OpenAI Realtime does not accept video input.
+
+#### `response.create`
+
+Manually trigger a response from the provider. Gemini auto-responds based on VAD, so this is mainly for OpenAI.
+
+```json
+{
+  "type": "response.create"
+}
+```
+
+#### `response.cancel`
+
+Cancel an in-progress response.
+
+```json
+{
+  "type": "response.cancel"
+}
+```
+
+#### `tool.result`
+
+Send the result of a client-side tool call back to the relay.
+
+```json
+{
+  "type": "tool.result",
+  "callId": "call_abc123",
+  "output": "{\"result\": \"some data\"}"
+}
+```
+
+#### `client.timing`
+
+Report client-side latency measurements for tracing.
+
+```json
+{
+  "type": "client.timing",
+  "phase": "ttft_audio",
+  "ms": 342,
+  "turnId": "turn-uuid"
+}
+```
+
+### Relay to Client
+
+#### `session.ready`
+
+Sent after successful connection to the AI provider.
+
+```json
+{
+  "type": "session.ready",
+  "sessionId": "uuid"
+}
+```
+
+#### `audio.delta`
+
+Streaming audio from the AI model.
+
+```json
+{
+  "type": "audio.delta",
+  "data": "<base64-encoded PCM16 audio>"
+}
+```
+
+#### `transcript.delta`
+
+Streaming transcript text (partial, for live display).
+
+```json
+{
+  "type": "transcript.delta",
+  "text": "partial text",
+  "role": "assistant"
+}
+```
+
+#### `transcript.done`
+
+Final transcript for a complete utterance.
+
+```json
+{
+  "type": "transcript.done",
+  "text": "complete utterance text",
+  "role": "user"
+}
+```
+
+#### `tool.call`
+
+The AI model wants to call a tool. Server-side tools (`echo_tool`, `ask_brain`) are handled by the relay automatically and not forwarded to the client.
+
+```json
+{
+  "type": "tool.call",
+  "callId": "call_abc123",
+  "name": "some_tool",
+  "arguments": "{\"param\": \"value\"}"
+}
+```
+
+#### `tool.progress`
+
+Progress update from an async tool (e.g., brain agent search steps).
+
+```json
+{
+  "type": "tool.progress",
+  "callId": "call_abc123",
+  "summary": "Searching the web for..."
+}
+```
+
+#### `tool.cancelled`
+
+The AI model cancelled a tool call (e.g., user changed topic mid-search).
+
+```json
+{
+  "type": "tool.cancelled",
+  "callIds": ["call_abc123"]
+}
+```
+
+#### `turn.started`
+
+The user started speaking (detected by VAD). Clients should stop audio playback for barge-in.
+
+```json
+{
+  "type": "turn.started",
+  "turnId": "optional-trace-id"
+}
+```
+
+#### `turn.ended`
+
+The AI finished its response.
+
+```json
+{
+  "type": "turn.ended"
+}
+```
+
+#### `session.rotating` / `session.rotated`
+
+Emitted during session rotation (long-running session refresh). Clients should clear audio playback buffers.
+
+```json
+{ "type": "session.rotating" }
+```
+
+```json
+{
+  "type": "session.rotated",
+  "sessionId": "new-session-id"
+}
+```
+
+#### `session.ended`
+
+Session summary on clean shutdown.
+
+```json
+{
+  "type": "session.ended",
+  "summary": "Conversation summary",
+  "durationSec": 300,
+  "turnCount": 12
+}
+```
+
+#### `error`
+
+Error from the relay or upstream provider.
+
+```json
+{
+  "type": "error",
+  "message": "description of the error",
+  "code": 502
+}
+```
+
+Common error codes:
+- `400` -- invalid message format
+- `401` -- unauthorized (bad API key)
+- `500` -- adapter connection failed
+- `502` -- upstream provider error
+
+## Supported Providers
+
+### Gemini Live
+
+- Model: `gemini-3.1-flash-live-preview` (default)
+- Audio: 16kHz PCM16 (relay downsamples from 24kHz)
+- VAD: automatic activity detection (server-side)
+- Video: supported (JPEG frames via `realtimeInput.video`)
+- Session resumption: transparent reconnection using resumption handles
+- Rotation: proactive on `goAway`, deferred if tool calls are in flight
+- Context window compression: enabled with sliding window (10k token trigger)
+- Voices: Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr
+
+### OpenAI Realtime
+
+- Model: `gpt-realtime-mini` (default)
+- Audio: 24kHz PCM16 (native)
+- VAD: server-side with configurable threshold
+- Video: not supported
+- Rotation: timer-based (default 50 minutes), transcript summary injected into new session
+- Transcription: `gpt-4o-mini-transcribe` for input audio
+- Voices: any OpenAI-supported voice (default: "marin")
+
+## Brain Agent
+
+The brain agent (`ask_brain` tool) connects to an [OpenClaw](https://github.com/yagudaev/openclaw) gateway to give the voice AI extended capabilities:
+
+- Web search and browsing
+- Calendar management
+- Task tracking
+- Long-term memory across sessions
+- File operations
+
+The brain runs asynchronously -- the relay returns `{"status": "searching"}` immediately so the AI can give a verbal bridge ("Let me check..."), then injects the result into the conversation when it arrives.
+
+On disconnect, the relay syncs the full conversation transcript to the brain for long-term memory, with retry logic (backoff at 5s, 30s, 2min).
+
+## Server-Side Tools
+
+Two tools are handled server-side (never forwarded to the client):
+
+- `echo_tool` -- test tool that echoes back input (useful for verifying the tool pipeline)
+- `ask_brain` -- async brain agent call (described above)
+
+## Watchdog
+
+If no audio is received for 20 seconds, the relay injects a gentle prompt asking the AI to check if the user is still there. The watchdog pauses during tool calls to avoid interrupting work in progress.
