@@ -82,9 +82,33 @@ function withKokoroPodfile(config) {
     # Xcode 26: disable Explicitly Built Modules for all pod targets.
     # Mixed C/Swift pods (expo-sqlite) fail because the auto-generated
     # Clang module doesn't expose C functions to Swift with this on.
+    #
+    # Also add _NumericsShims module map path to ALL pod targets.
+    # swift-numerics is an SPM dependency (from kokoro-ios) whose C target
+    # _NumericsShims has a module.modulemap that must be discoverable by
+    # any pod that compiles Swift, otherwise the Swift compiler errors with
+    # "missing required module '_NumericsShims'".
+    spm_checkouts = "${'${'}PODS_BUILD_DIR}/../../../../../SourcePackages/checkouts"
+    numerics_shims_include = "#{spm_checkouts}/swift-numerics/Sources/_NumericsShims/include"
+    numerics_shims_modulemap = "#{numerics_shims_include}/module.modulemap"
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+
+        # Ensure every pod can resolve the _NumericsShims C module.
+        # The module.modulemap must be explicitly referenced via
+        # -fmodule-map-file so the Clang importer inside swiftc can
+        # find the _NumericsShims module during implicit module resolution.
+        other_swift = config.build_settings['OTHER_SWIFT_FLAGS'] || '$(inherited)'
+        unless other_swift.include?('_NumericsShims/include/module.modulemap')
+          other_swift = "#{other_swift} -Xcc -fmodule-map-file=\\"#{numerics_shims_modulemap}\\" -Xcc -I\\"#{numerics_shims_include}\\""
+          config.build_settings['OTHER_SWIFT_FLAGS'] = other_swift
+        end
+
+        header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+        unless header_paths.include?('swift-numerics/Sources/_NumericsShims/include')
+          config.build_settings['HEADER_SEARCH_PATHS'] = "#{header_paths} \\"#{numerics_shims_include}\\""
+        end
       end
     end
     installer.pods_project.build_configurations.each do |config|
@@ -111,10 +135,10 @@ function withKokoroPodfile(config) {
 
           header_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
           unless header_paths.include?('swift-numerics/Sources/_NumericsShims/include')
-            header_paths = "#{header_paths} \\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/swift-numerics/Sources/_NumericsShims/include\\""
+            header_paths = "#{header_paths} \\"#{spm_checkouts}/swift-numerics/Sources/_NumericsShims/include\\""
           end
           unless header_paths.include?('mlx-swift/Source/Cmlx/include')
-            header_paths = "#{header_paths} \\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/mlx-swift/Source/Cmlx/include\\""
+            header_paths = "#{header_paths} \\"#{spm_checkouts}/mlx-swift/Source/Cmlx/include\\""
           end
           config.build_settings['HEADER_SEARCH_PATHS'] = header_paths
 
@@ -132,10 +156,10 @@ function withKokoroPodfile(config) {
             other_swift_flags = "#{other_swift_flags} -F \\"${'${'}PODS_CONFIGURATION_BUILD_DIR}/PackageFrameworks\\" -I \\"${'${'}PODS_BUILD_DIR}/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\\""
           end
           unless other_swift_flags.include?('swift-numerics/Sources/_NumericsShims/include')
-            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/swift-numerics/Sources/_NumericsShims/include\\""
+            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"#{spm_checkouts}/swift-numerics/Sources/_NumericsShims/include\\""
           end
           unless other_swift_flags.include?('mlx-swift/Source/Cmlx/include')
-            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts/mlx-swift/Source/Cmlx/include\\""
+            other_swift_flags = "#{other_swift_flags} -Xcc -I\\"#{spm_checkouts}/mlx-swift/Source/Cmlx/include\\""
           end
           config.build_settings['OTHER_SWIFT_FLAGS'] = other_swift_flags
         end
