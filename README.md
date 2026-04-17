@@ -36,7 +36,7 @@ VoiceClaw connects mobile and desktop clients to AI providers (Gemini Live, Open
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/nichochar/voiceclaw.git
+git clone https://github.com/yagudaev/voiceclaw.git
 cd voiceclaw
 yarn install
 ```
