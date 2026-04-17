@@ -9,9 +9,9 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.34.4",
+    "@astrojs/starlight": "0.38.3",
     "astro": "5.18.1",
-    "sharp": "^0.33.3"
+    "sharp": "^0.34.5"
   },
   "overrides": {
     "@astrojs/sitemap": "3.5.1"
