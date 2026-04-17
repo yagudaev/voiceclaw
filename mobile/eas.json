@@ -1,0 +1,51 @@
+{
+  "cli": {
+    "version": ">= 15.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      },
+      "ios": {
+        "buildConfiguration": "Debug"
+      }
+    },
+    "staging": {
+      "distribution": "store",
+      "env": {
+        "APP_VARIANT": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+    },
+    "production": {
+      "env": {
+        "APP_VARIANT": "production"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "~/.appstore/AuthKey_SG645CPQP8.p8",
+        "ascApiKeyIssuerId": "69a6de83-015f-47e3-e053-5b8c7c11a4d1",
+        "ascApiKeyId": "SG645CPQP8"
+      }
+    },
+    "staging": {
+      "ios": {
+        "ascApiKeyPath": "~/.appstore/AuthKey_SG645CPQP8.p8",
+        "ascApiKeyIssuerId": "69a6de83-015f-47e3-e053-5b8c7c11a4d1",
+        "ascApiKeyId": "SG645CPQP8"
+      }
+    }
+  }
+}

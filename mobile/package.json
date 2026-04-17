@@ -6,9 +6,14 @@
     "dev": "expo start -c",
     "ios": "APP_VARIANT=development expo run:ios",
     "ios:device": "APP_VARIANT=development expo run:ios --device",
-    "ios:release": "expo run:ios --device --configuration Release",
-    "android": "expo start -c --android",
-    "web": "expo start -c --web",
+    "ios:release": "APP_VARIANT=development expo run:ios --device --configuration Release",
+    "ios:prebuild": "APP_VARIANT=development npx expo prebuild --clean",
+    "ios:build:staging": "APP_VARIANT=staging ./scripts/build-ios.sh",
+    "ios:build:production": "APP_VARIANT=production ./scripts/build-ios.sh",
+    "ios:submit:staging": "eas submit --profile staging --platform ios --path build/export/*.ipa",
+    "ios:submit:production": "eas submit --profile production --platform ios --path build/export/*.ipa",
+    "ios:release:staging": "yarn ios:build:staging && yarn ios:submit:staging",
+    "ios:release:production": "yarn ios:build:production && yarn ios:submit:production",
     "clean": "rm -rf .expo node_modules ios android"
   },
   "dependencies": {
