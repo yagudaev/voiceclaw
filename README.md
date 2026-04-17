@@ -11,19 +11,19 @@
 
 Open-source voice AI assistant. Talk to any AI model in real time from your phone or desktop.
 
-VoiceClaw connects mobile and desktop clients to AI providers (Gemini Live, OpenAI Realtime) through a WebSocket relay server. The relay handles authentication, provider switching, tool execution, and session tracing -- so clients stay thin and provider-agnostic.
+VoiceClaw is a **thin voice layer on top of your existing AI agent**. Already have an agent that can search the web, manage your calendar, or access your tools? VoiceClaw gives it a voice -- connect any OpenAI-compatible agent and talk to it naturally through your phone or desktop.
 
 ## How it works: the `ask_brain` pattern
 
-Realtime voice models (Gemini Live, OpenAI Realtime) are fast but limited -- they can't search the web, access your calendar, remember past conversations, or use custom tools. VoiceClaw solves this with a simple escalation pattern:
+Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conversation but can't use tools, access memory, or call external APIs on their own. VoiceClaw bridges this gap with a simple escalation pattern:
 
 1. You speak to a **realtime voice model** that handles conversation naturally
-2. When the model needs information it doesn't have, it calls the `ask_brain` tool
-3. The relay server routes `ask_brain` to any **OpenAI-compatible agent** running behind an HTTP endpoint
-4. The agent does the heavy lifting (web search, memory lookup, tool execution) and streams results back
+2. When the model needs capabilities it doesn't have, it calls the `ask_brain` tool
+3. The relay server routes `ask_brain` to **your existing agent** -- any OpenAI-compatible chat completions endpoint
+4. Your agent does the heavy lifting (web search, memory lookup, tool execution) and streams results back
 5. The voice model incorporates the answer and keeps talking
 
-The brain agent is **fully pluggable** -- it's just an OpenAI-compatible chat completions endpoint. You can use [OpenClaw](https://github.com/yagudaev/openclaw), [Hermes](https://nousresearch.com/hermes), any MCP-based agent, or your own custom agent. The relay server doesn't care what's behind the endpoint.
+**Bring your own agent.** VoiceClaw doesn't ship a brain -- it connects to yours. Point it at [OpenClaw](https://github.com/yagudaev/openclaw), [Hermes](https://nousresearch.com/hermes), any MCP-based agent, or your own custom endpoint. If it speaks the OpenAI chat completions protocol, it works.
 
 ## Architecture
 
