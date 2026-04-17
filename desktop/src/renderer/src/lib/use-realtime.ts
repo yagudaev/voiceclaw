@@ -44,6 +44,7 @@ export interface RealtimeControls {
   sendFrame: (base64Jpeg: string) => void
   getInputLevel: () => number
   isConnected: boolean
+  isReconnecting: boolean
   sessionId: string | null
 }
 
@@ -61,7 +62,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const connectionIdRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const hasConnectedRef = useRef(false)
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
@@ -95,6 +98,8 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       switch (data.type) {
         case 'session.ready':
           reconnectAttemptsRef.current = 0
+          hasConnectedRef.current = true
+          setIsReconnecting(false)
           setSessionId(data.sessionId)
           setIsConnected(true)
           cb.onSessionReady?.(data.sessionId)
@@ -222,7 +227,11 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
       ws.onmessage = handleMessage
 
       ws.onerror = () => {
-        callbacksRef.current.onError?.('Could not connect to relay server. Is it running?', 0)
+        // Only surface the error on the initial connection attempt.
+        // During reconnect, onclose handles retry logic.
+        if (!hasConnectedRef.current && reconnectAttemptsRef.current === 0) {
+          callbacksRef.current.onError?.('Could not connect to relay server. Is it running?', 0)
+        }
       }
 
       ws.onclose = () => {
@@ -239,6 +248,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             const attempt = reconnectAttemptsRef.current
             const delay = RECONNECT_DELAYS[attempt]
             reconnectAttemptsRef.current += 1
+            setIsReconnecting(true)
             console.log(
               `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`,
             )
@@ -250,6 +260,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             }, delay)
           } else {
             console.log('[useRealtime] Max reconnect attempts reached, giving up')
+            setIsReconnecting(false)
             callbacksRef.current.onDisconnect?.()
           }
         }
@@ -260,6 +271,8 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   const stop = useCallback(() => {
     userStoppedRef.current = true
+    hasConnectedRef.current = false
+    setIsReconnecting(false)
     if (reconnectTimerRef.current !== null) {
       clearTimeout(reconnectTimerRef.current)
       reconnectTimerRef.current = null
@@ -286,5 +299,5 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     return engineRef.current?.getInputLevel() ?? 0
   }, [])
 
-  return { start, stop, setMuted, sendFrame, getInputLevel, isConnected, sessionId }
+  return { start, stop, setMuted, sendFrame, getInputLevel, isConnected, isReconnecting, sessionId }
 }
