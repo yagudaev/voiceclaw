@@ -1,6 +1,6 @@
 // Web Audio API engine for microphone capture and audio playback.
-// Port of the pattern from relay-server/src/test-page.ts, adapted
-// to support device selection and volume control.
+// Uses AudioWorklet for mic capture (runs on a separate audio thread),
+// with a ScriptProcessorNode fallback for environments that lack support.
 
 export const SAMPLE_RATE = 24000
 const FRAME_SIZE = 2400 // 100ms at 24kHz
@@ -14,7 +14,6 @@ export type AudioDevice = {
 export class AudioEngine {
   private audioCtx: AudioContext | null = null
   private micStream: MediaStream | null = null
-  private processor: ScriptProcessorNode | null = null
   private source: MediaStreamAudioSourceNode | null = null
   private gainNode: GainNode | null = null
   private playbackQueue: Float32Array[] = []
@@ -22,6 +21,12 @@ export class AudioEngine {
   private isPlaying = false
   private muted = false
   private currentRms = 0
+
+  // AudioWorklet path
+  private workletNode: AudioWorkletNode | null = null
+
+  // ScriptProcessorNode fallback path
+  private processor: ScriptProcessorNode | null = null
   private captureBuffer = new Float32Array(0)
 
   async startCapture(
@@ -47,44 +52,29 @@ export class AudioEngine {
     this.micStream = await navigator.mediaDevices.getUserMedia(constraints)
     this.source = this.audioCtx.createMediaStreamSource(this.micStream)
 
-    // ScriptProcessorNode for raw PCM access (proven pattern from relay test page)
-    this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1)
-    this.captureBuffer = new Float32Array(0)
+    const useWorklet = await tryRegisterWorklet(this.audioCtx)
 
-    this.processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0)
-
-      // Compute RMS for level meter
-      let sum = 0
-      for (let i = 0; i < input.length; i++) sum += input[i] * input[i]
-      this.currentRms = Math.sqrt(sum / input.length)
-
-      if (this.muted) return
-
-      // Accumulate and emit FRAME_SIZE chunks
-      const merged = new Float32Array(this.captureBuffer.length + input.length)
-      merged.set(this.captureBuffer)
-      merged.set(input, this.captureBuffer.length)
-      this.captureBuffer = merged
-
-      while (this.captureBuffer.length >= FRAME_SIZE) {
-        const frame = this.captureBuffer.slice(0, FRAME_SIZE)
-        this.captureBuffer = this.captureBuffer.slice(FRAME_SIZE)
-        onAudioData(float32ToPcm16Base64(frame))
-      }
+    if (useWorklet) {
+      this.startWorkletCapture(onAudioData)
+    } else {
+      this.startScriptProcessorCapture(onAudioData)
     }
-
-    this.source.connect(this.processor)
-    this.processor.connect(this.audioCtx.destination)
   }
 
   stopCapture() {
+    this.workletNode?.port.close()
+    this.workletNode?.disconnect()
+    this.workletNode = null
+
     this.processor?.disconnect()
-    this.source?.disconnect()
-    this.micStream?.getTracks().forEach((t) => t.stop())
     this.processor = null
+
+    this.source?.disconnect()
     this.source = null
+
+    this.micStream?.getTracks().forEach((t) => t.stop())
     this.micStream = null
+
     this.captureBuffer = new Float32Array(0)
     this.currentRms = 0
   }
@@ -122,6 +112,8 @@ export class AudioEngine {
 
   setMuted(muted: boolean) {
     this.muted = muted
+    // Forward mute state to the worklet thread
+    this.workletNode?.port.postMessage({ type: 'mute', value: muted })
   }
 
   getInputLevel(): number {
@@ -136,7 +128,64 @@ export class AudioEngine {
     this.gainNode = null
   }
 
-  // --- Private ---
+  // --- Private: capture strategies ---
+
+  private startWorkletCapture(onAudioData: (base64: string) => void) {
+    if (!this.audioCtx || !this.source) return
+
+    this.workletNode = new AudioWorkletNode(this.audioCtx, 'mic-capture-processor')
+
+    this.workletNode.port.onmessage = (e) => {
+      const { type } = e.data
+      if (type === 'rms') {
+        this.currentRms = e.data.value
+      } else if (type === 'audio') {
+        const pcm16 = new Int16Array(e.data.pcm16)
+        onAudioData(int16ToBase64(pcm16))
+      }
+    }
+
+    // Forward initial mute state
+    this.workletNode.port.postMessage({ type: 'mute', value: this.muted })
+
+    this.source.connect(this.workletNode)
+    // AudioWorkletNode must be connected to destination (even silently)
+    // so the audio graph keeps processing.
+    this.workletNode.connect(this.audioCtx.destination)
+  }
+
+  private startScriptProcessorCapture(onAudioData: (base64: string) => void) {
+    if (!this.audioCtx || !this.source) return
+
+    this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1)
+    this.captureBuffer = new Float32Array(0)
+
+    this.processor.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0)
+
+      // Compute RMS for level meter
+      let sum = 0
+      for (let i = 0; i < input.length; i++) sum += input[i] * input[i]
+      this.currentRms = Math.sqrt(sum / input.length)
+
+      if (this.muted) return
+
+      // Accumulate and emit FRAME_SIZE chunks
+      const merged = new Float32Array(this.captureBuffer.length + input.length)
+      merged.set(this.captureBuffer)
+      merged.set(input, this.captureBuffer.length)
+      this.captureBuffer = merged
+
+      while (this.captureBuffer.length >= FRAME_SIZE) {
+        const frame = this.captureBuffer.slice(0, FRAME_SIZE)
+        this.captureBuffer = this.captureBuffer.slice(FRAME_SIZE)
+        onAudioData(float32ToPcm16Base64(frame))
+      }
+    }
+
+    this.source.connect(this.processor)
+    this.processor.connect(this.audioCtx.destination)
+  }
 
   private drainPlaybackQueue() {
     if (!this.audioCtx || !this.gainNode || this.playbackQueue.length === 0) {
@@ -170,7 +219,25 @@ export async function enumerateAudioDevices(): Promise<AudioDevice[]> {
     }))
 }
 
-// --- Encoding helpers ---
+// --- Helpers ---
+
+async function tryRegisterWorklet(ctx: AudioContext): Promise<boolean> {
+  try {
+    const workletUrl = new URL('./audio-worklet-processor.js', import.meta.url)
+    await ctx.audioWorklet.addModule(workletUrl)
+    return true
+  } catch (err) {
+    console.warn('AudioWorklet registration failed, falling back to ScriptProcessorNode:', err)
+    return false
+  }
+}
+
+function int16ToBase64(pcm16: Int16Array): string {
+  const bytes = new Uint8Array(pcm16.buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
 
 function float32ToPcm16Base64(float32: Float32Array): string {
   const pcm16 = new Int16Array(float32.length)
@@ -178,10 +245,7 @@ function float32ToPcm16Base64(float32: Float32Array): string {
     const s = Math.max(-1, Math.min(1, float32[i]))
     pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
   }
-  const bytes = new Uint8Array(pcm16.buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-  return btoa(binary)
+  return int16ToBase64(pcm16)
 }
 
 function pcm16Base64ToFloat32(base64: string): Float32Array {
