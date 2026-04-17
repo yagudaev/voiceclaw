@@ -18,8 +18,9 @@ mobile/build/
 .idea/
 .vscode/
 
-# Claude Code worktrees
+# Claude Code local data
 .claude/worktrees/
+.claude/projects/
 
 # Dev logs
 logs/
