@@ -1,11 +1,12 @@
 # VoiceClaw Relay Server
 
-WebSocket relay that bridges mobile clients to the OpenAI Realtime API and OpenClaw brain agent.
+WebSocket relay that bridges mobile clients to the OpenAI Realtime API and the brain agent gateway.
 
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in your keys
-2. Enable the OpenClaw gateway completions endpoint (required for brain agent):
+2. Point `BRAIN_GATEWAY_URL` at any OpenAI-compatible chat completions endpoint (required for brain agent).
+   If you use [OpenClaw](https://github.com/yagudaev/openclaw), enable the gateway completions endpoint:
    - In `~/.openclaw/openclaw.json`, add under the `gateway` key:
      ```json
      "http": {
@@ -22,8 +23,8 @@ WebSocket relay that bridges mobile clients to the OpenAI Realtime API and OpenC
 ```
 Mobile App ──WebSocket──▶ Relay Server ──WebSocket──▶ OpenAI Realtime API
                               │
-                              └──HTTP──▶ OpenClaw Gateway (/v1/chat/completions)
-                                         (brain agent queries)
+                              └──HTTP──▶ Brain Agent Gateway (/v1/chat/completions)
+                                         (any OpenAI-compatible endpoint)
 ```
 
 The relay handles:

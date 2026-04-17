@@ -323,7 +323,7 @@ export default function ChatScreen() {
       if (code === 401) {
         const convId = conversationIdRef.current
         if (convId) {
-          addMessage(convId, 'assistant', 'Authentication failed. Check your OpenClaw gateway URL and auth token in Settings.').then(() => loadMessagesRef.current())
+          addMessage(convId, 'assistant', 'Authentication failed. Check your brain agent gateway URL and auth token in Settings.').then(() => loadMessagesRef.current())
         }
       }
     },
@@ -648,7 +648,7 @@ export default function ChatScreen() {
 
     const { apiKey, model, apiUrl } = await getApiConfig()
     if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
+      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
       await loadMessages()
       return
     }
@@ -846,7 +846,7 @@ export default function ChatScreen() {
 
     const { apiKey, apiUrl, model } = await getApiConfig()
     if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your OpenClaw API URL and key in Settings first.')
+      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
       await loadMessages()
       return false
     }

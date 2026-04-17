@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-const fixtureDir = mkdtempSync(join(tmpdir(), "voiceclaw-openclaw-"))
-process.env.OPENCLAW_WORKSPACE = fixtureDir
+const fixtureDir = mkdtempSync(join(tmpdir(), "voiceclaw-brain-"))
+process.env.BRAIN_WORKSPACE = fixtureDir
 
 writeFileSync(join(fixtureDir, "IDENTITY.md"), `# IDENTITY.md - Who Am I?
 
