@@ -2,11 +2,11 @@ title: VoiceClaw Documentation
 description: Voice interface for any AI — open-source mobile, desktop, and relay server
 remote_theme: just-the-docs/just-the-docs
 
-url: https://nano3labs.github.io/voiceclaw
+url: https://yagudaev.github.io/voiceclaw
 
 aux_links:
   "GitHub":
-    - "https://github.com/nano3labs/voiceclaw"
+    - "https://github.com/yagudaev/voiceclaw"
 
 nav_order:
   - index

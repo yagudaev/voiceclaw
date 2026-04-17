@@ -20,7 +20,7 @@ VoiceClaw is an open-source project and contributions are welcome. This page cov
 ### Install
 
 ```bash
-git clone https://github.com/nano3labs/voiceclaw.git
+git clone https://github.com/yagudaev/voiceclaw.git
 cd voiceclaw
 yarn install
 ```

@@ -346,7 +346,7 @@ Common error codes:
 
 ## Brain Agent
 
-The brain agent (`ask_brain` tool) connects to an [OpenClaw](https://github.com/nano3labs/openclaw) gateway to give the voice AI extended capabilities:
+The brain agent (`ask_brain` tool) connects to an [OpenClaw](https://github.com/yagudaev/openclaw) gateway to give the voice AI extended capabilities:
 
 - Web search and browsing
 - Calendar management

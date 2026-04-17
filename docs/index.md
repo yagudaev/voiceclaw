@@ -32,7 +32,7 @@ VoiceClaw connects to multiple AI providers (Gemini Live, OpenAI Realtime) throu
 
 ```bash
 # Clone and install
-git clone https://github.com/nano3labs/voiceclaw.git
+git clone https://github.com/yagudaev/voiceclaw.git
 cd voiceclaw
 yarn install
 
