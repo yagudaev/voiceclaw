@@ -1,10 +1,9 @@
 ---
-layout: default
 title: Contributing
-nav_order: 6
+description: Development setup, code conventions, branch strategy, and testing guide.
 ---
 
-# Contributing
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components'
 
 VoiceClaw is an open-source project and contributions are welcome. This page covers the development setup, conventions, and workflow.
 
@@ -29,15 +28,21 @@ This installs dependencies for all workspaces (mobile, desktop, relay-server, we
 
 ### Running Everything
 
-```bash
-# Start relay server + mobile dev server together
-yarn dev
-
-# Or run components individually
-yarn dev:server     # relay server with auto-reload
-yarn dev:mobile     # Expo dev server
-yarn dev:desktop    # Electron app in dev mode
-```
+<Tabs>
+  <TabItem label="All at once">
+    ```bash
+    # Start relay server + mobile dev server together
+    yarn dev
+    ```
+  </TabItem>
+  <TabItem label="Individual">
+    ```bash
+    yarn dev:server     # relay server with auto-reload
+    yarn dev:mobile     # Expo dev server
+    yarn dev:desktop    # Electron app in dev mode
+    ```
+  </TabItem>
+</Tabs>
 
 ### Relay Server
 
@@ -82,7 +87,10 @@ The root `package.json` defines yarn workspaces. Each sub-package has its own `p
 
 ## Branch Strategy
 
-- **Never push directly to `main`**. Always use feature branches and pull requests.
+<Aside type="caution">
+**Never push directly to `main`.** Always use feature branches and pull requests.
+</Aside>
+
 - Branch naming: `feature/<description>`, `fix/<description>`, etc.
 - PRs should be reviewed before merging.
 
@@ -148,25 +156,31 @@ Use `verb:app` naming for scripts (not `app:verb`):
 
 ## Testing
 
+<Aside type="tip">
+Always build, deploy, and test on a device before committing.
+</Aside>
+
 - **Relay server**: use the test page at `http://localhost:8080/test` for quick WebSocket testing
 - **Mobile**: test on a real iOS device or simulator with Expo Go -- do not test on web
 - **Desktop**: run `yarn dev` and verify audio capture, playback, and screen sharing
-- Always build, deploy, and test on a device before committing
 
 ## Making Changes
 
-1. Create a feature branch from `main`:
+<Steps>
+1. **Create a feature branch from `main`**
+
    ```bash
    git checkout -b feature/your-feature main
    ```
 
-2. Make your changes, following the code style guidelines above.
+2. **Make your changes**, following the code style guidelines above.
 
-3. Test your changes:
+3. **Test your changes**:
    - Run the relay server and verify the protocol works
    - Test on the relevant client (mobile device, desktop app)
    - Check that existing functionality still works
 
-4. Commit with a clear message describing the change.
+4. **Commit** with a clear message describing the change.
 
-5. Push and open a pull request against `main`.
+5. **Push and open a pull request** against `main`.
+</Steps>

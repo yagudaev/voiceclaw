@@ -1,10 +1,9 @@
 ---
-layout: default
 title: Architecture
-nav_order: 2
+description: Detailed system design, audio flow, session lifecycle, brain agent, and tracing.
 ---
 
-# Architecture
+import { Aside } from '@astrojs/starlight/components'
 
 VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay server over WebSocket, and the relay server talks to AI providers (Gemini Live, OpenAI Realtime) over their native WebSocket APIs.
 
@@ -85,7 +84,9 @@ The desktop app can share screen content with the AI (Gemini only -- OpenAI Real
 5. Sent as `frame.append` messages over the relay protocol
 6. Relay forwards to Gemini as `realtimeInput.video`
 
+<Aside type="note">
 Screen frames do not reset the watchdog timer -- only audio activity counts as user presence.
+</Aside>
 
 ## Session Lifecycle
 
