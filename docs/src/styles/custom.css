@@ -1,27 +1,264 @@
-/* VoiceClaw custom Starlight styles */
+/* VoiceClaw custom Starlight styles
+ * Brand palette:
+ *   - Deep purple-black #0F0B1E (mobile splash)
+ *   - Violet #6c63ff (favicon / primary accent)
+ *   - Light lavender #c4c1ff (highlight)
+ */
 
 :root {
-  --sl-color-accent-low: #1a1a2e;
-  --sl-color-accent: #6c63ff;
-  --sl-color-accent-high: #c4c1ff;
+  --vc-violet: #6c63ff;
+  --vc-violet-soft: #8b84ff;
+  --vc-violet-deep: #4a3fd9;
+  --vc-lavender: #c4c1ff;
+  --vc-ink: #0f0b1e;
+  --vc-ink-2: #14102a;
+  --vc-ink-3: #1c1636;
+
   --sl-font-system: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   --sl-font-system-mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas,
     'DejaVu Sans Mono', monospace;
 }
 
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #1a1434;
+  --sl-color-accent: var(--vc-violet);
+  --sl-color-accent-high: var(--vc-lavender);
+  --sl-color-bg: var(--vc-ink);
+  --sl-color-bg-nav: rgba(15, 11, 30, 0.85);
+  --sl-color-bg-sidebar: var(--vc-ink);
+  --sl-color-hairline: rgba(108, 99, 255, 0.15);
+  --sl-color-hairline-light: rgba(108, 99, 255, 0.25);
+  --sl-color-hairline-shade: rgba(108, 99, 255, 0.1);
+}
+
 :root[data-theme='light'] {
-  --sl-color-accent-low: #e8e7ff;
-  --sl-color-accent: #5b52e0;
+  --sl-color-accent-low: #ece9ff;
+  --sl-color-accent: var(--vc-violet-deep);
   --sl-color-accent-high: #2d2780;
 }
 
-/* Smoother hero section */
-.hero {
-  padding-block: 2rem;
+/* ---------- Global background gradient (dark) ---------- */
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(
+      ellipse at top,
+      rgba(108, 99, 255, 0.08) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at bottom right,
+      rgba(196, 193, 255, 0.04) 0%,
+      transparent 50%
+    ),
+    var(--vc-ink);
+  background-attachment: fixed;
 }
 
-/* Tighten card grid spacing */
-.sl-card-grid {
-  gap: 1rem;
+/* ---------- Hero (splash template) ---------- */
+.hero {
+  padding-block: 3rem;
+}
+
+.hero h1 {
+  background: linear-gradient(
+    135deg,
+    var(--vc-lavender) 0%,
+    var(--vc-violet) 60%,
+    var(--vc-violet-soft) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+}
+
+.hero .tagline {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 1.15rem;
+  line-height: 1.55;
+  max-width: 42rem;
+}
+
+/* Primary CTA button */
+.hero .action.primary,
+.sl-link-button.primary {
+  background: linear-gradient(
+    135deg,
+    var(--vc-violet) 0%,
+    var(--vc-violet-deep) 100%
+  );
+  border: none;
+  color: #fff !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 6px 20px -6px rgba(108, 99, 255, 0.55);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hero .action.primary:hover,
+.sl-link-button.primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.15) inset,
+    0 10px 28px -6px rgba(108, 99, 255, 0.7);
+}
+
+/* ---------- Card grid: equal-height, aligned, nicer visuals ---------- */
+.sl-card-grid,
+starlight-card-grid {
+  gap: 1.25rem !important;
+  align-items: stretch;
+}
+
+/* Kill the stagger offset if ever applied */
+.sl-card-grid[data-stagger] > :nth-child(even),
+starlight-card-grid[data-stagger] > :nth-child(even) {
+  margin-block-start: 0 !important;
+}
+
+.card {
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(108, 99, 255, 0.04) 0%,
+    rgba(108, 99, 255, 0.01) 100%
+  );
+  border: 1px solid rgba(108, 99, 255, 0.18);
+  border-radius: 14px;
+  padding: 1.4rem 1.5rem;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-theme='light'] .card {
+  background: #fff;
+  border-color: rgba(91, 82, 224, 0.18);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(108, 99, 255, 0.4),
+    transparent 40%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(108, 99, 255, 0.45);
+  box-shadow: 0 12px 32px -12px rgba(108, 99, 255, 0.35);
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+/* Card icon */
+.card .icon {
+  color: var(--vc-violet);
+  background: rgba(108, 99, 255, 0.12);
+  border: 1px solid rgba(108, 99, 255, 0.25);
+  border-radius: 8px;
+  padding: 0.35rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:root[data-theme='light'] .card .icon {
+  color: var(--vc-violet-deep);
+  background: rgba(91, 82, 224, 0.1);
+  border-color: rgba(91, 82, 224, 0.25);
+}
+
+.card .title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Sidebar / nav polish ---------- */
+.sidebar-pane {
+  border-inline-end-color: var(--sl-color-hairline);
+}
+
+:root[data-theme='dark'] .sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--vc-lavender);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+:root[data-theme='dark']
+  .sl-markdown-content
+  a:not(:where(.not-content *)):hover {
+  color: #fff;
+}
+
+/* ---------- Code blocks ---------- */
+.expressive-code .frame {
+  border-radius: 10px;
+}
+
+:root[data-theme='dark'] .expressive-code .frame {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Headings ---------- */
+.sl-markdown-content h2:not(:where(.not-content *)) {
+  border-block-end: 1px solid var(--sl-color-hairline);
+  padding-block-end: 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Tabs ---------- */
+starlight-tabs [role='tab'][aria-selected='true'] {
+  color: var(--vc-lavender);
+  border-block-end-color: var(--vc-violet);
+}
+
+/* ---------- Scrollbar (dark) ---------- */
+:root[data-theme='dark'] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgba(108, 99, 255, 0.25);
+  border-radius: 999px;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(108, 99, 255, 0.45);
+}
+
+/* ---------- Steps component ---------- */
+.sl-steps > li::before {
+  background: linear-gradient(
+    135deg,
+    var(--vc-violet),
+    var(--vc-violet-deep)
+  ) !important;
+  color: #fff !important;
+  border: none !important;
 }
