@@ -38,6 +38,15 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { selectedConversationId, selectConversation } = useConversationContext()
 
+  // Reload messages from DB — single source of truth, prevents duplicates.
+  // Uses conversationIdRef so callbacks always see the latest ID.
+  const loadMessages = useCallback(async () => {
+    const convId = conversationIdRef.current
+    if (!convId) return
+    const msgs = await getMessages(convId)
+    setMessages(msgs)
+  }, [])
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -105,8 +114,8 @@ export function ChatPage() {
       setStreamingText('')
       if (!text.trim()) return
       const convId = await ensureConversation()
-      const msg = await addMessage(convId, role, text)
-      setMessages((prev) => [...prev, msg])
+      await addMessage(convId, role, text)
+      await loadMessages()
 
       if (role === 'user' && !titleGeneratedRef.current) {
         titleGeneratedRef.current = true
@@ -124,14 +133,14 @@ export function ChatPage() {
     onTurnEnded: () => {
       setIsThinking(true)
     },
-    onToolCall: async (callId, name, args) => {
+    onToolCall: async (_callId, name, args) => {
       // Handle displayText tool call locally
       if (name === 'displayText') {
         try {
           const parsed = JSON.parse(args)
           const convId = await ensureConversation()
-          const msg = await addMessage(convId, 'assistant', parsed.text)
-          setMessages((prev) => [...prev, msg])
+          await addMessage(convId, 'assistant', parsed.text)
+          await loadMessages()
         } catch {
           // ignore parse errors
         }
