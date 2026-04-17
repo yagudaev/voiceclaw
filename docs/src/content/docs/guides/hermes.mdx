@@ -1,0 +1,126 @@
+---
+title: Connecting Hermes
+description: How to use Nous Research Hermes as your VoiceClaw brain agent
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+[Hermes](https://nousresearch.com/) by Nous Research is a family of fine-tuned open-source language models known for strong instruction following and tool use. Because Hermes can be served behind any OpenAI-compatible API, it works as a drop-in brain agent for VoiceClaw.
+
+VoiceClaw is a thin voice layer on top of your agent. You run Hermes locally, point the relay at it, and VoiceClaw gives it a voice.
+
+## Prerequisites
+
+- One of: [Ollama](https://ollama.com/), [vLLM](https://docs.vllm.ai/), or any OpenAI-compatible inference server
+- A Hermes model downloaded (e.g., `hermes3:8b` for Ollama)
+- VoiceClaw relay server cloned and ready
+
+## Setup
+
+<Steps>
+
+1. **Run Hermes via an OpenAI-compatible server**
+
+   <Tabs>
+     <TabItem label="Ollama">
+       ```bash
+       # Install Ollama if you haven't
+       brew install ollama
+
+       # Pull and run Hermes
+       ollama pull hermes3:8b
+       ollama serve
+       ```
+
+       Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`.
+     </TabItem>
+     <TabItem label="vLLM">
+       ```bash
+       pip install vllm
+
+       vllm serve NousResearch/Hermes-3-Llama-3.1-8B \
+         --host 0.0.0.0 \
+         --port 8000 \
+         --api-key your-secret-key
+       ```
+
+       vLLM exposes an OpenAI-compatible API at `http://localhost:8000/v1`.
+     </TabItem>
+     <TabItem label="LM Studio">
+       Download Hermes from the LM Studio model browser, load it, and start the local server. It defaults to `http://localhost:1234/v1`.
+     </TabItem>
+   </Tabs>
+
+2. **Configure the VoiceClaw relay server**
+
+   In your relay server `.env` file, point at your Hermes instance:
+
+   <Tabs>
+     <TabItem label="Ollama">
+       ```bash
+       BRAIN_GATEWAY_URL=http://localhost:11434/v1
+       BRAIN_GATEWAY_AUTH_TOKEN=
+       ```
+
+       <Aside type="note">
+       Ollama does not require an auth token by default. Leave `BRAIN_GATEWAY_AUTH_TOKEN` empty.
+       </Aside>
+     </TabItem>
+     <TabItem label="vLLM">
+       ```bash
+       BRAIN_GATEWAY_URL=http://localhost:8000/v1
+       BRAIN_GATEWAY_AUTH_TOKEN=your-secret-key
+       ```
+     </TabItem>
+     <TabItem label="LM Studio">
+       ```bash
+       BRAIN_GATEWAY_URL=http://localhost:1234/v1
+       BRAIN_GATEWAY_AUTH_TOKEN=
+       ```
+     </TabItem>
+   </Tabs>
+
+3. **Start the relay server**
+
+   ```bash
+   cd relay-server
+   yarn dev
+   ```
+
+4. **Connect and test**
+
+   Open the desktop or mobile app with `brainAgent` set to `"enabled"`. Ask a question like "What is the capital of France?" -- the voice model will call `ask_brain`, the relay will query Hermes, and you will hear the answer.
+
+</Steps>
+
+## System prompt for Hermes
+
+Since Hermes runs locally without built-in tools like web search or calendar, adapt the system prompt to match what your setup can do. Paste this into the model's system instructions:
+
+```text
+You are the brain behind a voice assistant called VoiceClaw.
+
+You receive questions via the ask_brain tool when the realtime voice model
+needs help -- factual questions, analysis, reasoning, or knowledge retrieval.
+
+Guidelines:
+- Respond concisely. Your answers will be spoken aloud, not read on a screen.
+- Keep responses to 2-3 sentences when possible. The user is listening.
+- Skip formatting (no markdown, no bullet lists, no headers). Plain text only.
+- Lead with the answer, then add context if needed.
+- If you do not know something, say so briefly rather than guessing.
+- You are running locally as a Hermes model. Be direct and helpful.
+```
+
+<Aside type="tip">
+If you add tools to your Hermes setup (e.g., via function calling with a tool-use wrapper), update the system prompt to mention those capabilities so the voice model knows to use `ask_brain` for them.
+</Aside>
+
+## Choosing a model size
+
+| Model | VRAM | Best for |
+|-------|------|----------|
+| `hermes3:8b` | ~6 GB | Fast responses, lighter hardware |
+| `hermes3:70b` | ~40 GB | Deeper reasoning, better tool use |
+
+For a voice assistant where latency matters, the 8B model is a good starting point. Upgrade to 70B if you need more nuanced answers and have the hardware.
