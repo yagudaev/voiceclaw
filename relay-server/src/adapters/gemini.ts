@@ -43,6 +43,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private currentUserText = ""
   private userSpeaking = false
   private hasVideoInput = false
+  private watchdogEnabled = false
 
   // Session resumption state
   private resumptionHandle: string | null = null
@@ -61,6 +62,7 @@ export class GeminiAdapter implements ProviderAdapter {
     this.sendToClient = sendToClient
     this.config = config
     this.disconnected = false
+    this.watchdogEnabled = config.watchdog === "enabled"
 
     await this.openUpstream()
   }
@@ -662,6 +664,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
   private resetWatchdog() {
     this.clearWatchdog()
+    if (!this.watchdogEnabled) return
     // While a tool call is in flight, leave the watchdog paused — firing the
     // "user silent" prompt mid-tool would inject a fake user turn into a
     // session that's already waiting on us, corrupting the conversation.

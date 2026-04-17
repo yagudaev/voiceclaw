@@ -282,10 +282,13 @@ async function runWatchdogGatedTest() {
   type AdapterInternals = {
     pendingToolCalls: number
     watchdogTimer: ReturnType<typeof setTimeout> | null
+    watchdogEnabled: boolean
     resetWatchdog: () => void
   }
   const internals = adapter as unknown as AdapterInternals
 
+  // Enable watchdog so the gating logic is testable
+  internals.watchdogEnabled = true
   internals.pendingToolCalls = 0
   internals.resetWatchdog()
   assert(internals.watchdogTimer !== null, "watchdog armed when no pending tool calls")
