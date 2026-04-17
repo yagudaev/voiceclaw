@@ -1,28 +1,30 @@
 ---
-layout: default
 title: Relay Server
-nav_order: 3
+description: WebSocket protocol reference, configuration, brain agent, and supported providers.
 ---
 
-# Relay Server
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components'
 
 The relay server is a TypeScript / Node.js WebSocket server that sits between clients and AI providers. It translates the relay protocol into provider-specific formats (Gemini Live, OpenAI Realtime), handles server-side tool calls, manages session lifecycle, and provides observability via Langfuse.
 
 ## Running
 
-```bash
-cd relay-server
-cp .env.example .env    # add your API keys
-yarn install
-yarn dev                # starts with tsx watch (auto-reload)
-```
-
-Production:
-
-```bash
-yarn build
-yarn start              # runs dist/index.js
-```
+<Tabs>
+  <TabItem label="Development">
+    ```bash
+    cd relay-server
+    cp .env.example .env    # add your API keys
+    yarn install
+    yarn dev                # starts with tsx watch (auto-reload)
+    ```
+  </TabItem>
+  <TabItem label="Production">
+    ```bash
+    yarn build
+    yarn start              # runs dist/index.js
+    ```
+  </TabItem>
+</Tabs>
 
 The server starts on port 8080 by default. It exposes:
 
@@ -99,7 +101,9 @@ Stream microphone audio to the provider.
 }
 ```
 
+<Aside type="note">
 Audio format: PCM16, 24kHz, mono. The relay handles downsampling for providers that need it (Gemini requires 16kHz).
+</Aside>
 
 #### `audio.commit`
 
@@ -123,7 +127,9 @@ Send a screen capture frame (desktop screen sharing).
 }
 ```
 
+<Aside type="caution">
 Only supported by Gemini. OpenAI Realtime does not accept video input.
+</Aside>
 
 #### `response.create`
 
