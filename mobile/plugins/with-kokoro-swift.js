@@ -71,7 +71,8 @@ function withKokoroPodfile(config) {
       if (
         podfile.includes("target.name == 'ExpoCustomPipeline'") &&
         podfile.includes('PackageFrameworks') &&
-        podfile.includes('SWIFT_ENABLE_EXPLICIT_MODULES')
+        podfile.includes('SWIFT_ENABLE_EXPLICIT_MODULES') &&
+        podfile.includes('React-Core-prebuilt/React.xcframework')
       ) {
         console.log('[with-kokoro-swift] Podfile already patched, skipping')
         return config
@@ -88,7 +89,9 @@ function withKokoroPodfile(config) {
     # _NumericsShims has a module.modulemap that must be discoverable by
     # any pod that compiles Swift, otherwise the Swift compiler errors with
     # "missing required module '_NumericsShims'".
-    spm_checkouts = "${'${'}PODS_BUILD_DIR}/../../../../../SourcePackages/checkouts"
+    # PODS_BUILD_DIR resolves to <DerivedData>/<Project>/Build/Products,
+    # so SourcePackages sits two directories up at <DerivedData>/<Project>/SourcePackages.
+    spm_checkouts = "${'${'}PODS_BUILD_DIR}/../../SourcePackages/checkouts"
     numerics_shims_include = "#{spm_checkouts}/swift-numerics/Sources/_NumericsShims/include"
     numerics_shims_modulemap = "#{numerics_shims_include}/module.modulemap"
     installer.pods_project.targets.each do |target|
@@ -113,6 +116,34 @@ function withKokoroPodfile(config) {
     end
     installer.pods_project.build_configurations.each do |config|
       config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+    end
+
+    # React Native 0.83 prebuilt React.framework ships its umbrella header at
+    # Headers/React_Core/React_Core-umbrella.h with #import "React/X.h" style
+    # references, while the headers themselves live under Headers/React_Core/.
+    # Symlink React -> React_Core inside the framework and the Pods header
+    # mirror so the umbrella header resolves under Xcode 26's stricter
+    # implicit module lookup.
+    pods_root = installer.sandbox.root.to_s
+    react_xcframework = "#{pods_root}/React-Core-prebuilt/React.xcframework"
+    if Dir.exist?(react_xcframework)
+      Dir.glob("#{react_xcframework}/**/React.framework/Headers").each do |headers_dir|
+        link_target = File.join(headers_dir, 'React')
+        if Dir.exist?(File.join(headers_dir, 'React_Core')) && !File.exist?(link_target) && !File.symlink?(link_target)
+          File.symlink('React_Core', link_target)
+        end
+      end
+      shared_headers = "#{react_xcframework}/Headers"
+      if Dir.exist?("#{shared_headers}/React_Core") && !File.exist?("#{shared_headers}/React") && !File.symlink?("#{shared_headers}/React")
+        File.symlink('React_Core', "#{shared_headers}/React")
+      end
+    end
+    ['Public', 'Private'].each do |scope|
+      mirror = "#{pods_root}/Headers/#{scope}/React-Core-prebuilt"
+      link_target = "#{mirror}/React"
+      if Dir.exist?("#{mirror}/React_Core") && !File.exist?(link_target) && !File.symlink?(link_target)
+        File.symlink('React_Core', link_target)
+      end
     end
 
     # Make KokoroSwift (SPM package linked to VoiceClaw app target) importable
