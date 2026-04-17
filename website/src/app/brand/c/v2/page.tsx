@@ -203,8 +203,10 @@ export default function BrandPageC() {
                         <div className="w-12 h-12 bg-white/10 rounded-xl"></div>
                         <div className="w-12 h-12 bg-white/10 rounded-xl"></div>
                     </div>
-                    <div className="text-center mb-24">
-                        <p className="text-6xl font-bold opacity-10 font-[family-name:var(--font-jetbrains)] uppercase">vclw_dock_prev</p>
+                    <div className="text-center mb-24 space-y-2">
+                        <p className="text-[10px] font-[family-name:var(--font-jetbrains)] uppercase tracking-widest text-zinc-500">Menu bar agent</p>
+                        <p className="text-2xl font-[family-name:var(--font-jetbrains)] tracking-tight text-white/80">mic → bus-a → agent</p>
+                        <p className="text-[10px] font-[family-name:var(--font-jetbrains)] uppercase tracking-widest text-orange-500/70">42ms · AEC ON · VAD ACTIVE</p>
                     </div>
                 </div>
             </div>
