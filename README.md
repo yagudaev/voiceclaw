@@ -1,5 +1,14 @@
 # VoiceClaw
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS-000000?logo=apple&logoColor=white)]()
+[![Platform: iOS](https://img.shields.io/badge/Platform-iOS-000000?logo=apple&logoColor=white)]()
+[![Gemini Live](https://img.shields.io/badge/Gemini-Live_API-4285F4?logo=google&logoColor=white)]()
+[![OpenAI Realtime](https://img.shields.io/badge/OpenAI-Realtime_API-412991?logo=openai&logoColor=white)]()
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](relay-server/Dockerfile)
+
 Open-source voice AI assistant. Talk to any AI model in real time from your phone or desktop.
 
 VoiceClaw connects mobile and desktop clients to AI providers (Gemini Live, OpenAI Realtime) through a WebSocket relay server. The relay handles authentication, provider switching, tool execution, and session tracing -- so clients stay thin and provider-agnostic.
