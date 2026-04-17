@@ -104,8 +104,8 @@ The relay server reads these environment variables from `relay-server/.env`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes (for OpenAI provider) | OpenAI API key for Realtime API |
 | `GEMINI_API_KEY` | Yes (for Gemini provider) | Google Gemini API key for Live API |
+| `OPENAI_API_KEY` | Yes (for OpenAI provider) | OpenAI API key for Realtime API |
 | `RELAY_API_KEY` | Recommended | API key clients must send to connect. Generate with `openssl rand -hex 24` |
 | `OPENCLAW_GATEWAY_AUTH_TOKEN` | Optional | Auth token for your brain agent endpoint |
 | `OPENCLAW_GATEWAY_URL` | Optional | Brain agent URL -- any OpenAI-compatible endpoint (default: `http://localhost:18789`) |
