@@ -84,8 +84,6 @@ async function testValidAuth() {
     provider: "echo",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const ready = await waitForMessage(ws)
@@ -113,8 +111,6 @@ async function testInvalidToken() {
     provider: "echo",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: "invalid-token-12345",
   }))
 
   const error = await waitForMessage(ws)
@@ -134,8 +130,6 @@ async function testNoToken() {
     provider: "echo",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: MOCK_GATEWAY_URL,
-    openclawAuthToken: "",
   }))
 
   const error = await waitForMessage(ws)
@@ -154,8 +148,6 @@ async function testNoGateway() {
     provider: "echo",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: "",
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const error = await waitForMessage(ws)
@@ -174,8 +166,6 @@ async function testUnreachableGateway() {
     provider: "echo",
     voice: "alloy",
     brainAgent: "none",
-    openclawGatewayUrl: "http://127.0.0.1:59999",
-    openclawAuthToken: VALID_TOKEN,
   }))
 
   const error = await waitForMessage(ws, 10000)
