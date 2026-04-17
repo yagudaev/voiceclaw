@@ -49,6 +49,14 @@ Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conver
 **Relay server** -- TypeScript / Node.js WebSocket server that brokers sessions between clients and AI providers.
 **Brain agent** -- Any OpenAI-compatible agent endpoint. The relay calls it via `ask_brain` when the voice model needs tools, memory, or external data. Swap in any agent you want.
 
+## Demo
+
+Watch VoiceClaw in action as a thinking partner for real-time problem solving:
+
+[![VoiceClaw Demo](assets/videos/demo-thumbnail.jpg)](https://youtu.be/iAS7vj2vRaA?si=oelgIdETS8iWTavV)
+
+**The magic of voice agents:** Talk through ideas with your AI agent while you work. Real collaboration, real thinking.
+
 ## Quick Start
 
 ### Prerequisites
