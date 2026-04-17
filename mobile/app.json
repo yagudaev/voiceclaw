@@ -21,7 +21,10 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "VoiceClaw needs microphone access for voice calls with your AI assistant.",
         "NSSpeechRecognitionUsageDescription": "VoiceClaw uses speech recognition to transcribe your voice for the AI assistant.",
-        "UIBackgroundModes": ["audio", "voip"]
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
       }
     },
     "android": {
@@ -42,6 +45,13 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "appVariant": "production",
+      "router": {},
+      "eas": {
+        "projectId": "197182e2-21f9-4882-a82d-a78495b90699"
+      }
     }
   }
 }

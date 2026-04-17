@@ -22,3 +22,4 @@ native-packages/**/Package.resolved
 
 expo-env.d.ts
 # @end expo-cli
+build/
