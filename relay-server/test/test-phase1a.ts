@@ -1,7 +1,7 @@
 // Phase 1a test script — verifies auth + echo loopback
 // Run: npx tsx test/test-phase1a.ts
 // Requires: relay server running on ws://localhost:8080/ws
-// Spins up a mock OpenClaw gateway for auth testing
+// Spins up a mock brain agent gateway for auth testing
 
 import { createServer, type Server } from "node:http"
 import WebSocket from "ws"
@@ -53,7 +53,7 @@ function waitForClose(ws: WebSocket, timeoutMs = 5000): Promise<void> {
   })
 }
 
-// Mock OpenClaw gateway — returns JSON for valid token, 401 for invalid
+// Mock brain agent gateway — returns JSON for valid token, 401 for invalid
 function startMockGateway(): Promise<Server> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
@@ -182,7 +182,7 @@ async function main() {
   console.log(`Mock Gateway: ${MOCK_GATEWAY_URL}`)
 
   const gateway = await startMockGateway()
-  console.log("Mock OpenClaw gateway started")
+  console.log("Mock brain agent gateway started")
 
   try {
     await testValidAuth()

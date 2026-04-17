@@ -149,8 +149,8 @@ export class RelaySession {
     // Run the brain agent in the background.
     // Keep the controller in inFlightTools so cleanup() can abort it on disconnect.
     const sendToClient: SendToClient = (event) => this.send(event)
-    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
-    const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+    const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
+    const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
     const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
 
     const brainStart = Date.now()
@@ -314,8 +314,8 @@ export class RelaySession {
       lines,
     ].join("\n")
 
-    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
-    const authToken = process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
+    const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
+    const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
     const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
     const sessionId = this.id
 

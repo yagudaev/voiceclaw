@@ -2,7 +2,7 @@ import { getSetting } from '@/db'
 import { pluginStreamCompletion } from '@/lib/plugin-completion'
 import EventSource from 'react-native-sse'
 
-export type OpenClawConnectionMode = 'http' | 'plugin'
+export type BrainConnectionMode = 'http' | 'plugin'
 
 const DEFAULT_SYSTEM_PROMPT = `\
 You are a helpful assistant. Keep responses concise. Use markdown for formatting \
@@ -149,10 +149,10 @@ export function streamCompletion(
 }
 
 export async function getApiConfig() {
-  const connectionMode = ((await getSetting('openclaw_connection_mode')) || 'http') as OpenClawConnectionMode
-  const apiKey = await getSetting('openclaw_api_key')
+  const connectionMode = ((await getSetting('brain_connection_mode')) || (await getSetting('openclaw_connection_mode')) || 'http') as BrainConnectionMode
+  const apiKey = (await getSetting('brain_api_key')) || (await getSetting('openclaw_api_key'))
   const model = (await getSetting('default_model')) || 'openclaw:voice'
-  const apiUrl = await getSetting('openclaw_api_url')
+  const apiUrl = (await getSetting('brain_api_url')) || (await getSetting('openclaw_api_url'))
   return { apiKey, model, apiUrl, connectionMode }
 }
 
@@ -171,7 +171,7 @@ export function unifiedStreamCompletion(
   apiUrl: string,
   systemPrompt: string,
   conversationId: number,
-  connectionMode: OpenClawConnectionMode,
+  connectionMode: BrainConnectionMode,
   callbacks: {
     onToken: (fullText: string) => void
     onDone: (fullText: string) => void

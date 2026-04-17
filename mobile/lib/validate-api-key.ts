@@ -5,7 +5,7 @@ export type ValidationResult = {
   error?: string
 }
 
-export type Provider = 'openclaw' | 'elevenlabs' | 'deepgram' | 'openai_tts' | 'vapi'
+export type Provider = 'brain' | 'elevenlabs' | 'deepgram' | 'openai_tts' | 'vapi'
 
 export async function validateApiKey(
   provider: Provider,
@@ -17,8 +17,8 @@ export async function validateApiKey(
   }
 
   switch (provider) {
-    case 'openclaw':
-      return validateOpenClaw(apiKey, apiUrl)
+    case 'brain':
+      return validateBrainAgent(apiKey, apiUrl)
     case 'elevenlabs':
       return validateElevenLabs(apiKey)
     case 'deepgram':
@@ -34,7 +34,7 @@ export async function validateApiKey(
 
 // --- Validation functions ---
 
-async function validateOpenClaw(
+async function validateBrainAgent(
   apiKey: string,
   apiUrl?: string,
 ): Promise<ValidationResult> {

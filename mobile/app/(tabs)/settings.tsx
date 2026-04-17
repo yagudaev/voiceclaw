@@ -4,7 +4,7 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
-import type { OpenClawConnectionMode } from '@/lib/chat'
+import type { BrainConnectionMode } from '@/lib/chat'
 import { connectPlugin, disconnectPlugin, getPluginStatus, addPluginStatusListener, type PluginConnectionStatus } from '@/lib/plugin-completion'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
@@ -58,12 +58,12 @@ export default function SettingsScreen() {
   const [vapiPublicKey, setVapiPublicKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [defaultModel, setDefaultModel] = useState('openclaw:voice')
-  const [openclawApiKey, setOpenclawApiKey] = useState('')
-  const [openclawApiUrl, setOpenclawApiUrl] = useState('')
+  const [brainApiKey, setBrainApiKey] = useState('')
+  const [brainApiUrl, setBrainApiUrl] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.')
 
-  // OpenClaw connection mode
-  const [connectionMode, setConnectionMode] = useState<OpenClawConnectionMode>('http')
+  // Brain agent connection mode
+  const [connectionMode, setConnectionMode] = useState<BrainConnectionMode>('http')
   const [gatewayUrl, setGatewayUrl] = useState('')
   const [authToken, setAuthToken] = useState('')
   const [pluginStatus, setPluginStatus] = useState<PluginConnectionStatus>('disconnected')
@@ -110,14 +110,14 @@ export default function SettingsScreen() {
 
   // API key validation state
   const [validationStatus, setValidationStatus] = useState<Record<Provider, ValidationStatus>>({
-    openclaw: 'idle',
+    brain: 'idle',
     elevenlabs: 'idle',
     deepgram: 'idle',
     openai_tts: 'idle',
     vapi: 'idle',
   })
   const [validationErrors, setValidationErrors] = useState<Record<Provider, string | undefined>>({
-    openclaw: undefined,
+    brain: undefined,
     elevenlabs: undefined,
     deepgram: undefined,
     openai_tts: undefined,
@@ -184,18 +184,18 @@ export default function SettingsScreen() {
       const key = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
       const assistant = await getSetting('assistant_id')
       const model = await getSetting('default_model')
-      const ocKey = await getSetting('openclaw_api_key')
-      const ocUrl = await getSetting('openclaw_api_url')
+      const ocKey = (await getSetting('brain_api_key')) || (await getSetting('openclaw_api_key'))
+      const ocUrl = (await getSetting('brain_api_url')) || (await getSetting('openclaw_api_url'))
       if (key) setVapiPublicKey(key)
       if (assistant) setAssistantId(assistant)
       if (model) setDefaultModel(model)
-      if (ocKey) setOpenclawApiKey(ocKey)
-      if (ocUrl) setOpenclawApiUrl(ocUrl)
-      const cm = await getSetting('openclaw_connection_mode')
+      if (ocKey) setBrainApiKey(ocKey)
+      if (ocUrl) setBrainApiUrl(ocUrl)
+      const cm = (await getSetting('brain_connection_mode')) || (await getSetting('openclaw_connection_mode'))
       if (cm === 'http' || cm === 'plugin') setConnectionMode(cm)
-      const gw = await getSetting('openclaw_gateway_url')
+      const gw = (await getSetting('brain_gateway_url')) || (await getSetting('openclaw_gateway_url'))
       if (gw) setGatewayUrl(gw)
-      const at = await getSetting('openclaw_auth_token')
+      const at = (await getSetting('brain_auth_token')) || (await getSetting('openclaw_auth_token'))
       if (at) setAuthToken(at)
       const sp = await getSetting('system_prompt')
       if (sp) setSystemPrompt(sp)
@@ -356,31 +356,31 @@ export default function SettingsScreen() {
     if (loadedRef.current) saveDebounced('default_model', v)
   }, [saveDebounced])
 
-  const updateOpenclawApiKey = useCallback((v: string) => {
-    setOpenclawApiKey(v)
-    resetValidation('openclaw')
-    if (loadedRef.current) saveDebounced('openclaw_api_key', v)
+  const updateBrainApiKey = useCallback((v: string) => {
+    setBrainApiKey(v)
+    resetValidation('brain')
+    if (loadedRef.current) saveDebounced('brain_api_key', v)
   }, [saveDebounced, resetValidation])
 
-  const updateOpenclawApiUrl = useCallback((v: string) => {
-    setOpenclawApiUrl(v)
-    resetValidation('openclaw')
-    if (loadedRef.current) saveDebounced('openclaw_api_url', v)
+  const updateBrainApiUrl = useCallback((v: string) => {
+    setBrainApiUrl(v)
+    resetValidation('brain')
+    if (loadedRef.current) saveDebounced('brain_api_url', v)
   }, [saveDebounced, resetValidation])
 
-  const updateConnectionMode = useCallback((v: OpenClawConnectionMode) => {
+  const updateConnectionMode = useCallback((v: BrainConnectionMode) => {
     setConnectionMode(v)
-    if (loadedRef.current) saveImmediate('openclaw_connection_mode', v)
+    if (loadedRef.current) saveImmediate('brain_connection_mode', v)
   }, [saveImmediate])
 
   const updateGatewayUrl = useCallback((v: string) => {
     setGatewayUrl(v)
-    if (loadedRef.current) saveDebounced('openclaw_gateway_url', v)
+    if (loadedRef.current) saveDebounced('brain_gateway_url', v)
   }, [saveDebounced])
 
   const updateAuthToken = useCallback((v: string) => {
     setAuthToken(v)
-    if (loadedRef.current) saveDebounced('openclaw_auth_token', v)
+    if (loadedRef.current) saveDebounced('brain_auth_token', v)
   }, [saveDebounced])
 
   const updateSystemPrompt = useCallback((v: string) => {
@@ -718,8 +718,8 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        {voiceMode !== 'realtime' && <Card testID="openclaw-config-card" className="gap-4 p-4">
-          <Text className="text-lg font-semibold text-foreground">OpenClaw Configuration</Text>
+        {voiceMode !== 'realtime' && <Card testID="brain-config-card" className="gap-4 p-4">
+          <Text className="text-lg font-semibold text-foreground">Brain Agent Configuration</Text>
 
           <View className="gap-2">
             <Text className="text-sm text-muted-foreground">Connection Mode</Text>
@@ -739,8 +739,8 @@ export default function SettingsScreen() {
                 <Text className="text-sm text-muted-foreground">API URL</Text>
                 <Input
                   placeholder="https://your-server.com/v1/chat/completions"
-                  value={openclawApiUrl}
-                  onChangeText={updateOpenclawApiUrl}
+                  value={brainApiUrl}
+                  onChangeText={updateBrainApiUrl}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="url"
@@ -750,12 +750,12 @@ export default function SettingsScreen() {
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">API Key</Text>
                 <SecretInput
-                  value={openclawApiKey}
-                  onChangeText={updateOpenclawApiKey}
-                  placeholder="Enter your OpenClaw API key"
-                  validationStatus={validationStatus.openclaw}
-                  validationError={validationErrors.openclaw}
-                  onTest={() => testApiKey('openclaw', openclawApiKey, openclawApiUrl)}
+                  value={brainApiKey}
+                  onChangeText={updateBrainApiKey}
+                  placeholder="Enter your brain agent API key"
+                  validationStatus={validationStatus.brain}
+                  validationError={validationErrors.brain}
+                  onTest={() => testApiKey('brain', brainApiKey, brainApiUrl)}
                 />
               </View>
             </>
@@ -806,8 +806,8 @@ export default function SettingsScreen() {
               <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
                 <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup Instructions</Text>
                 <Text className="text-xs leading-5 text-muted-foreground">
-                  1. Install the OpenClaw plugin: see openclaw-plugin/ in the repo{'\n'}
-                  2. Start the OpenClaw gateway on your machine with the plugin enabled{'\n'}
+                  1. Install the brain agent plugin: see openclaw-plugin/ in the repo{'\n'}
+                  2. Start the brain agent gateway on your machine with the plugin enabled{'\n'}
                   3. Enter the gateway base URL above (e.g. http://your-ip:8080){'\n'}
                   4. Tap Connect to verify the plugin health endpoint
                 </Text>

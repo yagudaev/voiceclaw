@@ -23,7 +23,7 @@ VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay serve
 |                  |
 |   - Session mgmt |   One RelaySession per WebSocket connection
 |   - Adapter      |   Provider-specific protocol translation
-|   - Brain agent  |   Async tool calls via OpenClaw gateway
+|   - Brain agent  |   Async tool calls via brain agent gateway
 |   - Tracing      |   Langfuse OTEL integration
 +--------+---------+
          |
@@ -131,10 +131,10 @@ The brain agent gives the voice AI capabilities beyond conversation -- web searc
 [AI Model] -- tool call: ask_brain --> [Relay Session]
                                            |
                                            | 1. Immediately return "searching" to unblock AI
-                                           | 2. POST /v1/chat/completions to OpenClaw gateway
+                                           | 2. POST /v1/chat/completions to brain agent gateway
                                            |
                                            v
-                                    [OpenClaw Gateway]
+                                    [Brain Agent Gateway]
                                            |
                                            | SSE streaming response
                                            | (step_complete events for progress)
