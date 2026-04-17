@@ -18,6 +18,12 @@ mobile/build/
 .idea/
 .vscode/
 
+# Playwright MCP scratch output
+.playwright-mcp/
+
+# Expo scratch
+.expo/
+
 # Claude Code worktrees
 .claude/worktrees/
 
