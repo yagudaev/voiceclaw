@@ -110,7 +110,7 @@ export default function OptionB() {
 
 function HeroSection() {
   return (
-    <section className="relative border-b border-[var(--line-strong)] px-6 py-14 sm:px-10 md:px-16 md:py-20">
+    <section className="relative isolate border-b border-[var(--line-strong)] px-6 py-14 sm:px-10 md:px-16 md:py-20">
       <SectionRules />
       <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,1.1fr)_380px] lg:gap-16">
         <div>
@@ -824,7 +824,7 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section className="relative border-b border-[var(--line-strong)] px-6 py-14 sm:px-10 md:px-16 md:py-20">
+    <section className="relative isolate border-b border-[var(--line-strong)] px-6 py-14 sm:px-10 md:px-16 md:py-20">
       <SectionRules />
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-8 xl:grid-cols-[260px_minmax(0,1fr)] xl:gap-12">
