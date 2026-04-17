@@ -1,24 +1,117 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot config for the VoiceClaw monorepo.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
+
 updates:
+  # Root workspace
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      root-minor:
+        update-types: ["minor", "patch"]
+      root-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # Mobile (Expo / React Native)
   - package-ecosystem: "npm"
     directory: "/mobile"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      mobile-minor:
+        update-types: ["minor", "patch"]
+      mobile-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # Relay server (Node)
   - package-ecosystem: "npm"
     directory: "/relay-server"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      relay-minor:
+        update-types: ["minor", "patch"]
+      relay-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # Desktop (Electron)
   - package-ecosystem: "npm"
     directory: "/desktop"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      desktop-minor:
+        update-types: ["minor", "patch"]
+      desktop-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
+  # Website (Next.js / marketing)
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      website-minor:
+        update-types: ["minor", "patch"]
+      website-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # Docs site
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docs-minor:
+        update-types: ["minor", "patch"]
+      docs-major:
+        update-types: ["major"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
