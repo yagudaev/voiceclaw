@@ -64,23 +64,89 @@ function Hero() {
 }
 
 function BackgroundWaveform() {
-  const bars = Array.from({ length: 120 }, (_, i) => i)
+  const width = 1600
+  const height = 520
+  const step = 8
+  const points: string[] = []
+  for (let x = 0; x <= width; x += step) {
+    const t = x / width
+    const y =
+      height / 2 +
+      Math.sin(t * 26) * 18 +
+      Math.sin(t * 9.3 + 1.1) * 36 +
+      Math.sin(t * 3.1) * 10
+    points.push(`${x.toFixed(1)},${y.toFixed(1)}`)
+  }
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 flex items-center gap-[2px] opacity-[0.12]"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
     >
-      {bars.map((i) => {
-        const seed = (Math.sin(i * 0.55) + Math.sin(i * 0.17) * 0.4) * 0.5 + 0.5
-        const h = 6 + seed * 100
-        return (
-          <div
-            key={i}
-            className="w-[6px] shrink-0 rounded-full bg-gradient-to-t from-[#5BE1E6] to-[#9AF1FF]"
-            style={{ height: `${h}%` }}
-          />
-        )
-      })}
+      {/* Grid — horizon scope */}
+      <svg
+        className="absolute inset-0 h-full w-full"
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${width} ${height}`}
+      >
+        <g opacity="0.08">
+          {Array.from({ length: 13 }).map((_, i) => (
+            <line
+              key={`v-${i}`}
+              x1={(width / 12) * i}
+              x2={(width / 12) * i}
+              y1={0}
+              y2={height}
+              stroke="#5BE1E6"
+              strokeWidth="1"
+            />
+          ))}
+          {Array.from({ length: 7 }).map((_, i) => (
+            <line
+              key={`h-${i}`}
+              x1={0}
+              x2={width}
+              y1={(height / 6) * i}
+              y2={(height / 6) * i}
+              stroke="#5BE1E6"
+              strokeWidth="1"
+            />
+          ))}
+        </g>
+        {/* Horizon axis */}
+        <line
+          x1={0}
+          x2={width}
+          y1={height / 2}
+          y2={height / 2}
+          stroke="#5BE1E6"
+          strokeWidth="1"
+          strokeDasharray="2 6"
+          opacity="0.35"
+        />
+        {/* The signal itself — single thin trace */}
+        <polyline
+          points={points.join(" ")}
+          fill="none"
+          stroke="#5BE1E6"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.55"
+        />
+      </svg>
+      {/* Axis labels — make it read as an instrument, not wallpaper */}
+      <div className="absolute left-8 top-6 font-mono text-[9px] uppercase tracking-[0.3em] text-[#5BE1E6]/40">
+        +1.0 dB
+      </div>
+      <div className="absolute left-8 bottom-6 font-mono text-[9px] uppercase tracking-[0.3em] text-[#5BE1E6]/40">
+        −1.0 dB
+      </div>
+      <div className="absolute right-8 bottom-6 font-mono text-[9px] uppercase tracking-[0.3em] text-[#5BE1E6]/40">
+        t / 2.6 s
+      </div>
+      <div className="absolute right-8 top-6 font-mono text-[9px] uppercase tracking-[0.3em] text-[#5BE1E6]/40">
+        live · 48 kHz
+      </div>
     </div>
   )
 }
@@ -638,21 +704,22 @@ function AppIconArt({ size = 192 }: { size?: number }) {
       aria-hidden
     >
       <defs>
-        <linearGradient id="bg-a" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stopColor="#0A0E14" />
-          <stop offset="100%" stopColor="#122033" />
-        </linearGradient>
-        <radialGradient id="glow-a" cx="0.5" cy="0.5" r="0.6">
-          <stop offset="0%" stopColor="#5BE1E6" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#5BE1E6" stopOpacity="0" />
-        </radialGradient>
         <linearGradient id="mark-grad" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="#9AF1FF" />
           <stop offset="100%" stopColor="#5BE1E6" />
         </linearGradient>
       </defs>
-      <rect width="192" height="192" fill="url(#bg-a)" />
-      <circle cx="96" cy="96" r="80" fill="url(#glow-a)" />
+      {/* Flat instrument ground — no radial glow */}
+      <rect width="192" height="192" fill="#0A0E14" />
+      {/* Faint calibration grid — 16px pitch */}
+      <g stroke="#5BE1E6" strokeWidth="0.5" opacity="0.08">
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`gv-${i}`} x1={16 + i * 16} x2={16 + i * 16} y1={16} y2={176} />
+        ))}
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`gh-${i}`} x1={16} x2={176} y1={16 + i * 16} y2={16 + i * 16} />
+        ))}
+      </g>
       {/* left bracket */}
       <path
         d="M56 54 L36 96 L56 138"
@@ -1287,18 +1354,15 @@ function LandingMock() {
       </div>
 
       <div className="relative px-12 py-24">
-        <div className="pointer-events-none absolute inset-0 flex items-center opacity-[0.05]">
-          {Array.from({ length: 80 }).map((_, i) => {
-            const seed =
-              (Math.sin(i * 0.6) + Math.sin(i * 0.21) * 0.4) * 0.5 + 0.5
-            return (
-              <div
-                key={i}
-                className="mx-[2px] w-[4px] rounded-full bg-[#5BE1E6]"
-                style={{ height: `${6 + seed * 180}px` }}
-              />
-            )
-          })}
+        {/* Instrument rules — a single calibrated horizon line instead of wallpaper bars */}
+        <div className="pointer-events-none absolute inset-x-12 top-1/2 flex -translate-y-1/2 items-center gap-3 opacity-30">
+          <span className="font-mono text-[9px] uppercase tracking-[0.28em] text-[#5BE1E6]/60">
+            baseline
+          </span>
+          <span className="h-px flex-1 bg-[linear-gradient(to_right,transparent,#5BE1E6_50%,transparent)]" />
+          <span className="font-mono text-[9px] uppercase tracking-[0.28em] text-[#5BE1E6]/60">
+            + 0.0 dB
+          </span>
         </div>
         <div className="relative max-w-4xl">
           <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-[#5BE1E6]">
