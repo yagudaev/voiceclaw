@@ -1,0 +1,96 @@
+---
+title: Connecting OpenClaw
+description: How to use OpenClaw as your VoiceClaw brain agent
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+[OpenClaw](https://github.com/yagudaev/openclaw) is an open-source AI agent framework that gives your voice assistant superpowers -- web search, calendar management, task tracking, long-term memory, and more. VoiceClaw acts as a thin voice layer on top of OpenClaw: you bring the agent, VoiceClaw gives it a voice.
+
+When the voice model needs help (web lookups, scheduling, memory recall), it calls the `ask_brain` tool. The relay server forwards that query to your OpenClaw instance via the standard `/v1/chat/completions` endpoint with SSE streaming.
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) or Node.js 20+
+- OpenClaw installed and running
+- VoiceClaw relay server cloned and ready
+
+## Setup
+
+<Steps>
+
+1. **Install and run OpenClaw**
+
+   Follow the [OpenClaw README](https://github.com/yagudaev/openclaw) to get it running locally. By default it starts a gateway on port `18789`.
+
+   ```bash
+   # Example with Docker
+   docker run -d -p 18789:18789 openclaw/openclaw
+   ```
+
+   Once running, find your auth token:
+
+   ```bash
+   cat ~/.openclaw/openclaw.json | grep token
+   ```
+
+2. **Configure the VoiceClaw relay server**
+
+   In your relay server `.env` file, point at your OpenClaw instance:
+
+   ```bash
+   BRAIN_GATEWAY_URL=http://localhost:18789
+   BRAIN_GATEWAY_AUTH_TOKEN=<your-openclaw-token>
+   ```
+
+   <Aside type="note">
+   If you are migrating from an older VoiceClaw version, note that `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_AUTH_TOKEN` have been renamed to `BRAIN_GATEWAY_URL` and `BRAIN_GATEWAY_AUTH_TOKEN`.
+   </Aside>
+
+3. **Start the relay server**
+
+   ```bash
+   cd relay-server
+   yarn dev
+   ```
+
+   You should see a log line confirming the brain agent is reachable when you make your first voice query that triggers `ask_brain`.
+
+4. **Connect from a client**
+
+   Open the desktop or mobile app, make sure `brainAgent` is set to `"enabled"` in the session config, and start talking. Ask something like "What's on my calendar today?" -- the voice model will call `ask_brain`, the relay will hit OpenClaw, and you will hear the answer spoken back.
+
+</Steps>
+
+## System prompt for your OpenClaw agent
+
+Paste this into your OpenClaw agent's system instructions so it knows how to behave as a voice backend:
+
+```text
+You are the brain behind a voice assistant called VoiceClaw.
+
+You receive questions via the ask_brain tool when the realtime voice model
+needs help -- web search, calendar lookups, task management, memory recall,
+file operations, or any knowledge beyond basic conversation.
+
+Guidelines:
+- Respond concisely. Your answers will be spoken aloud, not read on a screen.
+- Keep responses to 2-3 sentences when possible. The user is listening.
+- Skip formatting (no markdown, no bullet lists, no headers). Plain text only.
+- Lead with the answer, then add context if needed.
+- If you performed an action (created a task, added a calendar event), confirm
+  it in one sentence.
+- If you do not know something, say so briefly rather than guessing.
+- You have access to tools like web search, calendar, memory, and file
+  operations. Use them freely -- you are the capable backend, the voice model
+  is just the interface.
+```
+
+## How it works under the hood
+
+1. The voice model (Gemini or OpenAI) decides it needs help and calls the `ask_brain` tool with a query.
+2. The relay immediately returns `{"status": "searching"}` so the voice model can say something like "Let me check on that..." while the brain works.
+3. The relay sends a `POST /v1/chat/completions` request to OpenClaw with SSE streaming enabled.
+4. As OpenClaw works, it emits `step_complete` events that the relay forwards to the client as `tool.progress` messages (useful for showing live search status in the UI).
+5. When the final answer arrives, the relay injects it back into the voice conversation via `injectContext()`, and the AI speaks the result naturally.
+6. On disconnect, the full conversation transcript is synced to OpenClaw for long-term memory.
