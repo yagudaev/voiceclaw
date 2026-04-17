@@ -102,8 +102,6 @@ async function runReconnectTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -174,8 +172,6 @@ async function runUnrecoverableCloseTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -250,8 +246,6 @@ async function runReconnectRetryTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -374,8 +368,6 @@ async function runDeferredRotationMidToolCallTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -471,8 +463,6 @@ async function runHardCloseMidToolCallTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -549,8 +539,6 @@ async function runSendQueueDrainTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -629,8 +617,6 @@ async function runClose1011WithHandleTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -692,8 +678,6 @@ async function runReconnectExhaustedTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -766,8 +750,6 @@ async function runChainedGoAwayTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -842,8 +824,6 @@ async function runResumedGoAwayBeforeFreshHandleTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -915,8 +895,6 @@ async function runQueueAcrossRetryTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
@@ -994,8 +972,6 @@ async function runControlOverflowTest() {
     voice: "Zephyr",
     apiKey: "test",
     brainAgent: "none",
-    openclawGatewayUrl: "http://localhost:18789",
-    openclawAuthToken: "test-token",
     deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
   }
 
