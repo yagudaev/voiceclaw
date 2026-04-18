@@ -51,6 +51,17 @@ submit; the build then shows up in TestFlight → iOS builds.
   so `git rev-list --count HEAD` produces a fresh number.
 - **Never edit `ios/` directly**: `prebuild --clean` wipes it. Changes
   go in `app.config.ts` or Expo config plugins under `plugins/`.
+- **SPM module map missing on archive** (`swift-numerics`, `Cmlx`, or
+  any Swift package): shows up as
+  `error: module map file '...swift-numerics/.../module.modulemap' not found`
+  → `** ARCHIVE FAILED **`. Happens after switching between Debug (dev
+  run) and Release (archive) builds because Xcode reuses stale SPM
+  build intermediates. Fix: delete this project's DerivedData and
+  retry:
+  ```bash
+  rm -rf ~/Library/Developer/Xcode/DerivedData/VoiceClaw-*
+  yarn ios:release:staging
+  ```
 
 ## Dev builds on a real device
 
