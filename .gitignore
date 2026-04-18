@@ -21,6 +21,11 @@ mobile/build/
 # Claude Code local data
 .claude/worktrees/
 .claude/projects/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
+# Yarn local config
+.yarnrc.yml
 
 # Dev logs
 logs/
