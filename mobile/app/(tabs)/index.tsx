@@ -713,7 +713,10 @@ export default function ChatScreen() {
     let callStarted = false
 
     try {
-      const voiceMode = (await getSetting('voice_mode')) || 'vapi'
+      const storedVoiceMode = await getSetting('voice_mode')
+      const voiceMode = storedVoiceMode === 'custom' || storedVoiceMode === 'vapi'
+        ? 'realtime'
+        : (storedVoiceMode || 'realtime')
 
       if (!conversationId) {
         console.warn('[Chat] No active conversation, cannot start call')
@@ -917,8 +920,8 @@ export default function ChatScreen() {
     if (!conversationId) return false
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
-    const voice = (await getSetting('realtime_voice')) || 'marin'
-    const model = (await getSetting('realtime_model')) || 'gpt-realtime-mini'
+    const voice = (await getSetting('realtime_voice')) || 'Zephyr'
+    const model = (await getSetting('realtime_model')) || 'gemini-3.1-flash-live-preview'
     const apiKey = await getSetting('realtime_api_key')
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
