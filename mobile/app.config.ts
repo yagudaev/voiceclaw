@@ -13,7 +13,12 @@ const VARIANT_CONFIG: Record<AppVariant, { displayName: string, bundleIdSuffix: 
 
 const variant = VARIANT_CONFIG[APP_VARIANT]
 const bundleId = `com.yagudaev.voiceclaw${variant.bundleIdSuffix}`
-const buildNumber = execSync('git rev-list --count HEAD').toString().trim()
+// Offset bumps past builds already submitted to App Store Connect before
+// we rewrote git history (filter-repo for secret scrub). Raw commit count
+// dropped below highest-accepted build #, which ASC rejects as duplicate.
+const BUILD_NUMBER_OFFSET = 50
+const commitCount = parseInt(execSync('git rev-list --count HEAD').toString().trim(), 10)
+const buildNumber = String(commitCount + BUILD_NUMBER_OFFSET)
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
