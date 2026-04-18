@@ -8,7 +8,9 @@
     "desktop",
     "docs",
     "tracing-collector",
-    "tracing-ui"
+    "tracing-ui",
+    "telegram-bot",
+    "telegram-miniapp"
   ],
   "scripts": {
     "dev": "concurrently --names mobile,web,server \"yarn dev:mobile\" \"yarn dev:web\" \"yarn dev:server\"",
@@ -37,7 +39,10 @@
     "dev:tracing-collector": "cd tracing-collector && yarn dev",
     "dev:tracing-ui": "cd tracing-ui && yarn dev",
     "build:tracing-collector": "cd tracing-collector && yarn build",
-    "build:tracing-ui": "cd tracing-ui && yarn build"
+    "build:tracing-ui": "cd tracing-ui && yarn build",
+    "dev:telegram-bot": "cd telegram-bot && yarn dev",
+    "dev:telegram-miniapp": "cd telegram-miniapp && yarn dev",
+    "build:telegram-miniapp": "cd telegram-miniapp && yarn build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

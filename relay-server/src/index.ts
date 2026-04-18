@@ -11,13 +11,55 @@ import { WebSocketServer } from "ws"
 import { RelaySession } from "./session.js"
 import { getTestPageHTML } from "./test-page.js"
 import { log, warn } from "./log.js"
+import { isTelegramAuthEnabled, issueTicket, verifyInitData } from "./telegram-auth.js"
 
 const PORT = parseInt(process.env.PORT ?? "8080", 10)
 
 const app = express()
 
+app.use(express.json({ limit: "32kb" }))
+
+app.use((req, res, next) => {
+  // Mini app is served from a different origin than the relay; allow the
+  // preflight + POST for /auth/telegram. Scoped narrowly to the auth endpoint.
+  if (req.path === "/auth/telegram") {
+    res.setHeader("Access-Control-Allow-Origin", "*")
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+    res.setHeader("Access-Control-Max-Age", "600")
+    if (req.method === "OPTIONS") {
+      res.status(204).end()
+      return
+    }
+  }
+  next()
+})
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" })
+})
+
+app.post("/auth/telegram", (req, res) => {
+  if (!isTelegramAuthEnabled()) {
+    res.status(404).json({ error: "telegram auth disabled" })
+    return
+  }
+  const initData = typeof req.body?.initData === "string" ? req.body.initData : null
+  if (!initData) {
+    res.status(400).json({ error: "missing initData" })
+    return
+  }
+  const user = verifyInitData(initData)
+  if (!user) {
+    res.status(401).json({ error: "invalid initData" })
+    return
+  }
+  const ticket = issueTicket(user.id)
+  res.json({
+    ticket,
+    sessionKey: `telegram:${user.id}`,
+    user: { id: user.id, username: user.username, firstName: user.firstName },
+  })
 })
 
 app.get("/test", (req, res) => {

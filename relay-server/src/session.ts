@@ -16,6 +16,7 @@ import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
 import { MediaCapture } from "./media/capture.js"
+import { verifyTicket } from "./telegram-auth.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
@@ -321,10 +322,22 @@ export class RelaySession {
       this.tracer.endSession()
     }
 
-    // Validate API key
+    // Validate API key — accept either the shared RELAY_API_KEY (desktop/mobile)
+    // or a short-lived Telegram ticket (mini app, minted by /auth/telegram).
     const expectedKey = process.env.RELAY_API_KEY
-    if (!config.apiKey || (expectedKey && config.apiKey !== expectedKey)) {
-      log(`[session:${this.id}] Auth failed — invalid API key`)
+    const isTicket = typeof config.apiKey === "string" && config.apiKey.startsWith("tgt.")
+    let authed = false
+    if (isTicket) {
+      const payload = verifyTicket(config.apiKey)
+      if (payload) {
+        authed = true
+        config.sessionKey = config.sessionKey ?? `telegram:${payload.tgUid}`
+      }
+    } else if (config.apiKey && (!expectedKey || config.apiKey === expectedKey)) {
+      authed = true
+    }
+    if (!authed) {
+      log(`[session:${this.id}] Auth failed — invalid credentials`)
       this.sendError("unauthorized", 401)
       this.ws.close()
       return
