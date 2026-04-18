@@ -123,8 +123,7 @@ export class GeminiAdapter implements ProviderAdapter {
         const reasonText = String(reason)
         log(`[gemini] WebSocket closed: ${code} ${reasonText}`)
         if (!settled) {
-          const detail = reasonText ? `: ${reasonText}` : ""
-          finish(new Error(`Gemini setup failed (${code})${detail}`))
+          finish(new Error(reasonText || "Gemini setup failed"))
           return
         }
         this.handleUpstreamClose(code)
