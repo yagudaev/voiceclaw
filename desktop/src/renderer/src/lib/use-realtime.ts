@@ -219,6 +219,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             await engine.setOutputDevice(config.outputDeviceId)
           }
         } catch (err) {
+          // If the engine was torn down while startCapture was awaiting (e.g. a
+          // relay error fired onError → stop() in the meantime), the throw is a
+          // consequence of the prior error — don't overwrite the real message.
+          if (engineRef.current !== engine) return
           console.error('[useRealtime] Failed to start audio capture:', err)
           callbacksRef.current.onError?.('Failed to access microphone', 0)
         }

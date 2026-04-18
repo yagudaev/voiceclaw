@@ -166,10 +166,13 @@ export function ChatPage() {
       setConnectionError(message)
       setIsConnecting(false)
       setIsCallActive(false)
+      realtimeRef.current?.stop()
     },
   }
 
   const realtime = useRealtime(realtimeCallbacks)
+  const realtimeRef = useRef(realtime)
+  realtimeRef.current = realtime
 
   const startCall = useCallback(async () => {
     setConnectionError('')
