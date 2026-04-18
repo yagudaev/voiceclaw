@@ -80,7 +80,7 @@ export default function SettingsScreen() {
 
   // Realtime mode settings
   const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
-  const [realtimeVoice, setRealtimeVoice] = useState<string>('marin')
+  const [realtimeVoice, setRealtimeVoice] = useState<string>('Zephyr')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
   const [realtimeModel, setRealtimeModel] = useState<RealtimeModel>('gemini-3.1-flash-live-preview')
@@ -206,7 +206,12 @@ export default function SettingsScreen() {
 
       // Load voice pipeline settings
       const vm = await getSetting('voice_mode')
-      if (vm === 'vapi' || vm === 'custom' || vm === 'realtime') setVoiceMode(vm)
+      if (vm !== 'realtime') {
+        setVoiceMode('realtime')
+        await setSetting('voice_mode', 'realtime')
+      } else {
+        setVoiceMode('realtime')
+      }
       const rtUrl = await getSetting('realtime_server_url')
       if (rtUrl) setRealtimeServerUrl(rtUrl)
       const rtVoice = await getSetting('realtime_voice')
@@ -325,25 +330,37 @@ export default function SettingsScreen() {
   const testRealtimeConnection = useCallback(async () => {
     setRealtimeTestStatus('testing')
     setRealtimeTestError('')
-    try {
-      // Derive HTTP URL from WebSocket URL: ws:// → http://, wss:// → https://, strip /ws path
-      const httpUrl = realtimeServerUrl
-        .replace(/^wss:\/\//, 'https://')
-        .replace(/^ws:\/\//, 'http://')
-        .replace(/\/ws\/?$/, '')
-      const res = await fetch(`${httpUrl}/health`, { method: 'GET' })
-      if (res.ok) {
-        const body = await res.json()
-        if (body.status === 'ok') {
-          setRealtimeTestStatus('ok')
-          return
+    const wsUrl = realtimeServerUrl
+    const result = await new Promise<{ ok: boolean; detail: string }>((resolve) => {
+      try {
+        const ws = new WebSocket(wsUrl)
+        const timer = setTimeout(() => {
+          try { ws.close() } catch {}
+          resolve({ ok: false, detail: 'Timeout (8s) — no response from server' })
+        }, 8000)
+        ws.onopen = () => {
+          clearTimeout(timer)
+          try { ws.close() } catch {}
+          resolve({ ok: true, detail: 'ok' })
         }
+        ws.onerror = (e: Event & { message?: string }) => {
+          clearTimeout(timer)
+          resolve({ ok: false, detail: `WebSocket error: ${e?.message || 'connection refused or unreachable'}` })
+        }
+        ws.onclose = (e: CloseEvent) => {
+          clearTimeout(timer)
+          resolve({ ok: false, detail: `WebSocket closed before open (code=${e.code}${e.reason ? ` reason=${e.reason}` : ''})` })
+        }
+      } catch (e) {
+        resolve({ ok: false, detail: `Threw: ${e instanceof Error ? e.message : String(e)}` })
       }
+    })
+    console.log('[relay-test] ws:', result)
+    if (result.ok) {
+      setRealtimeTestStatus('ok')
+    } else {
       setRealtimeTestStatus('error')
-      setRealtimeTestError(`Server returned ${res.status}`)
-    } catch (err) {
-      setRealtimeTestStatus('error')
-      setRealtimeTestError(err instanceof Error ? err.message : 'Connection failed')
+      setRealtimeTestError(`${result.detail}\nurl=${wsUrl}`)
     }
   }, [realtimeServerUrl])
 
@@ -454,119 +471,7 @@ export default function SettingsScreen() {
         <Card testID="voice-pipeline-card" className="gap-4 p-4">
           <Text className="text-lg font-semibold text-foreground">Voice Pipeline</Text>
 
-          <View className="gap-2">
-            <Text className="text-sm text-muted-foreground">Voice Mode</Text>
-            <SegmentedControl
-              options={[
-                { label: 'Realtime', value: 'realtime' as const },
-                { label: 'Custom', value: 'custom' as const },
-                { label: 'Vapi', value: 'vapi' as const },
-              ]}
-              value={voiceMode}
-              onChange={updateVoiceMode}
-            />
-          </View>
-
-          {voiceMode === 'custom' && (
-            <>
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">STT Provider</Text>
-                <SegmentedControl
-                  options={[
-                    { label: 'Apple On-Device', value: 'apple' as const },
-                    { label: 'Deepgram Cloud', value: 'deepgram' as const },
-                  ]}
-                  value={sttProvider}
-                  onChange={updateSttProvider}
-                />
-              </View>
-
-              {sttProvider === 'deepgram' && (
-                <View className="gap-2">
-                  <Text className="text-sm text-muted-foreground">Deepgram API Key</Text>
-                  <SecretInput
-                    value={deepgramApiKey}
-                    onChangeText={updateDeepgramApiKey}
-                    placeholder="Enter your Deepgram API key"
-                    validationStatus={validationStatus.deepgram}
-                    validationError={validationErrors.deepgram}
-                    onTest={() => testApiKey('deepgram', deepgramApiKey)}
-                  />
-                </View>
-              )}
-
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">TTS Provider</Text>
-                <OptionGroup
-                  options={[
-                    { label: 'Apple Zoe On-Device', value: 'apple' as const },
-                    { label: 'Kokoro On-Device (iOS 18+)', value: 'kokoro' as const },
-                    { label: 'ElevenLabs Cloud', value: 'elevenlabs' as const },
-                    { label: 'OpenAI TTS Cloud', value: 'openai' as const },
-                  ]}
-                  value={ttsProvider}
-                  onChange={updateTtsProvider}
-                />
-              </View>
-
-              {ttsProvider === 'kokoro' && (
-                <KokoroModelStatus status={kokoroStatus} onDownload={downloadKokoroModel} onRetry={checkKokoroStatus} />
-              )}
-
-              {ttsProvider === 'elevenlabs' && (
-                <>
-                  <View className="gap-2">
-                    <Text className="text-sm text-muted-foreground">ElevenLabs API Key</Text>
-                    <SecretInput
-                      value={elevenlabsApiKey}
-                      onChangeText={updateElevenlabsApiKey}
-                      placeholder="Enter your ElevenLabs API key"
-                      validationStatus={validationStatus.elevenlabs}
-                      validationError={validationErrors.elevenlabs}
-                      onTest={() => testApiKey('elevenlabs', elevenlabsApiKey)}
-                    />
-                  </View>
-                  <View className="gap-2">
-                    <Text className="text-sm text-muted-foreground">ElevenLabs Voice ID</Text>
-                    <Input
-                      placeholder="Awx8TeMHHpDzbm42nIB6"
-                      value={elevenlabsVoiceId}
-                      onChangeText={updateElevenlabsVoiceId}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  </View>
-                </>
-              )}
-
-              {ttsProvider === 'openai' && (
-                <>
-                  <View className="gap-2">
-                    <Text className="text-sm text-muted-foreground">OpenAI TTS API Key</Text>
-                    <SecretInput
-                      value={openaiTtsApiKey}
-                      onChangeText={updateOpenaiTtsApiKey}
-                      placeholder="Enter your OpenAI API key"
-                      validationStatus={validationStatus.openai_tts}
-                      validationError={validationErrors.openai_tts}
-                      onTest={() => testApiKey('openai_tts', openaiTtsApiKey)}
-                    />
-                  </View>
-                  <View className="gap-2">
-                    <Text className="text-sm text-muted-foreground">OpenAI TTS Voice</Text>
-                    <OptionGroup
-                      options={OPENAI_TTS_VOICES.map((v) => ({ label: v, value: v }))}
-                      value={openaiTtsVoice}
-                      onChange={updateOpenaiTtsVoice}
-                    />
-                  </View>
-                </>
-              )}
-            </>
-          )}
-
-          {voiceMode === 'realtime' && (
-            <>
+          <>
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">Relay Server URL</Text>
                 <Input
@@ -592,9 +497,9 @@ export default function SettingsScreen() {
                 <Text className="text-sm text-muted-foreground">Model</Text>
                 <OptionGroup
                   options={[
-                    { label: 'GPT Realtime Mini', value: 'gpt-realtime-mini' as const },
-                    { label: 'GPT Realtime 1.5', value: 'gpt-realtime-1.5' as const },
                     { label: 'Gemini 3.1 Flash Live', value: 'gemini-3.1-flash-live-preview' as const },
+                    { label: 'GPT Realtime Mini', value: 'gpt-realtime-mini' as const, disabled: true, badge: 'Coming Soon' },
+                    { label: 'GPT Realtime 1.5', value: 'gpt-realtime-1.5' as const, disabled: true, badge: 'Coming Soon' },
                   ]}
                   value={realtimeModel}
                   onChange={updateRealtimeModel}
@@ -644,36 +549,38 @@ export default function SettingsScreen() {
                 </Text>
               </View>
 
-              <View className={`flex-row items-center justify-between rounded-lg border px-3 py-2 ${
+              <View className={`flex-row items-center gap-2 rounded-lg border px-3 py-2 ${
                 realtimeTestStatus === 'ok' ? 'border-green-500/30 bg-green-500/5'
                 : realtimeTestStatus === 'error' ? 'border-destructive/50 bg-destructive/5'
                 : 'border-input'
               }`}>
-                <View className="flex-row items-center gap-2">
-                  {realtimeTestStatus === 'testing' ? (
-                    <ActivityIndicator size="small" color="#888" />
-                  ) : (
-                    <Icon
-                      as={realtimeTestStatus === 'ok' ? WifiIcon : WifiOffIcon}
-                      size={16}
-                      className={
-                        realtimeTestStatus === 'ok' ? 'text-green-500'
-                        : realtimeTestStatus === 'error' ? 'text-destructive'
-                        : 'text-muted-foreground'
-                      }
-                    />
-                  )}
-                  <Text className={`text-sm ${
+                {realtimeTestStatus === 'testing' ? (
+                  <ActivityIndicator size="small" color="#888" />
+                ) : (
+                  <Icon
+                    as={realtimeTestStatus === 'ok' ? WifiIcon : WifiOffIcon}
+                    size={16}
+                    className={
+                      realtimeTestStatus === 'ok' ? 'text-green-500'
+                      : realtimeTestStatus === 'error' ? 'text-destructive'
+                      : 'text-muted-foreground'
+                    }
+                  />
+                )}
+                <Text
+                  className={`flex-1 text-sm ${
                     realtimeTestStatus === 'ok' ? 'text-green-500'
                     : realtimeTestStatus === 'error' ? 'text-destructive'
                     : 'text-muted-foreground'
-                  }`}>
-                    {realtimeTestStatus === 'ok' ? 'Connected'
-                    : realtimeTestStatus === 'testing' ? 'Testing...'
-                    : realtimeTestStatus === 'error' ? realtimeTestError
-                    : 'Not tested'}
-                  </Text>
-                </View>
+                  }`}
+                  numberOfLines={12}
+                  selectable
+                >
+                  {realtimeTestStatus === 'ok' ? 'Connected'
+                  : realtimeTestStatus === 'testing' ? 'Testing...'
+                  : realtimeTestStatus === 'error' ? realtimeTestError
+                  : 'Not tested'}
+                </Text>
                 <Pressable
                   onPress={testRealtimeConnection}
                   disabled={realtimeTestStatus === 'testing'}
@@ -682,157 +589,8 @@ export default function SettingsScreen() {
                   <Text className="text-sm font-medium text-primary">Test</Text>
                 </Pressable>
               </View>
-            </>
-          )}
+          </>
         </Card>
-
-        {voiceMode === 'vapi' && (
-          <Card testID="vapi-config-card" className="gap-4 p-4">
-            <Text className="text-lg font-semibold text-foreground">Vapi Configuration</Text>
-
-            <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">Public Key</Text>
-              <SecretInput
-                value={vapiPublicKey}
-                onChangeText={updateVapiPublicKey}
-                placeholder="Enter your Vapi public key"
-              />
-            </View>
-
-            <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">Assistant ID</Text>
-              <Input
-                placeholder="Enter your Vapi Assistant ID"
-                value={assistantId}
-                onChangeText={updateAssistantId}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">Default Model</Text>
-              <Input
-                placeholder="e.g. gpt-4o, claude-3-opus"
-                value={defaultModel}
-                onChangeText={updateDefaultModel}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">System Prompt</Text>
-              <TextInput
-                className="min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-base text-foreground dark:bg-input/30"
-                placeholder="Default: Keep responses concise. Use markdown for formatting and images when appropriate."
-                placeholderTextColor="#888"
-                value={systemPrompt}
-                onChangeText={updateSystemPrompt}
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          </Card>
-        )}
-
-        {voiceMode !== 'realtime' && <Card testID="brain-config-card" className="gap-4 p-4">
-          <Text className="text-lg font-semibold text-foreground">Brain Agent Configuration</Text>
-
-          <View className="gap-2">
-            <Text className="text-sm text-muted-foreground">Connection Mode</Text>
-            <SegmentedControl
-              options={[
-                { label: 'HTTP', value: 'http' as const },
-                { label: 'Plugin', value: 'plugin' as const },
-              ]}
-              value={connectionMode}
-              onChange={updateConnectionMode}
-            />
-          </View>
-
-          {connectionMode === 'http' && (
-            <>
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">API URL</Text>
-                <Input
-                  placeholder="https://your-server.com/v1/chat/completions"
-                  value={brainApiUrl}
-                  onChangeText={updateBrainApiUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
-              </View>
-
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">API Key</Text>
-                <SecretInput
-                  value={brainApiKey}
-                  onChangeText={updateBrainApiKey}
-                  placeholder="Enter your brain agent API key"
-                  validationStatus={validationStatus.brain}
-                  validationError={validationErrors.brain}
-                  onTest={() => testApiKey('brain', brainApiKey, brainApiUrl)}
-                />
-              </View>
-            </>
-          )}
-
-          {connectionMode === 'http' && (
-            <View className="gap-2">
-              <Text className="text-sm text-muted-foreground">Model</Text>
-              <Input
-                placeholder="e.g. openclaw:voice"
-                value={defaultModel}
-                onChangeText={updateDefaultModel}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          )}
-
-          {connectionMode === 'plugin' && (
-            <>
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">Gateway Base URL</Text>
-                <Input
-                  placeholder="http://your-mac.local:8080"
-                  value={gatewayUrl}
-                  onChangeText={updateGatewayUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
-              </View>
-
-              <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">Plugin Auth Token (optional)</Text>
-                <SecretInput
-                  value={authToken}
-                  onChangeText={updateAuthToken}
-                  placeholder="Enter plugin auth token"
-                />
-              </View>
-
-              <PluginConnectionStatusBar
-                status={pluginStatus}
-                onConnect={() => connectPlugin(gatewayUrl, authToken)}
-                onDisconnect={disconnectPlugin}
-              />
-
-              <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
-                <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup Instructions</Text>
-                <Text className="text-xs leading-5 text-muted-foreground">
-                  1. Install the brain agent plugin: see openclaw-plugin/ in the repo{'\n'}
-                  2. Start the brain agent gateway on your machine with the plugin enabled{'\n'}
-                  3. Enter the gateway base URL above (e.g. http://your-ip:8080){'\n'}
-                  4. Tap Connect to verify the plugin health endpoint
-                </Text>
-              </View>
-            </>
-          )}
-        </Card>}
 
         <Card testID="debug-mode-card" className="gap-2 p-4">
           <View className="flex-row items-center justify-between">
@@ -1120,38 +878,48 @@ function OptionGroup<T extends string>({
   value,
   onChange,
 }: {
-  options: Array<{ label: string, value: T }>
+  options: Array<{ label: string, value: T, disabled?: boolean, badge?: string }>
   value: T
   onChange: (value: T) => void
 }) {
   return (
     <View className="gap-1">
-      {options.map((option) => (
-        <Pressable
-          key={option.value}
-          onPress={() => onChange(option.value)}
-          className={`flex-row items-center rounded-lg px-3 py-2 ${
-            value === option.value ? 'border border-primary bg-primary/10' : 'border border-input'
-          }`}
-        >
-          <View
-            className={`mr-3 h-4 w-4 items-center justify-center rounded-full border ${
-              value === option.value ? 'border-primary' : 'border-muted-foreground'
-            }`}
+      {options.map((option) => {
+        const isSelected = value === option.value
+        const isDisabled = option.disabled === true
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => !isDisabled && onChange(option.value)}
+            disabled={isDisabled}
+            className={`flex-row items-center rounded-lg px-3 py-2 ${
+              isSelected ? 'border border-primary bg-primary/10' : 'border border-input'
+            } ${isDisabled ? 'opacity-50' : ''}`}
           >
-            {value === option.value && (
-              <View className="h-2 w-2 rounded-full bg-primary" />
+            <View
+              className={`mr-3 h-4 w-4 items-center justify-center rounded-full border ${
+                isSelected ? 'border-primary' : 'border-muted-foreground'
+              }`}
+            >
+              {isSelected && (
+                <View className="h-2 w-2 rounded-full bg-primary" />
+              )}
+            </View>
+            <Text
+              className={`flex-1 text-sm ${
+                isSelected ? 'font-medium text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              {option.label}
+            </Text>
+            {option.badge && (
+              <Text className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {option.badge}
+              </Text>
             )}
-          </View>
-          <Text
-            className={`text-sm ${
-              value === option.value ? 'font-medium text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            {option.label}
-          </Text>
-        </Pressable>
-      ))}
+          </Pressable>
+        )
+      })}
     </View>
   )
 }
