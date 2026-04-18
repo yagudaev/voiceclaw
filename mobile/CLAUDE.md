@@ -54,14 +54,37 @@ submit; the build then shows up in TestFlight → iOS builds.
 - **SPM module map missing on archive** (`swift-numerics`, `Cmlx`, or
   any Swift package): shows up as
   `error: module map file '...swift-numerics/.../module.modulemap' not found`
-  → `** ARCHIVE FAILED **`. Happens after switching between Debug (dev
-  run) and Release (archive) builds because Xcode reuses stale SPM
-  build intermediates. Fix: delete this project's DerivedData and
-  retry:
+  → `** ARCHIVE FAILED **`. Xcode's archive build resolves
+  `BuildProductsPath/../../SourcePackages/checkouts/...` to a path
+  that doesn't exist if SPM packages weren't pre-resolved into the
+  archive intermediates dir. `expo prebuild --clean` wipes `ios/`
+  including the resolved Package.resolved, and a cold archive then
+  fails. Fix: pre-resolve packages, then archive directly (skipping
+  prebuild on the retry):
   ```bash
   rm -rf ~/Library/Developer/Xcode/DerivedData/VoiceClaw-*
-  yarn ios:release:staging
+  cd mobile
+  # If coming from a dev run, pods are already installed. Otherwise:
+  # APP_VARIANT=staging npx expo prebuild --clean && (cd ios && pod install)
+  xcodebuild -workspace ios/VoiceClaw.xcworkspace -scheme VoiceClaw \
+    -destination "generic/platform=iOS" -resolvePackageDependencies
+  xcodebuild archive \
+    -workspace ios/VoiceClaw.xcworkspace -scheme VoiceClaw \
+    -configuration Release -archivePath build/VoiceClaw.xcarchive \
+    -destination "generic/platform=iOS" \
+    DEVELOPMENT_TEAM=HN6T5KD4ND CODE_SIGN_STYLE=Automatic
+  xcodebuild -exportArchive -archivePath build/VoiceClaw.xcarchive \
+    -exportPath build/export -exportOptionsPlist scripts/ExportOptions.plist
+  yarn ios:submit:staging
   ```
+- **EAS submit prompts for Apple ID** even though `eas.json` has the
+  ASC API key: happens when `ascAppId` is missing from the submit
+  profile. EAS then tries to look up the app via the ASC API; if the
+  key isn't scoped to that app or the listing fails, it falls back to
+  interactive Apple ID login. Either run `yarn ios:submit:*`
+  interactively (so you can type the Apple ID + 2FA) or add
+  `ascAppId` to each profile in `eas.json` (found in App Store Connect
+  → Apps → VoiceClaw → App Information → Apple ID).
 
 ## Dev builds on a real device
 
