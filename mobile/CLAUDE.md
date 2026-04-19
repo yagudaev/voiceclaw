@@ -30,9 +30,17 @@ yarn ios:release:production
 Under the hood (`scripts/build-ios.sh`):
 
 1. `expo prebuild --clean` with the right `APP_VARIANT`
-2. `xcodebuild archive` → `build/VoiceClaw.xcarchive`
-3. `xcodebuild -exportArchive` → `build/export/*.ipa`
-4. `eas submit --profile <variant> --platform ios --path build/export/*.ipa`
+2. `xcodebuild -resolvePackageDependencies` (primes SPM checkouts)
+3. Symlink `ArchiveIntermediates/SourcePackages` → DerivedData
+   SourcePackages (works around the Cmlx/swift-numerics archive bug)
+4. `xcodebuild archive` → `build/VoiceClaw.xcarchive`
+5. `xcodebuild -exportArchive` → `build/export/*.ipa` (uses
+   `method: app-store-connect` — `debugging` produces Ad Hoc IPAs
+   which ASC rejects as "Invalid Provisioning Profile")
+6. `xcrun altool --validate-app` — runs Apple's upload-time checks
+   locally so missing purpose strings / signing issues fail here
+   instead of 5-10 min after `eas submit`
+7. `eas submit --profile <variant> --platform ios --path build/export/*.ipa`
 
 Signing uses Automatic with `DEVELOPMENT_TEAM=HN6T5KD4ND`. App Store
 Connect auth uses the API key at `~/.appstore/AuthKey_SG645CPQP8.p8`
@@ -43,10 +51,17 @@ submit; the build then shows up in TestFlight → iOS builds.
 
 ### Things that have bitten us
 
-- **Privacy strings**: `NSMicrophoneUsageDescription` and
-  `NSSpeechRecognitionUsageDescription` must be in the Info.plist or
-  App Store Connect rejects the submission. They live in
+- **Privacy strings**: `NSMicrophoneUsageDescription`,
+  `NSSpeechRecognitionUsageDescription`, `NSLocalNetworkUsageDescription`,
+  and — because bundled SDKs reference the APIs even though we don't
+  call them — `NSPhotoLibraryUsageDescription` and
+  `NSCameraUsageDescription` must all be in Info.plist or App Store
+  Connect rejects the upload with error 90683 "Missing purpose string
+  in Info.plist" *after* `eas submit` reports success (the error only
+  surfaces during Apple's post-upload processing). They live in
   `app.config.ts` under `ios.infoPlist` and are written by prebuild.
+  The `xcrun altool --validate-app` step in `scripts/build-ios.sh`
+  catches this pre-submit.
 - **Duplicate build number**: always commit before `yarn ios:release:*`
   so `git rev-list --count HEAD` produces a fresh number.
 - **Never edit `ios/` directly**: `prebuild --clean` wipes it. Changes
@@ -54,29 +69,19 @@ submit; the build then shows up in TestFlight → iOS builds.
 - **SPM module map missing on archive** (`swift-numerics`, `Cmlx`, or
   any Swift package): shows up as
   `error: module map file '...swift-numerics/.../module.modulemap' not found`
-  → `** ARCHIVE FAILED **`. Xcode's archive build resolves
-  `BuildProductsPath/../../SourcePackages/checkouts/...` to a path
-  that doesn't exist if SPM packages weren't pre-resolved into the
-  archive intermediates dir. `expo prebuild --clean` wipes `ios/`
-  including the resolved Package.resolved, and a cold archive then
-  fails. Fix: pre-resolve packages, then archive directly (skipping
-  prebuild on the retry):
+  → `** ARCHIVE FAILED **`. Xcode's archive build references SPM
+  checkouts at `ArchiveIntermediates/SourcePackages/...` but SPM
+  actually places them at `DerivedData/<proj>/SourcePackages/...`.
+  `scripts/build-ios.sh` creates the missing symlink automatically
+  before archive. Manual form:
   ```bash
-  rm -rf ~/Library/Developer/Xcode/DerivedData/VoiceClaw-*
-  cd mobile
-  # If coming from a dev run, pods are already installed. Otherwise:
-  # APP_VARIANT=staging npx expo prebuild --clean && (cd ios && pod install)
-  xcodebuild -workspace ios/VoiceClaw.xcworkspace -scheme VoiceClaw \
-    -destination "generic/platform=iOS" -resolvePackageDependencies
-  xcodebuild archive \
-    -workspace ios/VoiceClaw.xcworkspace -scheme VoiceClaw \
-    -configuration Release -archivePath build/VoiceClaw.xcarchive \
-    -destination "generic/platform=iOS" \
-    DEVELOPMENT_TEAM=HN6T5KD4ND CODE_SIGN_STYLE=Automatic
-  xcodebuild -exportArchive -archivePath build/VoiceClaw.xcarchive \
-    -exportPath build/export -exportOptionsPlist scripts/ExportOptions.plist
-  yarn ios:submit:staging
+  DD=~/Library/Developer/Xcode/DerivedData/VoiceClaw-<hash>
+  ln -sfn ../../../SourcePackages \
+    "$DD/Build/Intermediates.noindex/ArchiveIntermediates/SourcePackages"
   ```
+  A symlink at `ArchiveIntermediates/VoiceClaw/SourcePackages` (one
+  level deeper) gets wiped by xcodebuild on archive start; the sibling
+  location `ArchiveIntermediates/SourcePackages` survives.
 - **EAS submit prompts for Apple ID** even though `eas.json` has the
   ASC API key: happens when `ascAppId` is missing from the submit
   profile. EAS then tries to look up the app via the ASC API; if the
