@@ -16,12 +16,13 @@
     },
     "staging": {
       "distribution": "store",
+      "node": "22.14.0",
       "env": {
         "APP_VARIANT": "staging"
       },
       "ios": {
         "buildConfiguration": "Release"
-      },
+      }
     },
     "production": {
       "env": {
