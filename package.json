@@ -39,8 +39,8 @@
     "dev:tracing-ui": "cd tracing-ui && yarn dev",
     "build:tracing-collector": "cd tracing-collector && yarn build",
     "build:tracing-ui": "cd tracing-ui && yarn build",
-    "dev:telegram-miniapp": "cd telegram-miniapp && yarn dev",
-    "build:telegram-miniapp": "cd telegram-miniapp && yarn build"
+    "dev:telegram": "cd telegram-miniapp && yarn dev",
+    "build:telegram": "cd telegram-miniapp && yarn build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
