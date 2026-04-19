@@ -9,7 +9,6 @@
     "docs",
     "tracing-collector",
     "tracing-ui",
-    "telegram-bot",
     "telegram-miniapp"
   ],
   "scripts": {
@@ -40,7 +39,6 @@
     "dev:tracing-ui": "cd tracing-ui && yarn dev",
     "build:tracing-collector": "cd tracing-collector && yarn build",
     "build:tracing-ui": "cd tracing-ui && yarn build",
-    "dev:telegram-bot": "cd telegram-bot && yarn dev",
     "dev:telegram-miniapp": "cd telegram-miniapp && yarn dev",
     "build:telegram-miniapp": "cd telegram-miniapp && yarn build"
   },

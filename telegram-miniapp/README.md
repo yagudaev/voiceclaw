@@ -1,13 +1,16 @@
 # VoiceClaw Telegram Mini App
 
-Static webview launched from the [`telegram-bot`](../telegram-bot) `/call`
-command. Captures mic audio in the browser, streams PCM16 @ 24kHz to the
-user's relay server over WebSocket, plays back agent audio with barge-in.
+Static webview launched from an OpenClaw bot's `/call` reply (a plain
+`https://t.me/<bot>/<appname>` URL that Telegram renders as a Launch pill).
+Captures mic audio in the browser, streams PCM16 @ 24kHz to the user's relay
+server over WebSocket, plays back agent audio with barge-in.
 
 ## Contract
 
-The mini app expects a `?relay=https://...` query parameter (the bot supplies
-this per user). On launch it:
+The mini app expects a `?relay=https://...` query parameter (baked into the
+Web App URL registered with `@BotFather /newapp`; the relay is per-user). An
+optional `?startapp=<AgentName>` (via Telegram's `start_param`) overrides the
+transcript label. On launch it:
 
 1. Reads `Telegram.WebApp.initData`.
 2. `POST {relay}/auth/telegram` with the initData → receives `{ ticket, sessionKey }`.

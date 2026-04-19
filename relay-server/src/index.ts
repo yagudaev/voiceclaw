@@ -11,7 +11,7 @@ import { WebSocketServer } from "ws"
 import { RelaySession } from "./session.js"
 import { getTestPageHTML } from "./test-page.js"
 import { log, warn } from "./log.js"
-import { isTelegramAuthEnabled, issueTicket, verifyInitData } from "./telegram-auth.js"
+import { getBotInfo, isTelegramAuthEnabled, issueTicket, verifyInitData } from "./telegram-auth.js"
 
 const PORT = parseInt(process.env.PORT ?? "8080", 10)
 
@@ -39,7 +39,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" })
 })
 
-app.post("/auth/telegram", (req, res) => {
+app.post("/auth/telegram", async (req, res) => {
   if (!isTelegramAuthEnabled()) {
     res.status(404).json({ error: "telegram auth disabled" })
     return
@@ -55,10 +55,12 @@ app.post("/auth/telegram", (req, res) => {
     return
   }
   const ticket = issueTicket(user.id)
+  const bot = await getBotInfo()
   res.json({
     ticket,
     sessionKey: `telegram:${user.id}`,
     user: { id: user.id, username: user.username, firstName: user.firstName },
+    bot: bot ? { firstName: bot.firstName, username: bot.username } : null,
   })
 })
 

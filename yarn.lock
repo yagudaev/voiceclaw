@@ -2506,13 +2506,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@grammyjs/types@npm:3.26.0":
-  version: 3.26.0
-  resolution: "@grammyjs/types@npm:3.26.0"
-  checksum: 10c0/511e63948a6fb245bac78b945d6314b807c3b331edcd31276e134cb4555778696d9bb752bf3501268a52ca88d754967a3acc5b06a838e00c9c0dd4860fd36684
-  languageName: node
-  linkType: hard
-
 "@grpc/grpc-js@npm:^1.14.3":
   version: 1.14.3
   resolution: "@grpc/grpc-js@npm:1.14.3"
@@ -5991,7 +5984,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/better-sqlite3@npm:^7.6.11, @types/better-sqlite3@npm:^7.6.12":
+"@types/better-sqlite3@npm:^7.6.12":
   version: 7.6.13
   resolution: "@types/better-sqlite3@npm:7.6.13"
   dependencies:
@@ -7806,17 +7799,6 @@ __metadata:
   dependencies:
     open: "npm:^8.0.4"
   checksum: 10c0/911ef25d44da75aabfd2444ce7a4294a8000ebcac73068c04a60298b0f7c7506b60421aa4cd02ac82502fb42baaff7e4892234b51e6923eded44c5a11185f2f5
-  languageName: node
-  linkType: hard
-
-"better-sqlite3@npm:^11.0.0":
-  version: 11.10.0
-  resolution: "better-sqlite3@npm:11.10.0"
-  dependencies:
-    bindings: "npm:^1.5.0"
-    node-gyp: "npm:latest"
-    prebuild-install: "npm:^7.1.1"
-  checksum: 10c0/1fffbf9e5fc9d24847a3ecf09491bceab1c294b46ba41df1c449dc20b6f5c5d9d94ff24becd0b1632ee282bd21278b7fea53a5a6215bb99209ded0ae05eda3b0
   languageName: node
   linkType: hard
 
@@ -11979,18 +11961,6 @@ __metadata:
   version: 4.2.11
   resolution: "graceful-fs@npm:4.2.11"
   checksum: 10c0/386d011a553e02bc594ac2ca0bd6d9e4c22d7fa8cfbfc448a6d148c59ea881b092db9dbe3547ae4b88e55f1b01f7c4a2ecc53b310c042793e63aa44cf6c257f2
-  languageName: node
-  linkType: hard
-
-"grammy@npm:^1.30.0":
-  version: 1.42.0
-  resolution: "grammy@npm:1.42.0"
-  dependencies:
-    "@grammyjs/types": "npm:3.26.0"
-    abort-controller: "npm:^3.0.0"
-    debug: "npm:^4.4.3"
-    node-fetch: "npm:^2.7.0"
-  checksum: 10c0/661a57b143cdabc8544e155c509a3e40ea671813c4796e09f38316aef841f230afe8e3f0145817f973bad18e8f853bf18ed2a93827ff0f1fc4f03fd5edb66255
   languageName: node
   linkType: hard
 
@@ -20045,20 +20015,6 @@ __metadata:
   checksum: 10c0/5c65b8084799bde7a791593a1c1a45d3d6ee98182e3700b24c247b7b8f8654df4191642abbdb07ff25043d45dcff35620827c3997b88ae6c12040f64bed5076b
   languageName: node
   linkType: hard
-
-"telegram-bot@workspace:telegram-bot":
-  version: 0.0.0-use.local
-  resolution: "telegram-bot@workspace:telegram-bot"
-  dependencies:
-    "@types/better-sqlite3": "npm:^7.6.11"
-    "@types/node": "npm:^22.0.0"
-    better-sqlite3: "npm:^11.0.0"
-    dotenv: "npm:^17.4.2"
-    grammy: "npm:^1.30.0"
-    tsx: "npm:^4.19.4"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
 
 "telegram-miniapp@workspace:telegram-miniapp":
   version: 0.0.0-use.local

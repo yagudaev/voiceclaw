@@ -8,7 +8,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 
 const TICKET_TTL_MS = 5 * 60 * 1000
-const INIT_DATA_MAX_AGE_SEC = 5 * 60
+const INIT_DATA_MAX_AGE_SEC = 60 * 60
 const TICKET_PREFIX = "tgt."
 
 export interface TelegramUser {
@@ -22,8 +22,30 @@ export interface TicketPayload {
   exp: number
 }
 
+export interface BotInfo {
+  firstName: string
+  username?: string
+}
+
 export function isTelegramAuthEnabled(): boolean {
   return !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.RELAY_API_KEY
+}
+
+export async function getBotInfo(): Promise<BotInfo | null> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  if (!botToken) return null
+  if (cachedBotInfo && cachedBotInfo.token === botToken) return cachedBotInfo.info
+  if (inflightBotInfo && inflightBotInfo.token === botToken) return inflightBotInfo.promise
+
+  const promise = fetchBotInfo(botToken)
+  inflightBotInfo = { token: botToken, promise }
+  try {
+    const info = await promise
+    cachedBotInfo = { token: botToken, info }
+    return info
+  } finally {
+    if (inflightBotInfo?.token === botToken) inflightBotInfo = null
+  }
 }
 
 export function verifyInitData(initData: string): TelegramUser | null {
@@ -117,6 +139,24 @@ function toBase64Url(input: string): string {
 function fromBase64Url(input: string): string {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "==".slice(0, (4 - (input.length % 4)) % 4)
   return Buffer.from(padded, "base64").toString("utf8")
+}
+
+let cachedBotInfo: { token: string, info: BotInfo | null } | null = null
+let inflightBotInfo: { token: string, promise: Promise<BotInfo | null> } | null = null
+
+async function fetchBotInfo(botToken: string): Promise<BotInfo | null> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/getMe`)
+    if (!res.ok) return null
+    const body = await res.json() as {
+      ok?: boolean
+      result?: { first_name?: string, username?: string }
+    }
+    if (!body.ok || !body.result?.first_name) return null
+    return { firstName: body.result.first_name, username: body.result.username }
+  } catch {
+    return null
+  }
 }
 
 function safeEqualHex(a: string, b: string): boolean {
