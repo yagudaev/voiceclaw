@@ -42,7 +42,8 @@
     },
     "staging": {
       "ios": {
-        "ascApiKeyPath": "~/.appstore/AuthKey_SG645CPQP8.p8",
+        "ascAppId": "6762490226",
+        "ascApiKeyPath": "/Users/michaelyagudaev/.appstore/AuthKey_SG645CPQP8.p8",
         "ascApiKeyIssuerId": "69a6de83-015f-47e3-e053-5b8c7c11a4d1",
         "ascApiKeyId": "SG645CPQP8"
       }

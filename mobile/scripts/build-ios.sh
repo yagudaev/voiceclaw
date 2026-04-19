@@ -64,10 +64,13 @@ echo "==> Step 6: Pre-submit validation with Apple"
 # altool --validate-app runs ASC's upload-time checks (missing purpose
 # strings, bad signing, bundle issues) without actually submitting —
 # catches post-upload rejections locally instead of after eas submit.
+# altool looks for AuthKey_<ID>.p8 in $API_PRIVATE_KEYS_DIR (and a few
+# hard-coded dirs), not via flag.
 if [ ! -f "$ASC_KEY_PATH" ]; then
   echo "!! ASC API key not found at $ASC_KEY_PATH — skipping validation" >&2
 else
-  xcrun altool --validate-app \
+  API_PRIVATE_KEYS_DIR="$(dirname "$ASC_KEY_PATH")" \
+    xcrun altool --validate-app \
     -f "$IPA_PATH" \
     -t ios \
     --apiKey "$ASC_KEY_ID" \
