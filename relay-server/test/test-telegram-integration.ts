@@ -161,7 +161,7 @@ try {
       type: "session.config",
       provider: "gemini",
       voice: "Aoede",
-      model: "gemini-2.5-flash-native-audio-preview-09-2025",
+      model: "gemini-3.1-flash-live-preview",
       brainAgent: "none",
       apiKey: ticket,
       sessionKey,

@@ -7,7 +7,7 @@
 
 import { RealtimeClient } from "./realtime-client"
 
-const DEFAULT_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025"
+const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 const DEFAULT_VOICE = "Aoede"
 
 type Status = "idle" | "connecting" | "live" | "reconnecting" | "closed"
