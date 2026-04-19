@@ -45,6 +45,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSMicrophoneUsageDescription: 'VoiceClaw needs microphone access for voice calls with your AI assistant.',
       NSSpeechRecognitionUsageDescription: 'VoiceClaw uses speech recognition to transcribe your voice for the AI assistant.',
       NSLocalNetworkUsageDescription: 'VoiceClaw connects to your self-hosted relay server on your local or Tailscale network.',
+      NSPhotoLibraryUsageDescription: 'VoiceClaw does not access your photo library. This string is required because a bundled SDK references the API.',
+      NSCameraUsageDescription: 'VoiceClaw does not access your camera. This string is required because a bundled SDK references the API.',
       UIBackgroundModes: ['audio', 'voip'],
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
