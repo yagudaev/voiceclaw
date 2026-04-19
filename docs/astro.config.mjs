@@ -83,6 +83,7 @@ export default defineConfig({
             { slug: 'relay-server' },
             { slug: 'desktop-app' },
             { slug: 'mobile-app' },
+            { slug: 'telegram-miniapp' },
           ],
         },
         {

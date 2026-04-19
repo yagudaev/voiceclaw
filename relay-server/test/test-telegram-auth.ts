@@ -52,9 +52,9 @@ const goodInit = buildInitData({ id: 42, username: "alice", first_name: "Alice" 
 const user = verifyInitData(goodInit)
 assert(user !== null && user.id === 42 && user.username === "alice", "verifyInitData accepts fresh valid payload")
 
-// 3. Expired initData
-const oldInit = buildInitData({ id: 42 }, now - 10 * 60)
-assert(verifyInitData(oldInit) === null, "verifyInitData rejects payload older than 5 minutes")
+// 3. Expired initData (freshness window is 1h)
+const oldInit = buildInitData({ id: 42 }, now - 2 * 60 * 60)
+assert(verifyInitData(oldInit) === null, "verifyInitData rejects payload older than 1 hour")
 
 // 4. Tampered hash
 const tampered = buildInitData({ id: 42 }, now, "0".repeat(64))
