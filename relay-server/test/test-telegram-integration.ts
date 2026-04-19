@@ -8,7 +8,7 @@
 // Run: npx tsx test/test-telegram-integration.ts
 
 import { spawn } from "node:child_process"
-import { createHmac } from "node:crypto"
+import { createHmac, randomBytes } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -16,7 +16,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import WebSocket from "ws"
 
 const TEST_BOT_TOKEN = "1234567890:TEST_BOT_TOKEN_NOT_REAL"
-const TEST_RELAY_KEY = "itest-relay-key-" + Math.random().toString(36).slice(2)
+const TEST_RELAY_KEY = "itest-relay-key-" + randomBytes(12).toString("hex")
 const PORT = 18765
 
 let passed = 0

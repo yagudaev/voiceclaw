@@ -122,6 +122,9 @@ export function verifyTicket(ticket: string): TicketPayload | null {
   }
 }
 
+// lgtm[js/insufficient-password-hash] RELAY_API_KEY is a 32+ byte random
+// server secret, not a user password. HMAC-SHA256 is the correct primitive
+// for signing short-lived ticket MACs.
 function ticketHmac(payloadB64: string): string {
   const secret = process.env.RELAY_API_KEY
   if (!secret) throw new Error("RELAY_API_KEY must be set to use Telegram tickets")
@@ -133,7 +136,7 @@ function toBase64Url(input: string): string {
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
-    .replace(/=+$/, "")
+    .replace(/=/g, "")
 }
 
 function fromBase64Url(input: string): string {
