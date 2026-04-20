@@ -18,9 +18,10 @@ const RECONNECT_BACKOFF_MS = 500
 // before the close lands. These codes cover transport-level drops (network,
 // server restart, rate limit). 1007 is included because Gemini can send it after
 // a goAway rotation, likely triggered by stale video frames flushed into the new
-// session (invalid argument). 1011 is intentionally excluded: it usually signals
-// a server error that's not helped by replaying the resumption handle.
-const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1007, 1012, 1013])
+// session (invalid argument). 1011 (internal server error) is included because
+// transient Gemini-side faults shouldn't drop the user mid-call — resumption
+// may recover, and if it doesn't, the retry budget surfaces the error anyway.
+const RECONNECTABLE_CLOSE_CODES = new Set([1001, 1006, 1007, 1011, 1012, 1013])
 // Bounded send queues for the reconnect window.
 // Audio: ~1s at 50Hz — older chunks are dropped first since stale audio
 // smears VAD. Control: small buffer for toolResponse / clientContent which
@@ -214,6 +215,14 @@ export class GeminiAdapter implements ProviderAdapter {
     this.currentlyResumable = false
     this.rotateAfterToolCalls = false
     log(`[gemini] Reconnecting (${reason}, handle=${this.resumptionHandle.slice(0, 8)}…)`)
+    // Finalize any in-flight transcription before rotating. Gemini's resumed
+    // session replays transcription from its last checkpoint, so if we leave
+    // currentAssistantText / currentUserText populated, the replayed deltas
+    // concatenate onto stale text and the UI renders "How's that?How's that?".
+    // Flush as transcript.done so the client commits its current bubble; post-
+    // resume deltas then start a fresh bubble.
+    this.flushPendingTranscripts()
+    this.userSpeaking = false
     this.sendToClient?.({ type: "session.rotating" })
     this.pauseWatchdog()
 
@@ -659,6 +668,27 @@ export class GeminiAdapter implements ProviderAdapter {
     }
     for (const p of control) this.upstream.send(p)
     for (const p of audio) this.upstream.send(p)
+  }
+
+  private flushPendingTranscripts() {
+    if (this.currentUserText) {
+      this.transcript.push({ role: "user", text: this.currentUserText })
+      this.sendToClient?.({
+        type: "transcript.done",
+        text: this.currentUserText,
+        role: "user",
+      })
+      this.currentUserText = ""
+    }
+    if (this.currentAssistantText) {
+      this.transcript.push({ role: "assistant", text: this.currentAssistantText })
+      this.sendToClient?.({
+        type: "transcript.done",
+        text: this.currentAssistantText,
+        role: "assistant",
+      })
+      this.currentAssistantText = ""
+    }
   }
 
   // --- watchdog ---
