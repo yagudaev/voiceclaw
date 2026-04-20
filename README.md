@@ -13,6 +13,14 @@ Open-source voice AI assistant. Talk to any AI model in real time from your phon
 
 VoiceClaw is a **thin voice layer on top of your existing AI agent**. Already have an agent that can search the web, manage your calendar, or access your tools? VoiceClaw gives it a voice -- connect any OpenAI-compatible agent and talk to it naturally through your phone or desktop.
 
+## Demo
+
+Watch VoiceClaw in action as a thinking partner for real-time problem solving:
+
+[![VoiceClaw Demo](assets/videos/demo-thumbnail.jpg)](https://youtu.be/iAS7vj2vRaA?si=oelgIdETS8iWTavV)
+
+**The magic of voice agents:** Talk through ideas with your AI agent while you work. Real collaboration, real thinking.
+
 ## How it works: the `ask_brain` pattern
 
 Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conversation but can't use tools, access memory, or call external APIs on their own. VoiceClaw bridges this gap with a simple escalation pattern:
@@ -27,7 +35,38 @@ Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conver
 
 ## Architecture
 
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart LR
+ subgraph Clients["📲 Clients"]
+    direction TB
+        Mobile["📱 Mobile App<br>Native audio I/O"]
+        Desktop["🖥️ Desktop App<br>Web Audio + screen share"]
+  end
+    Mobile -- WebSocket<br>audio+video --> Relay["🔗 Relay Server<br>(TypeScript / Node.js)<br><br>- Session mgmt<br>- Provider adapter<br>- Brain agent gateway<br>- Tracing (Langfuse / OTEL)"]
+    Desktop -- WebSocket<br>audio + video --> Relay
+    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / OpenAI Realtime)<br><br>- Speech to Speech"]
+    Provider -- tool call: ask_brain --> Relay
+    Relay <-- POST /v1/chat/completions<br>(SSE stream) --> Brain["🧠 Brain AI<br>(OpenAI-compatible agent)<br><br>- Web search<br>- Calendar / tasks<br>- Long-term memory"]
+
+     Mobile:::clientStyle
+     Desktop:::clientStyle
+     Relay:::relayStyle
+     Provider:::providerStyle
+     Brain:::brainStyle
+    classDef clientStyle fill:#1c1636,stroke:#6c63ff,color:#f5f3ff
+    classDef relayStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
+    classDef providerStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    classDef brainStyle fill:#2a1f5c,stroke:#c4c1ff,color:#f5f3ff
 ```
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
 +------------------+        WebSocket         +----------------+        Streaming API       +------------------+
 |                  | -----------------------> |                | -----------------------> |                  |
 |   Mobile App     |    audio + events        |  Relay Server  |    audio + events        |  Realtime Voice  |
@@ -36,7 +75,7 @@ Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conver
 +------------------+                          |                |                          +------------------+
                                               |                |
 +------------------+                          |  ask_brain     |        HTTP / SSE         +------------------+
-|                  | -----------------------> |  ──────────────|───────────────────────── |                  |
+|                  | -----------------------> |  --------------|-------------------------> |                  |
 |   Desktop App    |    audio + events        |                |    OpenAI-compatible      |   Brain Agent    |
 |   (Electron)     | <----------------------- |                |    chat completions       |   (any agent)    |
 |                  |                          +----------------+                           +------------------+
@@ -44,18 +83,12 @@ Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conver
                                                                                            or your own agent
 ```
 
+</details>
+
 **Mobile app** -- React Native / Expo iOS app with voice capture and playback.
 **Desktop app** -- Electron + React + Tailwind macOS app with screen sharing support.
 **Relay server** -- TypeScript / Node.js WebSocket server that brokers sessions between clients and AI providers.
 **Brain agent** -- Any OpenAI-compatible agent endpoint. The relay calls it via `ask_brain` when the voice model needs tools, memory, or external data. Swap in any agent you want.
-
-## Demo
-
-Watch VoiceClaw in action as a thinking partner for real-time problem solving:
-
-[![VoiceClaw Demo](assets/videos/demo-thumbnail.jpg)](https://youtu.be/iAS7vj2vRaA?si=oelgIdETS8iWTavV)
-
-**The magic of voice agents:** Talk through ideas with your AI agent while you work. Real collaboration, real thinking.
 
 ## Quick Start
 
