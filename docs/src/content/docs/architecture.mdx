@@ -10,36 +10,34 @@ VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay serve
 ## System Overview
 
 ```mermaid
+---
+config:
+  layout: dagre
+---
 flowchart LR
-    subgraph Clients["Clients"]
-      direction TB
-      Mobile["Mobile App<br/>(React Native / Expo, iOS)<br/>Native audio I/O"]
-      Desktop["Desktop App<br/>(Electron + React + Tailwind, macOS)<br/>Web Audio + screen share"]
-    end
+ subgraph Clients["📲 Clients"]
+    direction TB
+        Mobile["📱 Mobile App<br>Native audio I/O"]
+        Desktop["🖥️ Desktop App<br>Web Audio + screen share"]
+  end
+    Mobile -- WebSocket<br>audio+video --> Relay["🔗 Relay Server<br>(TypeScript / Node.js)<br><br>- Session mgmt<br>- Provider adapter<br>- Brain agent gateway<br>- Tracing (Langfuse / OTEL)"]
+    Desktop -- WebSocket<br>audio + video --> Relay
+    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / OpenAI Realtime)<br><br>- Speech to Speech"]
+    Provider -- tool call: ask_brain --> Relay
+    Relay <-- POST /v1/chat/completions<br>(SSE stream) --> Brain["🧠 Brain AI<br>(OpenAI-compatible agent)<br><br>- Web search<br>- Calendar / tasks<br>- Long-term memory"]
 
-    Relay["Relay Server<br/>(TypeScript / Node.js)<br/><br/>- Session mgmt<br/>- Provider adapter<br/>- Brain agent gateway<br/>- Tracing (Langfuse / OTEL)"]
-
-    Provider["Realtime AI Provider<br/>(Gemini Live / OpenAI Realtime)<br/><br/>- Voice activity detection<br/>- Speech-to-text<br/>- Text-to-speech"]
-
-    Brain["Brain AI<br/>(OpenAI-compatible agent)<br/><br/>- Web search<br/>- Calendar / tasks<br/>- Long-term memory"]
-
-    Mobile -- "WebSocket<br/>relay protocol" --> Relay
-    Desktop -- "WebSocket<br/>relay protocol" --> Relay
-    Relay <-- "Provider WebSocket<br/>audio + video" --> Provider
-    Provider -- "tool call: ask_brain" --> Relay
-    Relay <-- "POST /v1/chat/completions<br/>(SSE stream)" --> Brain
-
+     Mobile:::clientStyle
+     Desktop:::clientStyle
+     Relay:::relayStyle
+     Provider:::providerStyle
+     Brain:::brainStyle
     classDef clientStyle fill:#1c1636,stroke:#6c63ff,color:#f5f3ff
     classDef relayStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
     classDef providerStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
     classDef brainStyle fill:#2a1f5c,stroke:#c4c1ff,color:#f5f3ff
-    class Mobile,Desktop clientStyle
-    class Relay relayStyle
-    class Provider providerStyle
-    class Brain brainStyle
 ```
 
-*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqdVO9v2jAQ_VdO6ZdWDWOsFHWoqtQfaKrEytSg7cMyTRfnAh6JHdmGFlX933eJEwj90ml8AHM-v3v33tkvgdApBeMgy_WTWKJxMH2MFfDHrpOFwXIJt7kk5ezPOGhWcfDLpwCk0pBwUiuY37SxrzqROXG6X8B1WV4mpn91_EgoHDygkxuCPkyeSx2CnEUn9XYTx3UqNdz3Z50qd2RXTpcM2az2mJOc6xuufwoe_hTmKPMnqdIQChQt-g9K4LqGPgUrDJECy-3SrgqpNFZ--Ug5brlY_QsRmQ0ZX22-LSkSRpaO-T-wch_-WI9ff_U42dpKjWJRuCb0zeiNTMkApli6BqkHNwalAlywoLBAR0-4bXbmBoVUCzieolpka1tpNZtPpic1V0-xBa1ZYu5kwTrf78Ke7RcqpJIw9XLPSlKc0qYf0P6upWDp2cmNdFtIyXlX265KIrHsOd1z9Nz2NedlFbL1Zodb3RkT8x1e33syvnxP6KJkoxOei7r3AxqVSZbQiGUTuMWcfUHD9B3alW3CU60WTMUUUFChzbZTvJm5Xg_igOEiLVbkGZvazdJop4XO44BzrrzV_mQ7Wv9x1A_KZX1yZ_chBDazV-3pBqFNPbTUE3Ba5yAwz8fAjf9OKi3fKTyL5tDfDPp8jV2_0jmnykMv2nEUTcA6Q1icNDi1P61uIkdr7yjjRXXHI7dlFTPJ9Y8GYjA6G4V8WK9ofDQSo7MsC1kIbcZH2XnG_95g1Hp1IYZ4lqWfdxBiKAbvQJSNGgdEhoOPn3CHcpFcDPcoHvMNSi1bF-ITDrJz8a9EmmkK29HoaNPN8i7sm-7u7Vw9aKib4a_JnmmsgjAoeLhRpvwwv1S5PA9LKvixGvOS78MqDmL1ynm4djraKhGMnVlTGKzLlN-SO4n8dBc--PoXJp3ykQ)*
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqFVE1v00AQ_Ssj99KKmJA2jYpVVeqXUKXQojoSB4zQZj12lthea3eTKqr6GziA4AhCQpzhxL-Cn8Dsrp2aqqiWouzuzLx9783Y1wGXKQZREIZhUnFZZSKPkgqgYCu5MBGkLFeYVC6cFfKKz5gyML6kHL2Y5orVMzguBFZGv0qCP5_f_2y3SfDaAgGkQiE3QlYwOfIn9nkup6JAX_Oj2cFhXe9P1cE5M2KJwBapkHDWv1hD2ecE9dzI2lV-_Pb717v2pK1-iVM4dKWPQHOFSFSJNTYoWKUerLkzDIEqYsnnaGy5u_XRUqQoKXYAl0heuNs-fPIbiFEtUdnkzcmqxpgrURvowzl5-fit3rIR-wspU2urvMxL409eKGmxFbCU1cajhHCkmKiA5WQc5MzgFVv5wEQxLqocNsesyrOFRrrmYnI63lp70qq_VwdZcEeJL_I69sMOnweK2zzfsa-EwAojSurZ2TrmHHmGpagEjG0HiWuNFWW02V1rakQ-AyOb1VrQmhGxM1IWwFlRRMD0_M3U2fR_LRfxBPrLQZ-m1PS5LOsC7eBpRyyOT0EbhazcchDOcyfn-5emAYdnLtOTDi0ATeKUhsR1pkPezphGpvjM749ZQXPFFCk2RFT707Gs8pB6XEKJpVQrJ7GZZD99URRx97rEZlVgE2o6em_MiaWIsv_dQOsaxepm2Q07fRRzDnYCvGBan2AGnasgE2T4xoAPRjujHlkm5xhtjPhoJ8t6XBZSRRvZbka7Oxi3pBqIIdvJ0qdrCD7kgwcg_uHeEhkOnmyzNcredG94i-Ix76Dcqmwgttkg2-UPEAl6QUnNYiKlD-K1hUwCM8OSvhwRLam98yRIqhvKYwsj41XFg8ioBfaCRZ3SW3si6GvJSn948xexi9B6)*
 
 <details>
 <summary>View as ASCII</summary>
