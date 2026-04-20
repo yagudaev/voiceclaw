@@ -5,7 +5,8 @@
     "mobile",
     "website",
     "relay-server",
-    "desktop"
+    "desktop",
+    "docs"
   ],
   "scripts": {
     "dev": "concurrently --names mobile,web,server \"yarn dev:mobile\" \"yarn dev:web\" \"yarn dev:server\"",
@@ -28,7 +29,8 @@
     "prebuild": "cd mobile && npx expo prebuild --clean",
     "clean:mobile": "cd mobile && yarn clean",
     "dev:desktop": "cd desktop && yarn dev",
-    "dev:docs": "cd docs && npm run dev"
+    "dev:docs": "cd docs && yarn dev",
+    "build:docs": "cd docs && yarn build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

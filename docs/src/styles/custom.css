@@ -262,3 +262,16 @@ starlight-tabs [role='tab'][aria-selected='true'] {
   color: #fff !important;
   border: none !important;
 }
+
+/* ---------- Mermaid flowchart edge labels ---------- */
+/* edgeLabelBackground is dark in both themes (brand ink),
+   so edge-label text must always be light to stay readable. */
+.mermaid .edgeLabel,
+.mermaid .edgeLabel p,
+.mermaid .edgeLabel span,
+.mermaid .edgeLabel foreignObject div {
+  color: #f5f3ff !important;
+}
+.mermaid .edgeLabel rect {
+  fill: var(--vc-ink-2) !important;
+}

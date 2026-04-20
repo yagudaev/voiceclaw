@@ -103,17 +103,55 @@ import { Card, CardGrid, Steps, Tabs, TabItem } from '@astrojs/starlight/compone
 
 ## How It Works
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client<br/>(Mobile / Desktop)
+    participant R as Relay Server
+    participant P as Realtime AI Provider<br/>(Gemini / OpenAI)
+    participant B as Brain AI<br/>(OpenAI-compatible agent)
+
+    Note over C,P: WebSocket + protocol translation
+
+    C->>R: session.config
+    R->>P: provider setup
+    C->>R: audio.append (PCM16)
+    R->>P: audio stream (provider format)
+    C->>R: frame.append (screen share)
+    R->>P: video frames
+    P-->>R: model audio
+    R-->>C: audio.delta
+    P-->>R: transcription
+    R-->>C: transcript.delta
+
+    Note over R,B: Brain tool call (async)
+    P->>R: tool.call ask_brain(query)
+    R-->>C: tool.progress (searching)
+    R->>B: POST /v1/chat/completions (SSE)
+    B-->>R: streamed result
+    R->>P: injectContext(result)
+    P-->>R: model audio (spoken answer)
+    R-->>C: audio.delta
 ```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNp9U01vm0AQ_SsjTqA6tnLpAVWWYlJVOaRBplIvlqphGdtbw-52d3BrRfnvHbwmDWlanzDva3iz-5go21CSJ4F-9GQU3Wrceew2BuSHPVvTdzX5-N-hZ620Q8NQAAYoWk2GP9R-sUzvba1bggXcUjiwddnfmvWgWVOLJ6jIH9-yLSMFW9Ydwc0dlN4edUM-hnyiThstIQ-OzM3dGxmrwWDlURtRR1HkXinbOWRdy5C4k7FFHOWfLRNYGQeKWZnDV6orqw7E8A6ct2yVbYE9mtCK3JpRVlwtl-scAoUgb-fKmq3eRWgtkDi5y-zC4d5NVNg32s7RyWgNpGVxf_0-m2jPBAjsCTtIn5221nfI2cRrKwujZ6-gPJGBsEdPU8vBwUZ2iEB5FR06OQRtjBwVAhTjmAIyThXnPpTXLjbyUvMHGoWva17PVvllR2ylXIVtCymGk1HZGBNTBJ2fUQyHb_WgSOWc-lP2KnLgSUc7L8uQCgi92muze_H9klg-VF9gcbxeqD3yYjgOLQ3ji6KqPl64q8sHxuapAbHsW54Uqc13UlxYw_SL00jI_tmozOPsQVYitfwkn_2n4WSWdCQL1o1cyceBuEl4Tx1tklweG_SHTbIxT8Ib7mYlhSU5-55mSe8a5PH6xpdPvwE_5ECl)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
 +-----------+        WebSocket        +---------------+        WebSocket        +----------------+
 |           |  ---session.config--->  |               |  ---provider setup--->  |                |
 |  Client   |  ---audio.append----->  | Relay Server  |  ---audio stream----->  |  AI Provider   |
 |  (mobile  |  <---audio.delta------  |               |  <---model audio------  |  (Gemini /     |
 |   or      |  <---transcript.delta-  |  - protocol   |  <---transcription----  |   OpenAI)      |
-|  desktop) |  ---frame.append----->  |    translate   |  ---video frames----->  |                |
-|           |  <---tool.call--------  |  - brain agent |                        +----------------+
-|           |  <---tool.progress----  |  - tracing     |
+|  desktop) |  ---frame.append----->  |    translate  |  ---video frames----->  |                |
+|           |  <---tool.call--------  |  - brain agent|                         +----------------+
+|           |  <---tool.progress----  |  - tracing    |
 +-----------+                         +---------------+
 ```
+
+</details>
 
 The relay server sits between clients and AI providers. It normalizes the different provider protocols into a single, clean WebSocket API. Clients never talk directly to Gemini or OpenAI -- they speak the relay protocol, and the relay handles the translation.
 

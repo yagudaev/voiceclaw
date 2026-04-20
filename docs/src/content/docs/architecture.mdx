@@ -9,7 +9,40 @@ VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay serve
 
 ## System Overview
 
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart LR
+ subgraph Clients["📲 Clients"]
+    direction TB
+        Mobile["📱 Mobile App<br>Native audio I/O"]
+        Desktop["🖥️ Desktop App<br>Web Audio + screen share"]
+  end
+    Mobile -- WebSocket<br>audio+video --> Relay["🔗 Relay Server<br>(TypeScript / Node.js)<br><br>- Session mgmt<br>- Provider adapter<br>- Brain agent gateway<br>- Tracing (Langfuse / OTEL)"]
+    Desktop -- WebSocket<br>audio + video --> Relay
+    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / OpenAI Realtime)<br><br>- Speech to Speech"]
+    Provider -- tool call: ask_brain --> Relay
+    Relay <-- POST /v1/chat/completions<br>(SSE stream) --> Brain["🧠 Brain AI<br>(OpenAI-compatible agent)<br><br>- Web search<br>- Calendar / tasks<br>- Long-term memory"]
+
+     Mobile:::clientStyle
+     Desktop:::clientStyle
+     Relay:::relayStyle
+     Provider:::providerStyle
+     Brain:::brainStyle
+    classDef clientStyle fill:#1c1636,stroke:#6c63ff,color:#f5f3ff
+    classDef relayStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
+    classDef providerStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    classDef brainStyle fill:#2a1f5c,stroke:#c4c1ff,color:#f5f3ff
 ```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNqFVE1v00AQ_Ssj99KKmJA2jYpVVeqXUKXQojoSB4zQZj12lthea3eTKqr6GziA4AhCQpzhxL-Cn8Dsrp2aqqiWouzuzLx9783Y1wGXKQZREIZhUnFZZSKPkgqgYCu5MBGkLFeYVC6cFfKKz5gyML6kHL2Y5orVMzguBFZGv0qCP5_f_2y3SfDaAgGkQiE3QlYwOfIn9nkup6JAX_Oj2cFhXe9P1cE5M2KJwBapkHDWv1hD2ecE9dzI2lV-_Pb717v2pK1-iVM4dKWPQHOFSFSJNTYoWKUerLkzDIEqYsnnaGy5u_XRUqQoKXYAl0heuNs-fPIbiFEtUdnkzcmqxpgrURvowzl5-fit3rIR-wspU2urvMxL409eKGmxFbCU1cajhHCkmKiA5WQc5MzgFVv5wEQxLqocNsesyrOFRrrmYnI63lp70qq_VwdZcEeJL_I69sMOnweK2zzfsa-EwAojSurZ2TrmHHmGpagEjG0HiWuNFWW02V1rakQ-AyOb1VrQmhGxM1IWwFlRRMD0_M3U2fR_LRfxBPrLQZ-m1PS5LOsC7eBpRyyOT0EbhazcchDOcyfn-5emAYdnLtOTDi0ATeKUhsR1pkPezphGpvjM749ZQXPFFCk2RFT707Gs8pB6XEKJpVQrJ7GZZD99URRx97rEZlVgE2o6em_MiaWIsv_dQOsaxepm2Q07fRRzDnYCvGBan2AGnasgE2T4xoAPRjujHlkm5xhtjPhoJ8t6XBZSRRvZbka7Oxi3pBqIIdvJ0qdrCD7kgwcg_uHeEhkOnmyzNcredG94i-Ix76Dcqmwgttkg2-UPEAl6QUnNYiKlD-K1hUwCM8OSvhwRLam98yRIqhvKYwsj41XFg8ioBfaCRZ3SW3si6GvJSn948xexi9B6)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
 +------------------+
 |   Mobile App     |   React Native / Expo
 |   (iOS)          |   Native audio I/O via system audio route
@@ -47,6 +80,8 @@ VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay serve
          +-------> Relay Server (same as above)
 ```
 
+</details>
+
 ## Audio Flow
 
 All audio travels as **PCM16 at 24kHz**, base64-encoded over WebSocket JSON messages.
@@ -67,11 +102,42 @@ All audio travels as **PCM16 at 24kHz**, base64-encoded over WebSocket JSON mess
 3. Client decodes base64 PCM16 and plays through speakers
 4. On barge-in (user starts talking), client receives `turn.started` and stops playback
 
+```mermaid
+flowchart LR
+    Mic(["Microphone"]) --> PCM1["PCM16<br/>24 kHz"]
+    PCM1 --> B64a["base64<br/>encode"]
+    B64a --> Append["audio.append"]
+    Append --> Relay1["Relay"]
+    Relay1 --> ProviderFmt["Provider<br/>format"]
+    ProviderFmt --> AI1(["AI"])
+
+    AI2(["AI"]) --> ModelAudio["Model<br/>audio"]
+    ModelAudio --> Relay2["Relay"]
+    Relay2 --> Delta["audio.delta"]
+    Delta --> B64b["base64<br/>decode"]
+    B64b --> PCM2["PCM16<br/>decode"]
+    PCM2 --> Speakers(["Speakers"])
+
+    classDef devStyle fill:#4a3fd9,stroke:#c4c1ff,color:#f5f3ff
+    classDef stepStyle fill:#1c1636,stroke:#6c63ff,color:#e6e3ff
+    classDef relayStyle fill:#14102a,stroke:#8b84ff,color:#c4c1ff
+    class Mic,Speakers,AI1,AI2 devStyle
+    class PCM1,PCM2,B64a,B64b,Append,Delta,ProviderFmt,ModelAudio stepStyle
+    class Relay1,Relay2 relayStyle
 ```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptU2FvmzAQ_SvI-bJK7lYIRR2qKqWLpkZapCr51mUfjH1uUAxGxmmXVv3v9ZlgSDYkMOd7PL97d7wTrgWQnEilX_mWGRv9Wm3qyF3Lkn_5vSFuMbrZ6ho25M9FdHl5Fz3-WMYug0t2W5hvd0ka7R7eXL77EhMeeJ-lzAEL1kKWeiTUeF5AIsAjZ00DtXBYthel_sp8GGBd1gNXoNgBT_cvAdFtd-qMfikFmJ-VRZHHyJ8utamYHXQOyE7EIsaKZwusdFMfz14kw6aHLV0FaoY60R4MPLlXHrgH0CA7-b_sxCPmoCwLBgiMAsznekeLU0cFnDta9E1KTpp0BsS8B64bYDswLVbZv48N4Iq17RxkJOBlbQ8KIlkqlU9SNpXiO22t0TvIJzzlsZSUa6VNPpHXcirlGUFroRkzxDzOpllgyHg2HRggg38ZDPp1QpHGVwkLFDfFTTpQdJJGFDjTtK-Surb7Owl1jYFoG0WLKI4oPgraTSH1zaCj2aGjXocSx2TdcNJjs4caCCUVuIksBcnfid1ChX-iYGZHPqgbBKvXh5qT3Jo9ULJvBLMwL9mzYVW_2bD6SetxiFR_SX5FycE9Hc-bz8cfn97oO5Q)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
 Mic -> PCM16 24kHz -> base64 -> audio.append -> [Relay] -> provider format -> [AI]
                                                                                 |
 [Speakers] <- PCM16 decode <- base64 <- audio.delta <- [Relay] <- model audio <-+
 ```
+
+</details>
 
 ## Video / Screen Sharing Flow
 
@@ -127,7 +193,32 @@ Both emit `session.rotating` / `session.rotated` so clients can handle the trans
 
 The brain agent gives the voice AI capabilities beyond conversation -- web search, calendar, tasks, memory, and more. It runs as an async background process.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant AI as AI Model
+    participant S as Relay Session
+    participant B as Brain Agent<br/>Gateway
+
+    AI->>S: tool call: ask_brain
+    S-->>AI: { status: "searching" }<br/>(immediate, unblocks AI)
+    Note over AI: AI can now say<br/>"Let me check on that..."
+
+    S->>B: POST /v1/chat/completions
+    B-->>S: SSE: step_complete (progress)
+    S-->>AI: tool.progress (stream to client)
+    B-->>S: SSE: final result
+
+    S->>AI: injectContext(result)
+    AI-->>S: speaks the answer
 ```
+
+*[Edit this diagram ↗](https://mermaid.live/edit#pako:eNptkttqGzEQhl9l0JUNa7u5FcVgpyEYeqLbq7IQxtqprVqHrTQbZ2v87h15nRCa6kKgmX8-5h_NSZnYktIq0--egqEPFncJfRNADvYcQ--3lMZ3h4mtsR0GhtUGMJf7kwDc23xd0t_I4QA15WxjeKtZF806oQ2w2lHg99u0WN4j0xGH5qpfbWbLZa2BY3Rg0DktRYeHbakaFfVMFKuNhhNkRu6zhkb8YDJ7G3aNgvOFO7HeU2uFXkEfti6aQ-l_OkI-RyaIj5SgkMSWwQAhHiHjcClv1Edi8ARmT-YAMQDvkefzeaOal0aWy7WGr1_q77B4vFkYESxM9J0jFv95VK1no6G6vtPSMHUPVwnBpEtxl2Ra03-cFfPz5yRMMidCL1Ewzsrcpv8h_7QBHYi-d_y6wYKz4RcZvo2B6Ykno2b6Mu4RkjtCGRDvCTDkIyVVKU_Jo22VPimJ-7I3LaaDOleqrEo9BKM0p54q1XetTPq6Tc9B-fQfMb5-FtST0u8qNcgtnD-X_M35L4QR194)*
+
+<details>
+<summary>View as ASCII</summary>
+
+```text
 [AI Model] -- tool call: ask_brain --> [Relay Session]
                                            |
                                            | 1. Immediately return "searching" to unblock AI
@@ -146,6 +237,8 @@ The brain agent gives the voice AI capabilities beyond conversation -- web searc
                                            v
                                     [AI speaks the answer]
 ```
+
+</details>
 
 Key design decisions:
 - The initial `ask_brain` tool result is returned immediately with `{"status": "searching"}` so the AI can say something like "Let me check on that..." while the brain works
