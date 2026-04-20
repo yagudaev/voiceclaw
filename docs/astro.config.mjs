@@ -26,6 +26,13 @@ export default defineConfig({
           mainBkg: '#1c1636',
           secondBkg: '#14102a',
           background: 'transparent',
+          // Flowchart edge labels (the pill boxes on arrows)
+          edgeLabelBackground: '#1c1636',
+          clusterBkg: '#0f0b1e',
+          clusterBorder: '#6c63ff',
+          nodeBorder: '#6c63ff',
+          defaultLinkColor: '#8b84ff',
+          titleColor: '#f5f3ff',
           // Sequence diagrams
           actorBkg: '#1c1636',
           actorBorder: '#6c63ff',
