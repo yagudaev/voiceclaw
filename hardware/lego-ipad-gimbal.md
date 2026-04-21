@@ -98,6 +98,9 @@ pose locks when idle.
 ## Programming plan
 
 - **Firmware:** [Pybricks](https://pybricks.com) on the Prime Hub.
+  Install via the [Pybricks web installer](https://www.install.pybricks.com/)
+  (requires a microUSB cable). Prime Hub API docs:
+  [docs.pybricks.com/hubs/primehub](https://docs.pybricks.com/en/latest/hubs/primehub.html).
 - **Homing:** slow-drive each motor to a mechanical endstop on boot, zero the
   encoder there.
 - **Motion API:** `pan(deg)` and `tilt(deg)` over Bluetooth LE, clamped to
@@ -111,43 +114,66 @@ pose locks when idle.
 - **Safety:** rate-limit commands, ramp acceleration, go to a rest pose on
   disconnect.
 
+## ⚠️ Timing note before you buy
+
+**LEGO Education SPIKE Prime 45678 retires June 30, 2026.** As of April 2026
+it is still in stock at retail ($429.95), but after retirement expect used
+prices to climb the same way Robot Inventor 51515 did — that set is now
+commanding ~$727+ used on eBay despite being discontinued.
+
+**Translation:** if you're going with Option A, buy before July. If you miss
+that window, the EV3 sub-option (B-2) becomes the realistic budget path,
+not Robot Inventor.
+
 ## Shopping list — Option A: Single-kit path (recommended)
 
 Cleanest build. Both motors have absolute encoders out of the box.
 
-| # | Item | Qty | ~USD | Notes |
-|---|------|-----|------|-------|
-| 1 | LEGO Education SPIKE Prime Set 45678 | 1 | ~$340 | Hub + 2× Medium + 1× Large motor, sensors, Technic |
-| 2 | SPIKE Prime Expansion Set 45680 | 1 | ~$110 | Adds 1× Large + 1× Medium motor → gives two Large motors total |
-| 3 | Technic Large Turntable 28×28 (99010c01 / 18938) | 1 | ~$8 | Pan bearing |
-| 4 | Technic Worm gear (part 4716) | 2 | ~$2 | One per axis |
-| 5 | Technic Gear 24-tooth (part 3648) | 2 | ~$2 | Mates with worm |
-| 6 | Wide silicone / rubber bands, ~20 cm loop | 4 | ~$5 | Secure iPad |
-| 7 | **Right-angle Lightning cable**, 2 m | 1 | ~$12 | Charging while rotating (10.5" Pro is Lightning) |
-| 8 | Non-slip silicone mat (or Sugru pads) | 1 | ~$8 | Stops base creep |
+| # | Item | Qty | Price | Link | Notes |
+|---|------|-----|-------|------|-------|
+| 1 | LEGO Education SPIKE Prime Set 45678 | 1 | $429.95 | [LEGO Education](https://education.lego.com/en-us/products/lego-education-spike-prime-set/45678/) · [LEGO.com](https://www.lego.com/en-us/product/lego-education-spike-prime-set-45678) · [Amazon](https://www.amazon.com/LEGO-Education-Spike-Prime-Set/dp/B07QN7ZJF9) | Hub + 2× Medium + 1× Large motor, sensors, Technic |
+| 2 | SPIKE Prime Expansion Set 45680 | 1 | ~$110 | [Amazon](https://www.amazon.com/LEGO-Education-Spike-Expansion-45680/dp/B07QM9GQP6) · [LEGO Education](https://education.lego.com/en-us/products/lego-education-spike-prime-expansion-set/45681/) | Adds 1× Large + 1× Medium motor → two Large motors total |
+| 3 | Technic Turntable 28-tooth, base + top (99009c01) | 1 | ~$4 | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=99009c01) | Pan bearing — pre-assembled base + top |
+| 4 | Technic Worm Screw, Long (part 4716) | 2 | ~$1 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4716) | One per axis |
+| 5 | Technic Gear 24-tooth w/ 1 axle hole (part 3648) | 2 | ~$0.50 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3648) | Mates with worm |
+| 6 | Wide silicone rubber bands, ~20 cm loop (12-pack) | 1 | ~$8 | [Amazon](https://www.amazon.com/Silicone-Different-Supplies-Wrapping-Stretchy/dp/B0CBN62DP9) | Secure iPad in cradle |
+| 7 | StarTech right-angle Lightning cable, 2 m, MFi, aramid | 1 | ~$20 | [Amazon – white](https://www.amazon.com/StarTech-com-6-6ft-Angled-Lightning-Cable/dp/B07YVYPM2C) · [Amazon – black](https://www.amazon.com/StarTech-com-6-6ft-Angled-Lightning-Cable/dp/B07YVYJ7KM) | 10.5" Pro is Lightning, not USB-C |
+| 8 | Clear silicone countertop/desk mat, non-slip | 1 | ~$15 | [Amazon](https://www.amazon.com/Silicone-Countertop-Protector-Resistant-Kitchen/dp/B0D87NL8ND) | Stops base creep; optional if you clamp the base |
 
-**Subtotal: ~$490.** SPIKE Prime is sold through LEGO Education resellers.
-Used classroom kits on eBay often run ~40% off.
+**Subtotal: ~$590** at retail. Can often trim 20–40% by buying SPIKE Prime
+used from classroom resellers on [eBay](https://www.ebay.com/p/9039222831).
+Expansion set 45680 is also used-friendly.
 
-## Shopping list — Option B: Budget / eBay path
+## Shopping list — Option B: EV3 budget path
 
-Uses discontinued but readily available hardware.
+Robot Inventor 51515 used is no longer budget-friendly (~$727+). EV3 still
+is. Parts are widely available individually.
 
-| # | Item | Qty | ~USD | Notes |
-|---|------|-----|------|-------|
-| 1 | LEGO MINDSTORMS Robot Inventor 51515 (used) | 1 | ~$250 | 4× Medium motors, same hub. Use 2-stage reduction to compensate for no Large |
-| 1b | *OR* EV3 Brick 45500 + 2× EV3 Large Motors 45502 (used) | 1 set | ~$200 | Highest torque. Run Pybricks or ev3dev |
-| 2 | Assorted Technic lot from BrickLink (beams 5/7/9/11/15, pins, axles) | 1 | ~$40 |  |
-| 3 | Large turntable + worm + 24T (as Option A rows 3–5) | 1 set | ~$12 |  |
-| 4 | Silicone bands + right-angle Lightning cable + silicone mat | 1 set | ~$25 |  |
+| # | Item | Qty | Price | Link | Notes |
+|---|------|-----|-------|------|-------|
+| 1 | EV3 Intelligent Brick 45500 (used) | 1 | ~$40–60 | [eBay search](https://www.ebay.com/sch/i.html?_nkw=lego+ev3+45500) · [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45500-1) | The hub. Run Pybricks or ev3dev |
+| 2 | EV3 Large Servo Motor 45502 (used) | 2 | ~$15–25 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45502-1) · [Brick Owl](https://www.brickowl.com/us/catalog/lego-ev3-large-servo-motor-set-45502) · [eBay](https://www.ebay.com/shop/ev3-motor?_nkw=ev3+motor) | Highest torque of any LEGO motor |
+| 3 | EV3 charger + battery pack (or 6× AA) | 1 | ~$20–40 | [eBay search](https://www.ebay.com/sch/i.html?_nkw=EV3+rechargeable+battery) | Needed unless seller includes |
+| 4 | Technic parts lot (beams 5/7/9/11/15, pins, axles) | 1 | ~$30–50 | [BrickLink Technic category](https://www.bricklink.com/catalogList.asp?catString=55&catType=P) | Build out the yoke/base |
+| 5 | Turntable 99009c01, worm 4716 ×2, gear 3648 ×2 | 1 set | ~$7 | Same BrickLink links as Option A rows 3–5 | — |
+| 6 | Silicone bands + Lightning cable + desk mat | 1 set | ~$43 | Same as Option A rows 6–8 | — |
 
-**Subtotal: ~$280–330.** More sourcing work; cheaper.
+**Subtotal: ~$190–290** depending on luck and seller.
+
+*Alternative brick:* a [used Robot Inventor 51515](https://www.ebay.com/p/13042040481)
+is mechanically a drop-in for SPIKE Prime (same hub) — but current prices
+make it a worse deal than new SPIKE Prime. Only buy at ≤$300.
 
 ## Shopping list — Option C: Pybricks-first (most hackable)
 
-Hardware = Option A or B, **plus flash Pybricks** (free) onto the hub.
-Unlocks MicroPython REPL + BLE, which is the cleanest path for wiring into
-VoiceClaw's brain agent.
+Hardware = Option A or B, **plus flash [Pybricks](https://pybricks.com)**
+(free) onto the hub. Unlocks MicroPython REPL + BLE, the cleanest path for
+wiring pan/tilt into VoiceClaw's brain agent as a `look_at()` tool.
+
+- Installer: [install.pybricks.com](https://www.install.pybricks.com/)
+- Docs: [docs.pybricks.com/hubs/primehub](https://docs.pybricks.com/en/latest/hubs/primehub.html)
+- Confirmed support: SPIKE Prime Hub, Robot Inventor Hub (identical
+  hardware), EV3 Brick.
 
 Hardware cost: same as chosen option. Software cost: $0.
 
