@@ -1,19 +1,20 @@
 #!/bin/bash
-# Deploy the VoiceClaw iOS app to TestFlight end-to-end.
+# Release the VoiceClaw iOS app to TestFlight end-to-end.
 #
-# Usage: ./scripts/deploy-to-testflight.sh [staging|production]
-#        APP_VARIANT defaults to staging when not provided.
+# Usage: ./scripts/release-to-testflight.sh [staging|production]
+#        Variant defaults to staging when not provided.
 #
-# Runs pre-flight (branch/tree/remote state), then chains the existing
-# build-ios.sh + eas submit flow, tee-ing a full log to /tmp so an
-# automation wrapper can tail progress.
+# Runs pre-flight (branch/tree/remote state), then chains
+# build-ios.sh + eas submit, tee-ing a full log to /tmp so an
+# automation wrapper can tail progress. Invoked by
+# `yarn release:ios:<variant>` and by the /deploy-mobile slash command.
 set -euo pipefail
 
 VARIANT="${1:-staging}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="$(dirname "$MOBILE_DIR")"
-LOG_FILE="/tmp/voiceclaw-ios-${VARIANT}-deploy.log"
+LOG_FILE="/tmp/voiceclaw-ios-${VARIANT}-release.log"
 BUILD_NUMBER_OFFSET=50
 
 if [[ "$VARIANT" != "staging" && "$VARIANT" != "production" ]]; then
@@ -21,7 +22,7 @@ if [[ "$VARIANT" != "staging" && "$VARIANT" != "production" ]]; then
   exit 2
 fi
 
-echo "==> VoiceClaw iOS deploy: variant=$VARIANT"
+echo "==> VoiceClaw iOS release: variant=$VARIANT"
 echo "==> Started at $(date)"
 echo "==> Log: $LOG_FILE"
 
@@ -30,13 +31,13 @@ cd "$REPO_DIR"
 echo "==> Pre-flight: branch"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [[ "$BRANCH" != "main" ]]; then
-  echo "!! Must be on 'main' to deploy (current: $BRANCH)." >&2
+  echo "!! Must be on 'main' to release (current: $BRANCH)." >&2
   exit 3
 fi
 
 echo "==> Pre-flight: working tree"
 if [[ -n "$(git status --porcelain)" ]]; then
-  echo "!! Working tree is dirty. Commit or stash before deploying." >&2
+  echo "!! Working tree is dirty. Commit or stash before releasing." >&2
   git status --short >&2
   exit 4
 fi
@@ -58,12 +59,18 @@ echo "==> Pre-flight OK. Commit $LOCAL, buildNumber $BUILD_NUMBER (count $COMMIT
 
 cd "$MOBILE_DIR"
 
-echo "==> Running yarn release:ios:$VARIANT (this takes 10-20 min)"
+echo "==> Building + submitting ($VARIANT) — this takes 10-20 min"
+# Inline the build + submit yarn scripts so this script is the canonical
+# release entry point (release:ios:<variant> points back here — calling
+# yarn release:ios:* from inside would recurse).
 # tee so the caller can tail the log file in parallel; pipefail keeps the
 # exit status from yarn rather than tee.
 set -o pipefail
-yarn "release:ios:$VARIANT" 2>&1 | tee "$LOG_FILE"
+{
+  yarn "build:ios:$VARIANT" && \
+  yarn "submit:ios:$VARIANT"
+} 2>&1 | tee "$LOG_FILE"
 
-echo "==> Deploy finished at $(date)"
+echo "==> Release finished at $(date)"
 echo "==> Build $BUILD_NUMBER submitted to $VARIANT TestFlight."
 echo "==> Apple's post-upload processing takes a few minutes before the build appears in TestFlight."

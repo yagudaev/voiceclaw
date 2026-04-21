@@ -26,8 +26,6 @@
     "submit:ios:production": "cd mobile && yarn submit:ios:production",
     "release:ios:staging": "cd mobile && yarn release:ios:staging",
     "release:ios:production": "cd mobile && yarn release:ios:production",
-    "deploy:ios:staging": "cd mobile && yarn deploy:ios:staging",
-    "deploy:ios:production": "cd mobile && yarn deploy:ios:production",
     "clean:mobile": "cd mobile && yarn clean",
     "dev:desktop": "cd desktop && yarn dev",
     "dev:docs": "cd docs && yarn dev",

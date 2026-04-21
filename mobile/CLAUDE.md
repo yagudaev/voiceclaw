@@ -20,17 +20,19 @@ numbers, so always **commit first, then build**.
 Use the package scripts, not Xcode:
 
 ```bash
-# Staging: build IPA locally via xcodebuild, then submit via EAS
+# Staging: pre-flight → build IPA → altool validate → eas submit
 yarn release:ios:staging
 
 # Production (App Store / TestFlight prod)
 yarn release:ios:production
-
-# End-to-end deploy with pre-flight (branch/tree/origin sync) —
-# thin wrapper around release:ios:* used by the /deploy-mobile slash command.
-yarn deploy:ios:staging
-yarn deploy:ios:production
 ```
+
+`release:ios:<variant>` runs `scripts/release-to-testflight.sh`, which
+checks the tree is clean, on `main`, and in sync with `origin/main`
+before chaining `build:ios:<variant>` + `submit:ios:<variant>`. The
+`/deploy-mobile` slash command is a thin wrapper around that same
+entry point. For ad-hoc IPAs on a feature branch, use
+`yarn build:ios:<variant>` directly (no pre-flight, no submit).
 
 Under the hood (`scripts/build-ios.sh`):
 

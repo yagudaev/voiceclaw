@@ -1,25 +1,25 @@
 ---
-description: Deploy the VoiceClaw iOS app to TestFlight via mobile/scripts/deploy-to-testflight.sh.
+description: Release the VoiceClaw iOS app to TestFlight via mobile/scripts/release-to-testflight.sh.
 argument-hint: "[staging|production]"
 allowed-tools: Bash, Read
 ---
 
-Deploy the VoiceClaw iOS app to TestFlight.
+Release the VoiceClaw iOS app to TestFlight.
 
 **Variant**: `$1` — defaults to `staging` when empty. Pass `staging` or `production`.
 
-The real work lives in `mobile/scripts/deploy-to-testflight.sh` (invoked via `yarn deploy:ios:<variant>`). Your job is to run it, watch the output, and report results. Do **not** duplicate any of its pre-flight checks or build logic in tool calls — let the script fail and surface its exit code.
+The real work lives in `mobile/scripts/release-to-testflight.sh` (invoked via `yarn release:ios:<variant>`). Your job is to run it, watch the output, and report results. Do **not** duplicate any of its pre-flight checks or build logic in tool calls — let the script fail and surface its exit code.
 
 ## Run it
 
 Kick off the yarn script in the background so you can poll progress:
 
 ```bash
-cd mobile && yarn deploy:ios:${1:-staging}
+cd mobile && yarn release:ios:${1:-staging}
 ```
 
 - Set `run_in_background: true` on the Bash tool call.
-- The script tees to `/tmp/voiceclaw-ios-<variant>-deploy.log`.
+- The script tees to `/tmp/voiceclaw-ios-<variant>-release.log`.
 - Save the background task ID for polling.
 
 ## Monitor

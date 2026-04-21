@@ -12,10 +12,8 @@
     "build:ios:production": "APP_VARIANT=production ./scripts/build-ios.sh",
     "submit:ios:staging": "eas submit --profile staging --platform ios --path build/export/*.ipa",
     "submit:ios:production": "eas submit --profile production --platform ios --path build/export/*.ipa",
-    "release:ios:staging": "yarn build:ios:staging && yarn submit:ios:staging",
-    "release:ios:production": "yarn build:ios:production && yarn submit:ios:production",
-    "deploy:ios:staging": "./scripts/deploy-to-testflight.sh staging",
-    "deploy:ios:production": "./scripts/deploy-to-testflight.sh production",
+    "release:ios:staging": "./scripts/release-to-testflight.sh staging",
+    "release:ios:production": "./scripts/release-to-testflight.sh production",
     "clean": "rm -rf .expo node_modules ios android"
   },
   "dependencies": {
