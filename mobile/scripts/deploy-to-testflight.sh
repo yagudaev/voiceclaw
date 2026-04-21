@@ -58,11 +58,11 @@ echo "==> Pre-flight OK. Commit $LOCAL, buildNumber $BUILD_NUMBER (count $COMMIT
 
 cd "$MOBILE_DIR"
 
-echo "==> Running yarn ios:release:$VARIANT (this takes 10-20 min)"
+echo "==> Running yarn release:ios:$VARIANT (this takes 10-20 min)"
 # tee so the caller can tail the log file in parallel; pipefail keeps the
 # exit status from yarn rather than tee.
 set -o pipefail
-yarn "ios:release:$VARIANT" 2>&1 | tee "$LOG_FILE"
+yarn "release:ios:$VARIANT" 2>&1 | tee "$LOG_FILE"
 
 echo "==> Deploy finished at $(date)"
 echo "==> Build $BUILD_NUMBER submitted to $VARIANT TestFlight."

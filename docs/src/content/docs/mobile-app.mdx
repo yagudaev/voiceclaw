@@ -39,17 +39,17 @@ The mobile app is a React Native application built with Expo, designed as an iOS
   </TabItem>
   <TabItem label="Simulator">
     ```bash
-    yarn ios          # launch in iOS simulator (development variant)
+    yarn run:ios          # launch in iOS simulator (development variant)
     ```
   </TabItem>
   <TabItem label="Device">
     ```bash
-    yarn ios:device   # build and run on connected iOS device (development variant)
+    yarn run:ios:device   # build and run on connected iOS device (development variant)
     ```
   </TabItem>
   <TabItem label="Release">
     ```bash
-    yarn ios:release  # build release configuration on device
+    yarn run:ios:release  # build release configuration on device
     ```
   </TabItem>
 </Tabs>
@@ -59,11 +59,17 @@ The mobile app is a React Native application built with Expo, designed as an iOS
 | Script | Description |
 |--------|-------------|
 | `yarn dev` | Start Expo dev server with cache clear |
-| `yarn ios` | Run on iOS simulator (development build) |
-| `yarn ios:device` | Run on connected iOS device |
-| `yarn ios:release` | Release build on device |
-| `yarn android` | Start for Android |
-| `yarn web` | Start for web |
+| `yarn run:ios` | Run on iOS simulator (development build) |
+| `yarn run:ios:device` | Run on connected iOS device |
+| `yarn run:ios:release` | Release build on device |
+| `yarn build:ios:staging` | Build staging IPA via xcodebuild |
+| `yarn build:ios:production` | Build production IPA via xcodebuild |
+| `yarn submit:ios:staging` | Submit built IPA to staging TestFlight |
+| `yarn submit:ios:production` | Submit built IPA to production TestFlight |
+| `yarn release:ios:staging` | Build + submit to staging TestFlight |
+| `yarn release:ios:production` | Build + submit to production TestFlight |
+| `yarn deploy:ios:staging` | End-to-end deploy with pre-flight (branch/tree/origin) |
+| `yarn deploy:ios:production` | End-to-end deploy with pre-flight (production) |
 | `yarn clean` | Remove `.expo`, `node_modules`, `ios`, `android` |
 
 ## iOS-Specific Notes
