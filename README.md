@@ -21,6 +21,55 @@ Watch VoiceClaw in action as a thinking partner for real-time problem solving:
 
 **The magic of voice agents:** Talk through ideas with your AI agent while you work. Real collaboration, real thinking.
 
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- yarn
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/yagudaev/voiceclaw.git
+cd voiceclaw
+yarn install
+```
+
+### 2. Start the relay server
+
+```bash
+cd relay-server
+cp .env.example .env
+# Edit .env and add your API keys (see Configuration below)
+yarn dev
+```
+
+The server starts on `http://localhost:8080` with a test page at `/test`.
+
+### 3. Start the desktop app
+
+```bash
+cd desktop
+yarn dev
+```
+
+### 4. Start the mobile app
+
+```bash
+cd mobile
+yarn dev
+```
+
+Or use the root workspace scripts:
+
+```bash
+yarn dev:server     # relay server only
+yarn dev:desktop    # desktop app only
+yarn dev:mobile     # mobile app only
+yarn dev            # mobile + web + server together
+```
+
 ## How it works: the `ask_brain` pattern
 
 Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conversation but can't use tools, access memory, or call external APIs on their own. VoiceClaw bridges this gap with a simple escalation pattern:
@@ -89,55 +138,6 @@ flowchart LR
 **Desktop app** -- Electron + React + Tailwind macOS app with screen sharing support.
 **Relay server** -- TypeScript / Node.js WebSocket server that brokers sessions between clients and AI providers.
 **Brain agent** -- Any OpenAI-compatible agent endpoint. The relay calls it via `ask_brain` when the voice model needs tools, memory, or external data. Swap in any agent you want.
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- yarn
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/yagudaev/voiceclaw.git
-cd voiceclaw
-yarn install
-```
-
-### 2. Start the relay server
-
-```bash
-cd relay-server
-cp .env.example .env
-# Edit .env and add your API keys (see Configuration below)
-yarn dev
-```
-
-The server starts on `http://localhost:8080` with a test page at `/test`.
-
-### 3. Start the desktop app
-
-```bash
-cd desktop
-yarn dev
-```
-
-### 4. Start the mobile app
-
-```bash
-cd mobile
-yarn dev
-```
-
-Or use the root workspace scripts:
-
-```bash
-yarn dev:server     # relay server only
-yarn dev:desktop    # desktop app only
-yarn dev:mobile     # mobile app only
-yarn dev            # mobile + web + server together
-```
 
 ## Configuration
 
