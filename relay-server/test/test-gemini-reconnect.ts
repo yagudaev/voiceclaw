@@ -591,8 +591,8 @@ async function runSendQueueDrainTest() {
 const MAX_PENDING_AUDIO_FROM_ADAPTER = 50
 
 async function runClose1011WithHandleTest() {
-  console.log("\nGemini Close 1011 With Handle Test (server error — surface, don't resume)")
-  console.log("==========================================================================")
+  console.log("\nGemini Close 1011 With Handle Test (server error — resume silently)")
+  console.log("====================================================================")
 
   const MOCK_PORT = 19894
   const clientEvents: RelayEvent[] = []
@@ -602,14 +602,15 @@ async function runClose1011WithHandleTest() {
     receivedSetups,
     onConnect: (ws, index) => {
       if (index === 0) {
-        // Capture a handle, then close with 1011 (server error) — NOT goAway.
-        // Per Gemini docs, graceful rotation uses goAway; a bare 1011 is an
-        // actual server-side fault and shouldn't auto-resume.
+        // First session: emit a handle, then close with 1011 (internal error).
+        // Transient Gemini-side faults shouldn't drop the user — adapter should
+        // resume using the handle.
         setTimeout(() => ws.send(JSON.stringify({
           sessionResumptionUpdate: { newHandle: "h-stable", resumable: true },
         })), 20)
         setTimeout(() => ws.close(1011, "internal error"), 50)
       }
+      // Second session: accept setup silently — adapter treats setupComplete as rotated.
     },
   }, MOCK_PORT)
 
@@ -631,12 +632,15 @@ async function runClose1011WithHandleTest() {
 
   console.log(`    Setups received: ${receivedSetups.length}, client events: ${clientEvents.map((e) => e.type).join(", ")}`)
 
-  assert(receivedSetups.length === 1, `no reconnect attempted for 1011 (setups=${receivedSetups.length})`)
+  assert(receivedSetups.length === 2, `reconnect attempted for 1011 (setups=${receivedSetups.length})`)
+
+  const resumedSetup = receivedSetups[1] as { sessionResumption?: { handle?: string } }
+  assert(resumedSetup.sessionResumption?.handle === "h-stable", `resumed setup replays stored handle (got ${resumedSetup.sessionResumption?.handle})`)
 
   const errors = clientEvents.filter((e) => e.type === "error")
   const rotated = clientEvents.filter((e) => e.type === "session.rotated")
-  assert(errors.length === 1, `1011 with handle surfaces error (got ${errors.length})`)
-  assert(rotated.length === 0, `no silent reconnect on 1011 (got ${rotated.length})`)
+  assert(errors.length === 0, `1011 with handle does not surface error (got ${errors.length})`)
+  assert(rotated.length === 1, `1011 with handle rotates silently (got ${rotated.length})`)
 
   adapter.disconnect()
   wss.close()

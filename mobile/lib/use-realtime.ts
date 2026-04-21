@@ -178,6 +178,19 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         cb.onTurnEnded?.()
         break
 
+      case 'session.rotating':
+        // Gemini handle-based reconnect: drop in-flight audio so the rotated
+        // session doesn't play stale output, and reset turn timing.
+        ExpoRealtimeAudioModule.stopPlayback()
+        turnStartedAtRef.current = null
+        break
+
+      case 'session.rotated':
+        if (typeof data.sessionId === 'string') {
+          setSessionId(data.sessionId)
+        }
+        break
+
       case 'session.ended':
         cb.onSessionEnded?.(data.summary)
         break

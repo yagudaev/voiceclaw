@@ -145,6 +145,15 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
           cb.onSessionEnded?.(data.summary)
           break
 
+        case 'session.rotating':
+          engineRef.current?.stopPlayback()
+          turnStartedAtRef.current = null
+          break
+
+        case 'session.rotated':
+          if (typeof data.sessionId === 'string') setSessionId(data.sessionId)
+          break
+
         case 'error':
           console.warn(`[useRealtime] Error: ${data.message} (${data.code})`)
           cb.onError?.(data.message, data.code)
