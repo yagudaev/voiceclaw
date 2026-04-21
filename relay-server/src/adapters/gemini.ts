@@ -213,9 +213,9 @@ export class GeminiAdapter implements ProviderAdapter {
    * Emits session.rotating / session.rotated so clients can clear playback
    * buffers and show status.
    */
-  private async reconnect(reason: string): Promise<void> {
+  private async reconnect(reason: string, forceFresh = false): Promise<void> {
     if (this.isReconnecting || this.disconnected) return
-    if (!this.resumptionHandle) {
+    if (!forceFresh && !this.resumptionHandle) {
       logError(`[gemini] reconnect requested (${reason}) but no resumption handle — giving up`)
       this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
       return
@@ -704,7 +704,7 @@ export class GeminiAdapter implements ProviderAdapter {
       // Drop the poisoned handle so the next reconnect starts a fresh session.
       this.resumptionHandle = null
       this.currentlyResumable = false
-      void this.reconnect("poisoned handle — fresh session")
+      void this.reconnect("poisoned handle — fresh session", true)
     }, POST_RESUME_GENERATION_TIMEOUT_MS)
   }
 
