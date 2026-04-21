@@ -114,55 +114,77 @@ pose locks when idle.
 - **Safety:** rate-limit commands, ramp acceleration, go to a rest pose on
   disconnect.
 
-## ⚠️ Timing note before you buy
+## Canadian sourcing strategy (all prices CAD)
 
-**LEGO Education SPIKE Prime 45678 retires June 30, 2026.** As of April 2026
-it is still in stock at retail ($429.95), but after retirement expect used
-prices to climb the same way Robot Inventor 51515 did — that set is now
-commanding ~$727+ used on eBay despite being discontinued.
+**Two things that shape the shopping below.**
 
-**Translation:** if you're going with Option A, buy before July. If you miss
-that window, the EV3 sub-option (B-2) becomes the realistic budget path,
-not Robot Inventor.
+1. **SPIKE Prime 45678 retires June 30, 2026.** LEGO.com Canada lists MSRP at
+   **$630 CAD** but is currently *sold out* as of April 2026. Canadian
+   education resellers (Studica, Spectrum Educational, Robotix Education,
+   TOYTAG, JR Toy) are the realistic channel. Watch for sales.
+2. **MINDSTORMS Robot Inventor 51515 is a dead end in Canada too.** Original
+   MSRP was $459.99 CAD but it's retired everywhere; secondary market is
+   ~$770 USD (≈ $1050+ CAD). The EV3 budget path is the realistic
+   alternative, not 51515.
 
-## Shopping list — Option A: Single-kit path (recommended)
+Canadian BrickLink sellers — cluster your parts order with one to save on
+shipping: [Canada First Bricks](https://store.bricklink.com/canadafirst) ·
+[Toronto Bricks](https://store.bricklink.com/Torontolego) ·
+[BrickBeaver](https://store.bricklink.com/BrickBeaver.com) ·
+[Canadian Bricks](https://store.bricklink.com/HKY) ·
+[Parts Store Canada](https://store.bricklink.com/TOOLMANALAN). On any part
+page, use **"Sellers From: Canada"** to avoid cross-border fees.
 
-Cleanest build. Both motors have absolute encoders out of the box.
+## Shopping list — Option A: SPIKE Prime path (recommended, Canada)
 
-| # | Item | Qty | Price | Link | Notes |
-|---|------|-----|-------|------|-------|
-| 1 | LEGO Education SPIKE Prime Set 45678 | 1 | $429.95 | [LEGO Education](https://education.lego.com/en-us/products/lego-education-spike-prime-set/45678/) · [LEGO.com](https://www.lego.com/en-us/product/lego-education-spike-prime-set-45678) · [Amazon](https://www.amazon.com/LEGO-Education-Spike-Prime-Set/dp/B07QN7ZJF9) | Hub + 2× Medium + 1× Large motor, sensors, Technic |
-| 2 | SPIKE Prime Expansion Set 45680 | 1 | ~$110 | [Amazon](https://www.amazon.com/LEGO-Education-Spike-Expansion-45680/dp/B07QM9GQP6) · [LEGO Education](https://education.lego.com/en-us/products/lego-education-spike-prime-expansion-set/45681/) | Adds 1× Large + 1× Medium motor → two Large motors total |
-| 3 | Technic Turntable 28-tooth, base + top (99009c01) | 1 | ~$4 | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=99009c01) | Pan bearing — pre-assembled base + top |
-| 4 | Technic Worm Screw, Long (part 4716) | 2 | ~$1 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4716) | One per axis |
-| 5 | Technic Gear 24-tooth w/ 1 axle hole (part 3648) | 2 | ~$0.50 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3648) | Mates with worm |
-| 6 | Wide silicone rubber bands, ~20 cm loop (12-pack) | 1 | ~$8 | [Amazon](https://www.amazon.com/Silicone-Different-Supplies-Wrapping-Stretchy/dp/B0CBN62DP9) | Secure iPad in cradle |
-| 7 | StarTech right-angle Lightning cable, 2 m, MFi, aramid | 1 | ~$20 | [Amazon – white](https://www.amazon.com/StarTech-com-6-6ft-Angled-Lightning-Cable/dp/B07YVYPM2C) · [Amazon – black](https://www.amazon.com/StarTech-com-6-6ft-Angled-Lightning-Cable/dp/B07YVYJ7KM) | 10.5" Pro is Lightning, not USB-C |
-| 8 | Clear silicone countertop/desk mat, non-slip | 1 | ~$15 | [Amazon](https://www.amazon.com/Silicone-Countertop-Protector-Resistant-Kitchen/dp/B0D87NL8ND) | Stops base creep; optional if you clamp the base |
+Cleanest build. Both motors have absolute encoders out of the box. All
+prices CAD, retail. Several vendors listed per line — buy from whichever is
+in stock / cheapest on the day.
 
-**Subtotal: ~$590** at retail. Can often trim 20–40% by buying SPIKE Prime
-used from classroom resellers on [eBay](https://www.ebay.com/p/9039222831).
-Expansion set 45680 is also used-friendly.
+| # | Item | Qty | Price CAD | Buy from (Canada) | Notes |
+|---|------|-----|-----------|-------------------|-------|
+| 1 | LEGO Education SPIKE Prime Set 45678 | 1 | $500–$630 | [LEGO.com CA](https://www.lego.com/en-ca/product/lego-education-spike-prime-set-45678) · [Studica CA](https://www.studica.ca/en/lego-education-spike-prime-set-45678) · [Spectrum Ed](https://spectrumed.ca/en/lego-education-spike-prime-set) · [Robotix Education](https://robotixeducation.ca/products/lego-education-spike-prime-set) · [TOYTAG](https://www.toytag.com/products/lego-education-spike-prime-set) · [Amazon.ca](https://www.amazon.ca/Lego-Education-Spike-Prime-Set/dp/B07QN7ZJF9) | Hub + 2× Medium + 1× Large motor, sensors, Technic. LEGO.ca is $630; education resellers often run 15–20% lower |
+| 2 | SPIKE Prime Expansion Set 45680 | 1 | $150–$180 | [Robotix Education](https://robotixeducation.ca/products/lego-education-spike-prime-expansion-set) · [Studica CA](https://www.studica.ca/en/lego-education-store) · [Amazon.ca](https://www.amazon.ca/s?k=LEGO+Education+Spike+Prime+Expansion+45680) | Adds the 2nd Large + 1 Medium motor — you need this for two Large motors |
+| 3 | Technic Turntable 28T base+top (99009c01) | 1 | $3–$5 | [BrickLink part 99009c01](https://www.bricklink.com/v2/catalog/catalogitem.page?P=99009c01) → filter Canadian sellers · [Brick Owl CA](https://www.brickowl.com/ca/catalog/search?query=99009c01) | Pan bearing, pre-assembled |
+| 4 | Technic Worm Screw, Long (4716) | 2 | $1–$2 ea | [BrickLink part 4716](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4716) → Canadian sellers | One per axis |
+| 5 | Technic Gear 24-tooth, 1 axle hole (3648) | 2 | $0.50–$1 ea | [BrickLink part 3648](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3648) → Canadian sellers | Mates with worm |
+| 6 | Wide silicone rubber bands (pack) | 1 | $12–$15 | [Amazon.ca – silicone rubber bands](https://www.amazon.ca/silicone-rubber-bands/s?k=silicone+rubber+bands) | Any 15–20 cm loop pack works |
+| 7 | StarTech right-angle Lightning 2 m, MFi, aramid | 1 | $25–$30 | [Amazon.ca – RUSBLTMM2MWR white](https://www.amazon.ca/6-6ft-Angled-Lightning-USB-Cable/dp/B07YVYPM2C) · [Amazon.ca – USBLT2MWR](https://www.amazon.ca/StarTech-com-USBLT2MWR-Angled-Lightning-Cable/dp/B00XLB0P9G) | 10.5" iPad Pro is Lightning, not USB-C |
+| 8 | Non-slip silicone mat | 1 | $15–$25 | [Amazon.ca – non-slip desk mat](https://www.amazon.ca/non-slip-desk-mat/s?k=non+slip+desk+mat) | Optional if you clamp the base |
 
-## Shopping list — Option B: EV3 budget path
+**Target total (Canada, retail): ~$720–$860 CAD.**
 
-Robot Inventor 51515 used is no longer budget-friendly (~$727+). EV3 still
-is. Parts are widely available individually.
+**Ways to cut cost:**
+- Buy SPIKE Prime used from Canadian classroom resellers on
+  [eBay.ca](https://www.ebay.ca/sch/i.html?_nkw=LEGO+SPIKE+Prime+45678) or
+  [Kijiji](https://www.kijiji.ca/b-canada/lego-spike-prime/k0l0) — typical
+  saving 20–40%.
+- Skip the Expansion 45680 and use 2× Medium motors on the base set with
+  tighter gear reduction to compensate. Saves ~$160 CAD.
+- Harvest the turntable/worm/24T from the Expansion set parts pool instead
+  of buying separately (verify the inventory first on BrickLink).
 
-| # | Item | Qty | Price | Link | Notes |
-|---|------|-----|-------|------|-------|
-| 1 | EV3 Intelligent Brick 45500 (used) | 1 | ~$40–60 | [eBay search](https://www.ebay.com/sch/i.html?_nkw=lego+ev3+45500) · [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45500-1) | The hub. Run Pybricks or ev3dev |
-| 2 | EV3 Large Servo Motor 45502 (used) | 2 | ~$15–25 ea | [BrickLink](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45502-1) · [Brick Owl](https://www.brickowl.com/us/catalog/lego-ev3-large-servo-motor-set-45502) · [eBay](https://www.ebay.com/shop/ev3-motor?_nkw=ev3+motor) | Highest torque of any LEGO motor |
-| 3 | EV3 charger + battery pack (or 6× AA) | 1 | ~$20–40 | [eBay search](https://www.ebay.com/sch/i.html?_nkw=EV3+rechargeable+battery) | Needed unless seller includes |
-| 4 | Technic parts lot (beams 5/7/9/11/15, pins, axles) | 1 | ~$30–50 | [BrickLink Technic category](https://www.bricklink.com/catalogList.asp?catString=55&catType=P) | Build out the yoke/base |
-| 5 | Turntable 99009c01, worm 4716 ×2, gear 3648 ×2 | 1 set | ~$7 | Same BrickLink links as Option A rows 3–5 | — |
-| 6 | Silicone bands + Lightning cable + desk mat | 1 set | ~$43 | Same as Option A rows 6–8 | — |
+**Cost-optimized target (used base + trimmed extras): ~$450–$550 CAD.**
 
-**Subtotal: ~$190–290** depending on luck and seller.
+## Shopping list — Option B: EV3 budget path (Canada)
 
-*Alternative brick:* a [used Robot Inventor 51515](https://www.ebay.com/p/13042040481)
-is mechanically a drop-in for SPIKE Prime (same hub) — but current prices
-make it a worse deal than new SPIKE Prime. Only buy at ≤$300.
+If Option A is over budget, EV3 is well-stocked on eBay.ca and Kijiji.
+Highest torque of any LEGO motor, fully Pybricks-compatible.
+
+| # | Item | Qty | Price CAD | Buy from (Canada) | Notes |
+|---|------|-----|-----------|-------------------|-------|
+| 1 | EV3 Intelligent Brick 45500 (used) | 1 | $50–$100 | [eBay.ca – EV3 45500](https://www.ebay.ca/sch/i.html?_nkw=lego+ev3+45500) · [Kijiji – EV3](https://www.kijiji.ca/b-canada/lego-ev3/k0l0) · [BrickLink 45500-1](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45500-1) | The hub |
+| 2 | EV3 Large Servo Motor 45502 (used) | 2 | $20–$40 ea | [eBay.ca – EV3 motor](https://www.ebay.ca/sch/i.html?_nkw=lego+ev3+large+motor+45502) · [BrickLink 45502-1](https://www.bricklink.com/v2/catalog/catalogitem.page?S=45502-1) · [Brick Owl](https://www.brickowl.com/us/catalog/lego-ev3-large-servo-motor-set-45502) | Highest-torque LEGO motor |
+| 3 | EV3 charger + rechargeable battery (or 6× AA) | 1 | $25–$50 | [eBay.ca search](https://www.ebay.ca/sch/i.html?_nkw=EV3+rechargeable+battery) | Needed unless seller includes. AA batteries in holder work too |
+| 4 | Technic parts lot (beams 5/7/9/11/15, pins, axles) | 1 | $40–$70 | [BrickLink Technic sellers in Canada](https://www.bricklink.com/browseStores.asp?countryID=CA&groupState=Y) · [Kijiji – lego bulk](https://www.kijiji.ca/b-canada/lego-bulk/k0l0) | Build out the yoke/base |
+| 5 | Turntable 99009c01 + worm 4716 ×2 + 24T 3648 ×2 | 1 set | ~$8 | Same BrickLink part pages as Option A | — |
+| 6 | Silicone bands + Lightning cable + non-slip mat | 1 set | ~$55 | Same Amazon.ca links as Option A rows 6–8 | — |
+
+**Target total (Canada, used-market): ~$220–$350 CAD.**
+
+*Stay away from used Robot Inventor 51515 in Canada — pricing is now
+collector-tier and there's no mechanical advantage over SPIKE Prime or EV3
+for this build.*
 
 ## Shopping list — Option C: Pybricks-first (most hackable)
 
