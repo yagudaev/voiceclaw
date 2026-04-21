@@ -13,6 +13,14 @@ const WATCHDOG_TIMEOUT_MS = 20_000
 const SETUP_TIMEOUT_MS = 15_000
 const MAX_RECONNECT_ATTEMPTS = 2
 const RECONNECT_BACKOFF_MS = 500
+// After a resumption, Gemini's ASR pipeline can come back while the generation
+// pipeline stays wedged — we see inputTranscription (or empty serverContent
+// heartbeats) but never modelTurn / outputTranscription / audio. This is a
+// "poisoned handle": the resumption checkpoint landed mid-turn and the turn
+// controller is waiting for a boundary that will never arrive. Detect it by
+// watching for ASR-alive + generation-dead post-resume, and recover by forcing
+// a fresh session (no handle).
+const POST_RESUME_GENERATION_TIMEOUT_MS = 8000
 // Close codes that warrant a transparent reconnect (vs. surfacing to the client).
 // Gemini's graceful end-of-session path is goAway → we reconnect proactively
 // before the close lands. These codes cover transport-level drops (network,
@@ -45,6 +53,12 @@ export class GeminiAdapter implements ProviderAdapter {
   private userSpeaking = false
   private hasVideoInput = false
   private watchdogEnabled = false
+  // Post-resume liveness tracking. When a resumed session completes setup we
+  // arm a timer; any generation-side activity disarms it. ASR-only activity
+  // (inputTranscription or empty serverContent) does not disarm — that's the
+  // exact failure signature we're trying to detect.
+  private postResumeTimer: ReturnType<typeof setTimeout> | null = null
+  private awaitingResumeGeneration = false
 
   // Session resumption state
   private resumptionHandle: string | null = null
@@ -233,12 +247,14 @@ export class GeminiAdapter implements ProviderAdapter {
     }
     this.upstream = null
 
+    const resumingWithHandle = this.resumptionHandle !== null
     for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
       try {
         await this.openUpstream()
         this.isReconnecting = false
         this.sendToClient?.({ type: "session.rotated", sessionId: `gemini-resumed-${Date.now()}` })
         log(`[gemini] Reconnected on attempt ${attempt}`)
+        if (resumingWithHandle) this.armPostResumeWatchdog()
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -337,6 +353,7 @@ export class GeminiAdapter implements ProviderAdapter {
   disconnect() {
     this.disconnected = true
     this.clearWatchdog()
+    this.clearPostResumeWatchdog()
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
       this.upstream.close()
     }
@@ -487,6 +504,12 @@ export class GeminiAdapter implements ProviderAdapter {
   private handleServerContent(content: any) {
     const keys = Object.keys(content).join(", ")
     log(`[gemini] serverContent: ${keys}`)
+
+    // Any generation-side activity means the resumed session's turn controller
+    // is healthy — cancel the post-resume watchdog.
+    if (content.modelTurn || content.outputTranscription || content.turnComplete || content.generationComplete) {
+      this.clearPostResumeWatchdog()
+    }
 
     // Model audio output — only extract inlineData (audio)
     // Do NOT emit transcript from modelTurn.parts[].text — outputTranscription handles that
@@ -668,6 +691,29 @@ export class GeminiAdapter implements ProviderAdapter {
     }
     for (const p of control) this.upstream.send(p)
     for (const p of audio) this.upstream.send(p)
+  }
+
+  private armPostResumeWatchdog() {
+    this.clearPostResumeWatchdog()
+    this.awaitingResumeGeneration = true
+    this.postResumeTimer = setTimeout(() => {
+      if (!this.awaitingResumeGeneration || this.disconnected) return
+      logError(`[gemini] Post-resume generation timeout (${POST_RESUME_GENERATION_TIMEOUT_MS}ms) — handle is poisoned, forcing fresh session`)
+      this.awaitingResumeGeneration = false
+      this.postResumeTimer = null
+      // Drop the poisoned handle so the next reconnect starts a fresh session.
+      this.resumptionHandle = null
+      this.currentlyResumable = false
+      void this.reconnect("poisoned handle — fresh session")
+    }, POST_RESUME_GENERATION_TIMEOUT_MS)
+  }
+
+  private clearPostResumeWatchdog() {
+    this.awaitingResumeGeneration = false
+    if (this.postResumeTimer) {
+      clearTimeout(this.postResumeTimer)
+      this.postResumeTimer = null
+    }
   }
 
   private flushPendingTranscripts() {
