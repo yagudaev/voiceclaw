@@ -15,10 +15,12 @@ import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
 import ExpoRealtimeAudioModule from '@/modules/expo-realtime-audio/src/ExpoRealtimeAudioModule'
+import ExpoScreenCaptureModule from '@/modules/expo-screen-capture/src/ExpoScreenCaptureModule'
+import type { ScreenFrameEvent, ScreenCaptureStateEvent } from '@/modules/expo-screen-capture/src/ExpoScreenCapture.types'
 import ExpoVapiModule from '@/modules/expo-vapi'
 import type { FunctionCallEvent, SpeechEvent, TranscriptEvent } from '@/modules/expo-vapi'
 import { Stack } from 'expo-router'
-import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, SendIcon, XIcon } from 'lucide-react-native'
+import { MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, RefreshCwIcon, ScreenShareIcon, ScreenShareOffIcon, SendIcon, XIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
@@ -110,6 +112,10 @@ export default function ChatScreen() {
   const [debugMode, setDebugMode] = useState(false)
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const [isUserSpeaking, setIsUserSpeaking] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [screenShareSource, setScreenShareSource] = useState<'in-app' | 'broadcast' | 'none'>('none')
+  const [isGeminiModel, setIsGeminiModel] = useState(false)
+  const screenShareFramesRef = useRef(0)
   const flatListRef = useRef<FlatList<Message>>(null)
   const hasScrolledRef = useRef(false)
   const { playJoin, playEnd, startThinking, stopThinking } = useCallSounds()
@@ -634,6 +640,28 @@ export default function ChatScreen() {
     getSetting('debug_mode').then((v) => { if (v === 'true') setDebugMode(true) }).catch(() => {})
   }, [])
 
+  // Screen-capture: forward frames from the native module to the realtime relay.
+  useEffect(() => {
+    const frameSub = ExpoScreenCaptureModule.addListener('onFrame', (event: ScreenFrameEvent) => {
+      if (activeVoiceModeRef.current !== 'realtime') return
+      realtime.sendFrame(event.data)
+      screenShareFramesRef.current += 1
+    })
+    const stateSub = ExpoScreenCaptureModule.addListener('onStateChange', (event: ScreenCaptureStateEvent) => {
+      setScreenShareSource(event.source)
+      if (event.state === 'active') setIsScreenSharing(true)
+      else if (event.state === 'idle') setIsScreenSharing(false)
+    })
+    const errorSub = ExpoScreenCaptureModule.addListener('onError', (event) => {
+      console.warn('[ScreenCapture] Error:', event.message, event.code)
+    })
+    return () => {
+      frameSub.remove()
+      stateSub.remove()
+      errorSub.remove()
+    }
+  }, [realtime])
+
   useEffect(() => { loadMessages() }, [loadMessages])
 
   const sendMessage = useCallback(async () => {
@@ -944,6 +972,7 @@ export default function ChatScreen() {
     }
 
     const isGemini = model.startsWith('gemini-')
+    setIsGeminiModel(isGemini)
     activeProvidersRef.current = {
       sttProvider: isGemini ? 'gemini-realtime' : 'openai-realtime',
       llmProvider: isGemini ? 'gemini-realtime' : 'gpt-4o-mini-realtime',
@@ -992,8 +1021,54 @@ export default function ChatScreen() {
     setIsMuted(false)
     setIsThinking(false)
     setIsUserSpeaking(false)
+    setIsGeminiModel(false)
+    // Tear down any active screen share when the call ends.
+    if (isScreenSharing) {
+      ExpoScreenCaptureModule.stopInAppCapture().catch(() => {})
+      ExpoScreenCaptureModule.stopBroadcastBridge()
+      setIsScreenSharing(false)
+      setScreenShareSource('none')
+    }
     soundsRef.current.playEnd()
-  }, [realtime, cancelReconnect])
+  }, [realtime, cancelReconnect, isScreenSharing])
+
+  const toggleScreenShare = useCallback(async () => {
+    if (!isGeminiModel) return
+    if (isScreenSharing) {
+      try {
+        await ExpoScreenCaptureModule.stopInAppCapture()
+      } catch (e) {
+        console.warn('[ScreenCapture] stopInAppCapture failed', e)
+      }
+      ExpoScreenCaptureModule.stopBroadcastBridge()
+      setIsScreenSharing(false)
+      setScreenShareSource('none')
+      return
+    }
+
+    if (!ExpoScreenCaptureModule.isAvailable()) {
+      const convId = conversationIdRef.current
+      if (convId) {
+        addMessage(convId, 'assistant', 'Screen recording is not available on this device.').then(() => loadMessagesRef.current())
+      }
+      return
+    }
+
+    screenShareFramesRef.current = 0
+    try {
+      await ExpoScreenCaptureModule.startInAppCapture()
+      // Also start the broadcast bridge in case the user opts into background
+      // capture via a long-press. Bridge is cheap when inactive.
+    } catch (e) {
+      console.warn('[ScreenCapture] startInAppCapture failed', e)
+    }
+  }, [isGeminiModel, isScreenSharing])
+
+  const startBackgroundScreenShare = useCallback(() => {
+    if (!isGeminiModel) return
+    ExpoScreenCaptureModule.startBroadcastBridge()
+    ExpoScreenCaptureModule.presentBroadcastPicker()
+  }, [isGeminiModel])
 
   const handlePipelineInterrupt = useCallback(() => {
     setPipelineDebugState((current) => ({
@@ -1119,6 +1194,19 @@ export default function ChatScreen() {
             <Button testID="mute-button" variant={isMuted ? 'destructive' : 'secondary'} size="icon" className="rounded-full" onPress={toggleMute}>
               <Icon as={isMuted ? MicOffIcon : MicIcon} size={20} className="text-foreground" />
             </Button>
+          )}
+          {isGeminiModel && activeVoiceModeRef.current === 'realtime' && (
+            <Pressable
+              testID="screen-share-button"
+              onPress={toggleScreenShare}
+              onLongPress={startBackgroundScreenShare}
+              className={`h-10 w-10 items-center justify-center rounded-full ${isScreenSharing ? 'bg-primary' : 'bg-secondary'}`}>
+              <Icon
+                as={isScreenSharing ? ScreenShareOffIcon : ScreenShareIcon}
+                size={20}
+                className={isScreenSharing ? 'text-primary-foreground' : 'text-foreground'}
+              />
+            </Pressable>
           )}
           <Button testID="end-call-button" variant="destructive" className="rounded-full px-6" onPress={toggleCall}>
             <Icon as={PhoneOffIcon} size={20} className="text-destructive-foreground" />
