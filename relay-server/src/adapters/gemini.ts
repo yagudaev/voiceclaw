@@ -228,7 +228,8 @@ export class GeminiAdapter implements ProviderAdapter {
     // prior session's stale handle.
     this.currentlyResumable = false
     this.rotateAfterToolCalls = false
-    log(`[gemini] Reconnecting (${reason}, handle=${this.resumptionHandle.slice(0, 8)}…)`)
+    const handlePreview = this.resumptionHandle ? `${this.resumptionHandle.slice(0, 8)}…` : "fresh"
+    log(`[gemini] Reconnecting (${reason}, handle=${handlePreview})`)
     // Finalize any in-flight transcription before rotating. Gemini's resumed
     // session replays transcription from its last checkpoint, so if we leave
     // currentAssistantText / currentUserText populated, the replayed deltas
