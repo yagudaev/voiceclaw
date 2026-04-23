@@ -1,55 +1,104 @@
 ---
-title: Tracing (Langfuse + OpenTelemetry)
-description: How voice-turn observability crosses the relay ↔ brain boundary so one Langfuse trace covers both services.
+title: Tracing (OTel + Langfuse + Tracing UI)
+description: How voice-turn observability crosses the relay ↔ brain boundary, where the traces land, and how to run the self-hosted Tracing UI.
 ---
 
-VoiceClaw's relay server emits OpenTelemetry spans that ship to Langfuse via `LangfuseSpanProcessor`. One span tree corresponds to one **voice turn** (user utterance → assistant finished speaking). Tool calls made during that turn — notably `ask_brain` — nest under the turn.
+VoiceClaw's relay server and the OpenClaw brain gateway emit OpenTelemetry spans that describe each voice turn. Spans are dual-exported to:
 
-When `ask_brain` fires it hits the OpenClaw brain gateway over HTTP. The relay propagates a W3C `traceparent` header so OpenClaw's spans can nest under the relay's `ask_brain` tool span, producing a single unified trace across both services.
+1. **Langfuse** — generic LLM-observability dashboard (cloud-hosted).
+2. **A local tracing-ui collector** — a small Node OTLP-HTTP receiver that writes to SQLite and backs our own custom UI at `tracing-ui/`. See [`docs/tracing-ui/SPEC.md`](./tracing-ui-spec).
 
-## Enabling
-
-Set these in `relay-server/.env`:
-
-```
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
-```
-
-Missing keys soft-disable tracing — the relay still runs, no spans emit, no network calls to Langfuse.
-
-Optional: `OTEL_SERVICE_NAME=voiceclaw-relay` (the default). Set if you run multiple relays and want to distinguish them in Langfuse's service filter.
+Each backend is independently toggled by env vars. Any combination works, including "none".
 
 ## Trace shape
 
 ```
-voice-turn                     [GENERATION]    service: voiceclaw-relay
-├── ask_brain                  [TOOL]          service: voiceclaw-relay
-│   └── openclaw-gateway-...   [SPAN]          service: openclaw-gateway
-│       └── openclaw-llm       [GENERATION]    service: openclaw-gateway
-│           └── openclaw-step  [SPAN]          service: openclaw-gateway  (repeats per agent step)
+voice-turn                        [GENERATION]    service: voiceclaw-relay
+├── ask_brain                     [TOOL]          service: voiceclaw-relay
+│   └── openclaw.chat_completions [SPAN]          service: openclaw-gateway
+│       └── openclaw.llm          [GENERATION]    service: openclaw-gateway
+│           └── openclaw.tool     [TOOL]          service: openclaw-gateway  (per claude-cli tool_use)
 └── (other tools if any)
+
+memory.save-transcript            [SPAN]          service: voiceclaw-relay   (end-of-call, same session)
+└── openclaw.chat_completions     [SPAN]          service: openclaw-gateway
+    └── openclaw.llm              [GENERATION]    service: openclaw-gateway
 ```
 
-- **`voice-turn`** — opened on `turn.started`, closed on `turn.ended`. Carries `model`, `turnId`, and per-turn usage (input/output/audio tokens).
-- **`ask_brain`** — opened when Gemini/OpenAI emit a tool call with `name=ask_brain`, closed when the real brain response lands (not when the "searching" placeholder is sent). Duration reflects the actual brain call.
-- **Everything below** — emitted by the OpenClaw fork once it's running with the matching Langfuse keys. Requires both services to speak the same trace context.
+- **`voice-turn`** — lazily created on the first real content (user transcript, assistant delta, or tool call). Carries the assembled system prompt as the system message of the span's input, plus the user turn. Model (`gemini-3.1-flash-live-preview` / `gpt-5.4-realtime`), turnId, turnIndex, and `client.turnStartedAt` metadata live on the span.
+- **`ask_brain`** — opened when the realtime model emits a tool call with `name=ask_brain`. Closed when the real brain response lands, not when the "searching" placeholder is sent. Duration reflects the actual brain call.
+- **`openclaw.chat_completions`** — the HTTP envelope span for the brain request. Input is the incoming messages array; output is the final response text.
+- **`openclaw.llm`** — the generation span for the actual LLM call. Input is a chat-format array starting with the **resolved** system prompt claude-cli saw (including MEMORY.md / IDENTITY.md / SOUL.md workspace bootstrap). Usage tokens + `gen_ai.request.model` attached.
+- **`openclaw.tool`** (per tool call) — nested under `openclaw.llm`. Each claude-cli `tool_use` block from the stream-json output becomes one of these spans. Display name is the tool name (e.g. `mcp__openclaw__browser`). Carries `gen_ai.operation.name=execute_tool` + `gen_ai.tool.name`.
+- **`memory.save-transcript`** — fires on session cleanup. Saves the full call transcript to the brain. Belongs to the same Langfuse session as the voice-turns, so end-of-call memory saves are grouped alongside the conversation in the Sessions view.
+
+## Enabling
+
+Both services read env vars. Set these in `relay-server/.env` (voiceclaw) and `~/.openclaw/.env` (openclaw):
+
+```
+# Langfuse (cloud dashboard)
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+
+# Local tracing-ui collector (optional — enables our own UI)
+TRACING_UI_COLLECTOR_URL=http://127.0.0.1:4318/v1/traces
+
+# Content visibility (PII-gated; leave off by default)
+LANGFUSE_TRACE_CONTENT=1
+```
+
+Missing LANGFUSE_* keys soft-disable Langfuse export. Missing `TRACING_UI_COLLECTOR_URL` soft-disables collector export. If both are missing, tracing is off (the services still run).
+
+Optional:
+
+- `OTEL_SERVICE_NAME` — override the service name exported on spans. Defaults to `voiceclaw-relay` / `openclaw-gateway`.
+- `LANGFUSE_TRACE_CONTENT=1` — opt in to full prompt/response content on spans (system prompts, user messages, tool outputs). Off by default; usage tokens + model name + trace structure always export.
+
+## Session grouping
+
+Langfuse's Sessions view groups traces by `sessionId`:
+
+- **Relay-originated**: `sessionKey` in the `session.config` event, or falls back to the per-connection WS id.
+- **Openclaw-originated**: traceparent propagated from the caller; the same `sessionId` is preserved on the trace.
+- **Transcript save**: runs on session cleanup inside `TurnTracer.startBackgroundObservation`, which propagates `sessionId` + `userId`, so the end-of-call memory save appears in the same session view as the voice-turns.
+
+`userId` is threaded from `session.config.userId` (optional; provided by the client). Turn order within a session is given by the `turnIndex` metadata on each `voice-turn`.
+
+## Tracing UI (self-hosted)
+
+The `tracing-ui/` Next.js app reads the same OTLP spans from the local SQLite DB written by `tracing-collector/`. See the [Tracing UI spec](./tracing-ui-spec) for the full architecture and feature set.
+
+Dev loop:
+
+```
+yarn dev:tracing          # runs collector (:4318) + UI (:4319) concurrently
+yarn dev:tracing-collector
+yarn dev:tracing-ui
+```
+
+Set `TRACING_UI_COLLECTOR_URL=http://127.0.0.1:4318/v1/traces` on both services and they dual-export — Langfuse keeps working, the collector gets a parallel copy, the Next.js app renders sessions, traces, transcript, cost, latency, swim lanes.
 
 ## How propagation works
 
 1. `session.ts` starts the `ask_brain` tool span and asks `TurnTracer.getToolSpanContext(callId)` for an OTel `Context` rooted at that span.
 2. The outbound `fetch()` runs inside `context.with(ctx, …)`, so `context.active()` inside `brain.ts` points at the tool span.
-3. `propagation.inject(context.active(), headers)` writes a `traceparent` header into the request — e.g. `00-<traceId>-<spanId>-01`.
-4. The OpenClaw gateway's HTTP handler calls `propagation.extract(headers)` on the incoming request and runs the rest of the request inside that extracted context. Any spans it creates become children of the relay's tool span.
-5. Both services export to the same Langfuse project, which joins them into one trace because the `trace-id` matches.
+3. `propagation.inject(context.active(), headers)` writes a `traceparent` header into the request (e.g. `00-<traceId>-<spanId>-01`).
+4. The OpenClaw gateway's HTTP handler calls `propagation.extract(headers)` and runs the rest of the request inside that extracted context. Any spans it creates become children of the relay's tool span.
+5. Both services export to both backends, which join spans by trace-id.
+
+Fallback when the tool span is missing: `ROOT_CONTEXT` (not `context.active()`), so we never attach brain work to an unrelated ambient span.
 
 ## Debugging
 
-- **`ask_brain` span has no children in Langfuse.** OpenClaw isn't emitting spans — either its Langfuse keys aren't set, its tracing init didn't run, or it's not extracting `traceparent` from the request. Check the OpenClaw gateway logs for a `[langfuse] tracing enabled` line at startup.
-- **Child spans appear as a separate trace.** The extraction is happening but on a different `context.with` — verify the OpenClaw handler wraps its entire request flow in the extracted context, not just the first line.
-- **`traceparent` missing from the request entirely.** Run `relay-server/test/test-brain-traceparent.ts` to confirm injection works locally. If it does, check that the relay's `NodeSDK` has started (look for the `[langfuse] tracing enabled` log line at boot).
+- **`ask_brain` span has no children.** OpenClaw isn't exporting — either LANGFUSE keys aren't set at openclaw's boot, or `TRACING_UI_COLLECTOR_URL` is wrong. Check the openclaw gateway logs for a `[tracing] enabled` line at startup.
+- **Child spans appear as a separate trace.** The extraction is happening but on a different context — verify the openclaw handler wraps its entire request flow in the extracted context.
+- **`traceparent` missing from the request.** Run `relay-server/test/test-brain-traceparent.ts` to confirm injection works locally. If it does, check that the relay's OTel SDK has started.
+- **`openclaw.tool` spans missing despite visible tool use.** Early tool-call spans lack `gen_ai.*` attributes and get filtered by LangfuseSpanProcessor's `isDefaultExportSpan`. Make sure you're on the post-fix openclaw commit (`gen_ai.operation.name` + `gen_ai.tool.name` set on each item span).
+- **Collector running but no rows in SQLite.** Check `~/.voiceclaw/tracing.db`; the collector opens it in WAL mode. Inspect with `sqlite3 ~/.voiceclaw/tracing.db ".schema"` then `SELECT COUNT(*) FROM traces;`.
 
 ## Testing
 
-`npx tsx test/test-brain-traceparent.ts` runs a mock HTTP server and asserts `ask_brain` injects a valid W3C `traceparent` matching the active span's trace-id / span-id, plus the no-context fallback (no header when no span is active).
+- `npx tsx relay-server/test/test-brain-traceparent.ts` — asserts the relay injects a valid W3C traceparent matching the active span.
+- `npx tsx relay-server/test/test-brain-end-to-end.ts` — runs a real voice-turn simulation against a local openclaw gateway + Langfuse, verifies the full 4-observation unified trace.

@@ -97,6 +97,7 @@ export default defineConfig({
           label: 'Observability',
           items: [
             { slug: 'guides/tracing' },
+            { slug: 'tracing-ui/spec', label: 'Tracing UI spec' },
           ],
         },
       ],
