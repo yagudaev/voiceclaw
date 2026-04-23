@@ -22,13 +22,20 @@ export function openDb(path: string = process.env.VOICECLAW_TRACING_DB ?? DEFAUL
   return db
 }
 
+// OTel timestamps are nanoseconds since epoch (~1.8e18 in 2026) — past the
+// 2^53 safe-integer ceiling of JS Number. We carry them as bigint end-to-end
+// in the writer so SQLite receives the exact int64 value. Callers that need a
+// JS number for display should convert AT THE DISPLAY BOUNDARY (typically by
+// dividing to ms first: `Number(ns / 1_000_000n)`). Converting ns to Number
+// earlier silently truncates — Number(1_745_000_000_000_000_000n) loses the
+// low digits before it ever reaches SQLite.
 export type TraceRow = {
   trace_id: string
   session_id: string | null
   user_id: string | null
   name: string | null
-  start_time_ns: number
-  end_time_ns: number | null
+  start_time_ns: bigint
+  end_time_ns: bigint | null
   input_json: string | null
   output_json: string | null
   metadata_json: string | null
@@ -43,8 +50,8 @@ export type ObservationRow = {
   kind: string | null
   observation_type: string | null
   service_name: string | null
-  start_time_ns: number
-  end_time_ns: number | null
+  start_time_ns: bigint
+  end_time_ns: bigint | null
   duration_ms: number | null
   status_code: string | null
   status_message: string | null
