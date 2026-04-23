@@ -88,6 +88,7 @@ export type RelayEvent =
   | SessionRotatingEvent
   | SessionRotatedEvent
   | UsageMetricsEvent
+  | LatencyMetricsEvent
   | ToolCancelledEvent
   | ErrorEvent
 
@@ -161,6 +162,32 @@ export interface UsageMetricsEvent {
   totalTokens?: number
   inputAudioTokens?: number
   outputAudioTokens?: number
+}
+
+// Emitted by adapters with per-turn latency measurements observable from the
+// provider wire protocol. Consumed internally by the tracer and stamped onto
+// the voice-turn span as raw OTel attributes under the vendor-neutral voice.*
+// namespace; not forwarded to the mobile client. Boundaries and source-kind
+// semantics documented on TurnTracer.attachLatency.
+export interface LatencyMetricsEvent {
+  type: "latency.metrics"
+  // End-of-speech signal → first model audio byte. Covers the provider's VAD
+  // endpointing wait plus model TTFT. What the user perceives as "how fast did
+  // it reply". Adapters should not emit this when the turn was interrupted or
+  // produced no model audio — a missing metric is better than a misleading one.
+  endpointMs?: number
+  // How end-of-speech was determined: "server_eos" (explicit provider event),
+  // "transcription_proxy" (derived from last input-transcription delta — loose),
+  // "last_audio_frame" (derived from last upstream audio write — rough fallback).
+  endpointSource?: string
+  // Last upstream audio frame written → first model byte received. Relay-local,
+  // no device clock needed. NOT a pure network RTT: includes provider queueing
+  // and any remaining VAD wait before generation starts.
+  providerFirstByteMs?: number
+  // turn.started → first model audio byte. Our existing turn boundary is "user
+  // started talking" (first input-transcription delta or speech_started), so
+  // this captures the full wait including endpointing.
+  firstAudioFromTurnStartMs?: number
 }
 
 // Adapter signals that the upstream model gave up on a tool call

@@ -26,6 +26,15 @@ export class OpenAIAdapter implements ProviderAdapter {
   private pendingResponseCreate = false
   private pendingToolCalls = 0
   private watchdogEnabled = false
+  // Per-turn latency marks. Reset on turn.started (our synthesized event from
+  // speech_started) and emitted on response.done alongside usage. Timestamps
+  // are performance.now()-style monotonic ms from Date.now(); good enough for
+  // ms-scale latency math, we don't need monotonic clock guarantees here.
+  private turnStartedAtMs: number | null = null
+  private speechStoppedAtMs: number | null = null
+  private lastUpstreamAudioAtMs: number | null = null
+  private firstAudioDeltaAtMs: number | null = null
+  private turnWasInterrupted = false
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
@@ -42,6 +51,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       type: "input_audio_buffer.append",
       audio: data,
     })
+    this.lastUpstreamAudioAtMs = Date.now()
     this.resetWatchdog()
   }
 
@@ -74,6 +84,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.pendingResponseCreate = false
     if (this.isResponseActive && !this.pendingResponseCancel) {
       this.pendingResponseCancel = true
+      this.turnWasInterrupted = true
       this.sendUpstream({ type: "response.cancel" })
     }
   }
@@ -352,6 +363,9 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Audio output
       case "response.audio.delta":
+        if (this.firstAudioDeltaAtMs == null) {
+          this.firstAudioDeltaAtMs = Date.now()
+        }
         this.sendToClient?.({ type: "audio.delta", data: event.delta })
         this.resetWatchdog()
         break
@@ -394,9 +408,16 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Turn detection
       case "input_audio_buffer.speech_started":
+        // Reset per-turn marks here (not response.done) because response.done
+        // races the next turn's speech_started on quick-reply scenarios.
+        this.resetLatencyMarks()
+        this.turnStartedAtMs = Date.now()
         this.sendToClient?.({ type: "turn.started" })
         break
       case "input_audio_buffer.speech_stopped":
+        // Explicit end-of-speech — the provider's VAD has decided the user
+        // is done. This is our endpoint-start boundary.
+        this.speechStoppedAtMs = Date.now()
         break
 
       // Function calls
@@ -421,6 +442,10 @@ export class OpenAIAdapter implements ProviderAdapter {
       case "response.done": {
         this.isResponseActive = false
         this.pendingResponseCancel = false
+        // Emit latency metrics BEFORE turn.ended so the tracer's active
+        // generation is still the correct target (turn.ended flips the active
+        // turn to the pendingEnd bucket, but attachLatency handles both).
+        this.emitLatencyMetrics(event.response?.status)
         this.sendToClient?.({ type: "turn.ended" })
         const usage = event.response?.usage
         if (usage) {
@@ -525,5 +550,57 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.isResponseActive = false
     this.pendingResponseCancel = false
     this.pendingResponseCreate = false
+  }
+
+  private resetLatencyMarks() {
+    this.turnStartedAtMs = null
+    this.speechStoppedAtMs = null
+    this.lastUpstreamAudioAtMs = null
+    this.firstAudioDeltaAtMs = null
+    this.turnWasInterrupted = false
+  }
+
+  private emitLatencyMetrics(responseStatus?: string) {
+    // Skip interrupted / no-audio turns — a missing metric is better than a
+    // misleading one. "cancelled" / "failed" statuses and barge-ins don't have
+    // a meaningful "first audio byte" boundary to measure against.
+    if (this.turnWasInterrupted) {
+      this.resetLatencyMarks()
+      return
+    }
+    if (typeof responseStatus === "string" && responseStatus !== "completed") {
+      this.resetLatencyMarks()
+      return
+    }
+    const firstAudioAt = this.firstAudioDeltaAtMs
+    if (firstAudioAt == null) {
+      // Text-only response, or response ended before any audio. Skip — the
+      // metric is defined in terms of first audio byte, stamping it off text
+      // would misrepresent the user-perceived latency.
+      this.resetLatencyMarks()
+      return
+    }
+    const endpointStart = this.speechStoppedAtMs ?? this.lastUpstreamAudioAtMs ?? null
+    const endpointSource = this.speechStoppedAtMs != null
+      ? "server_eos"
+      : this.lastUpstreamAudioAtMs != null
+        ? "last_audio_frame"
+        : undefined
+    const endpointMs = endpointStart != null ? Math.max(0, firstAudioAt - endpointStart) : undefined
+    const providerFirstByteMs = this.lastUpstreamAudioAtMs != null
+      ? Math.max(0, firstAudioAt - this.lastUpstreamAudioAtMs)
+      : undefined
+    const firstAudioFromTurnStartMs = this.turnStartedAtMs != null
+      ? Math.max(0, firstAudioAt - this.turnStartedAtMs)
+      : undefined
+
+    this.sendToClient?.({
+      type: "latency.metrics",
+      endpointMs,
+      endpointSource,
+      providerFirstByteMs,
+      firstAudioFromTurnStartMs,
+    })
+    this.resetLatencyMarks()
   }
 }

@@ -227,6 +227,56 @@ export class TurnTracer {
     target.update({ metadata: { [`client.${phase}_ms`]: ms } })
   }
 
+  // Attach adapter-measured latency samples to the voice-turn span as raw OTel
+  // attributes (not Langfuse metadata — we want vendor-neutral keys so the
+  // tracing UI can pluck them out of attributes_json directly). Called from
+  // provider adapters that have the clock on both boundaries of the metric.
+  //
+  // Keys use a vendor-neutral voice.latency.* namespace. The OTel GenAI
+  // semantic conventions don't cover voice endpointing yet, so squatting on
+  // gen_ai.* for non-standard metrics would break when the spec lands real
+  // conventions. voice.* is honest about scope.
+  //
+  // Semantics (single source of truth — callers compute the ms, we just stamp):
+  //   endpoint_ms — end-of-speech signal → first model audio byte. Covers the
+  //       provider's VAD endpoint wait plus model TTFT. What the user feels.
+  //   endpoint.source — how end-of-speech was determined. Values:
+  //     "server_eos"           — provider emitted an explicit end-of-speech
+  //                              event (e.g. input_audio_buffer.speech_stopped).
+  //     "transcription_proxy"  — no explicit event; derived from the last
+  //                              input-transcription delta. Approximate.
+  //     "last_audio_frame"     — derived from the last upstream audio write.
+  //   provider_first_byte_ms — last upstream audio frame written → first model
+  //       byte received. Provider-observed responsiveness once the relay has
+  //       stopped talking; NOT a network RTT (includes provider queueing +
+  //       any remaining VAD wait + initial generation).
+  //   first_audio_from_turn_start_ms — turn.started → first model audio byte.
+  //       TTFT-like, measured from the turn boundary we already stamp.
+  attachLatency(metrics: {
+    endpointMs?: number
+    endpointSource?: string
+    providerFirstByteMs?: number
+    firstAudioFromTurnStartMs?: number
+  }, turnId?: string) {
+    const target = this.resolveTarget(turnId) ?? this.resolveUsageTarget(turnId)
+    if (!target) return
+    const attrs: Record<string, string | number> = {}
+    if (isNonNegativeFinite(metrics.endpointMs)) {
+      attrs["voice.latency.endpoint_ms"] = Math.round(metrics.endpointMs)
+    }
+    if (metrics.endpointSource) {
+      attrs["voice.latency.endpoint.source"] = metrics.endpointSource
+    }
+    if (isNonNegativeFinite(metrics.providerFirstByteMs)) {
+      attrs["voice.latency.provider_first_byte_ms"] = Math.round(metrics.providerFirstByteMs)
+    }
+    if (isNonNegativeFinite(metrics.firstAudioFromTurnStartMs)) {
+      attrs["voice.latency.first_audio_from_turn_start_ms"] = Math.round(metrics.firstAudioFromTurnStartMs)
+    }
+    if (Object.keys(attrs).length === 0) return
+    target.otelSpan.setAttributes(attrs)
+  }
+
   attachUsage(usage: {
     promptTokens?: number
     completionTokens?: number
@@ -343,4 +393,8 @@ function safeParse(s: string): unknown {
   } catch {
     return s
   }
+}
+
+function isNonNegativeFinite(v: number | undefined): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0
 }
