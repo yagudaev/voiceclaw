@@ -9,6 +9,9 @@
     "start": "next start --port 4319",
     "typecheck": "tsc --noEmit"
   },
+  "installConfig": {
+    "hoistingLimits": "workspaces"
+  },
   "dependencies": {
     "better-sqlite3": "^12.0.0",
     "chart.js": "^4.4.7",
