@@ -57,12 +57,30 @@ export type ObservationRow = {
   cost_usd: number | null
 }
 
+export type MediaRow = {
+  trace_id: string
+  span_id: string | null
+  session_id: string | null
+  kind: string
+  codec: string | null
+  sample_rate_hz: number | null
+  bytes: number | null
+  duration_ms: number | null
+  start_offset_ms: number | null
+  file_path: string | null
+  langfuse_media_id: string | null
+}
+
 export function upsertTrace(db: Database.Database, t: TraceRow) {
   upsertTraceStmt(db).run(t)
 }
 
 export function upsertObservation(db: Database.Database, o: ObservationRow) {
   upsertObservationStmt(db).run(o)
+}
+
+export function upsertMedia(db: Database.Database, m: MediaRow) {
+  upsertMediaStmt(db).run({ ...m, created_at: Date.now() })
 }
 
 function migrate(db: Database.Database) {
@@ -135,15 +153,26 @@ function migrate(db: Database.Database) {
       start_offset_ms    INTEGER,
       file_path          TEXT,
       langfuse_media_id  TEXT,
-      created_at         INTEGER
+      created_at         INTEGER,
+      UNIQUE(span_id, kind)
     );
     CREATE INDEX IF NOT EXISTS media_session ON media(session_id, kind, start_offset_ms);
+    CREATE INDEX IF NOT EXISTS media_trace   ON media(trace_id);
+    -- Older DBs created the media table before the UNIQUE(span_id, kind)
+    -- constraint existed. A unique INDEX is accepted by SQLite as the ON
+    -- CONFLICT target, so creating it non-destructively here brings pre-
+    -- existing DBs up to spec without requiring a table rewrite.
+    CREATE UNIQUE INDEX IF NOT EXISTS media_span_kind ON media(span_id, kind);
   `)
 }
 
 // Prepared statement cache — one per DB handle.
 const upsertTraceStmtCache = new WeakMap<Database.Database, Database.Statement<TraceRow>>()
 const upsertObsStmtCache = new WeakMap<Database.Database, Database.Statement<ObservationRow>>()
+const upsertMediaStmtCache = new WeakMap<
+  Database.Database,
+  Database.Statement<MediaRow & { created_at: number }>
+>()
 
 function upsertTraceStmt(db: Database.Database): Database.Statement<TraceRow> {
   const existing = upsertTraceStmtCache.get(db)
@@ -163,6 +192,39 @@ function upsertTraceStmt(db: Database.Database): Database.Statement<TraceRow> {
       status        = COALESCE(excluded.status,        traces.status)
   `)
   upsertTraceStmtCache.set(db, stmt)
+  return stmt
+}
+
+function upsertMediaStmt(
+  db: Database.Database,
+): Database.Statement<MediaRow & { created_at: number }> {
+  const existing = upsertMediaStmtCache.get(db)
+  if (existing) return existing
+  // Idempotent per (span_id, kind) — the relay may re-emit the voice-turn span
+  // with updated attrs (e.g. final byte count) and we want UPDATE semantics,
+  // not a duplicate row. COALESCE preserves earlier writes when later ones
+  // omit a field (e.g. a partial re-emit with only path).
+  const stmt = db.prepare<MediaRow & { created_at: number }>(`
+    INSERT INTO media (
+      trace_id, span_id, session_id, kind, codec, sample_rate_hz, bytes,
+      duration_ms, start_offset_ms, file_path, langfuse_media_id, created_at
+    )
+    VALUES (
+      @trace_id, @span_id, @session_id, @kind, @codec, @sample_rate_hz, @bytes,
+      @duration_ms, @start_offset_ms, @file_path, @langfuse_media_id, @created_at
+    )
+    ON CONFLICT(span_id, kind) DO UPDATE SET
+      trace_id          = COALESCE(excluded.trace_id,          media.trace_id),
+      session_id        = COALESCE(excluded.session_id,        media.session_id),
+      codec             = COALESCE(excluded.codec,             media.codec),
+      sample_rate_hz    = COALESCE(excluded.sample_rate_hz,    media.sample_rate_hz),
+      bytes             = COALESCE(excluded.bytes,             media.bytes),
+      duration_ms       = COALESCE(excluded.duration_ms,       media.duration_ms),
+      start_offset_ms   = COALESCE(excluded.start_offset_ms,   media.start_offset_ms),
+      file_path         = COALESCE(excluded.file_path,         media.file_path),
+      langfuse_media_id = COALESCE(excluded.langfuse_media_id, media.langfuse_media_id)
+  `)
+  upsertMediaStmtCache.set(db, stmt)
   return stmt
 }
 

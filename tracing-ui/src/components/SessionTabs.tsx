@@ -2,6 +2,7 @@ import Link from "next/link"
 
 export type TabKey =
   | "transcript"
+  | "turns"
   | "logs"
   | "cost"
   | "latency"
@@ -10,6 +11,7 @@ export type TabKey =
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: "transcript", label: "Transcript" },
+  { key: "turns", label: "Turns" },
   { key: "logs", label: "Logs" },
   { key: "cost", label: "Cost" },
   { key: "latency", label: "Latency" },

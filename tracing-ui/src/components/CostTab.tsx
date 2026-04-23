@@ -2,13 +2,9 @@ import type { ObservationRow } from "@/lib/db"
 import { computeCost, loadPricingCatalog } from "@/lib/pricing"
 import { CostDonut } from "./CostDonut"
 
-// Category colour palette. Tuned to Tailwind zinc/slate accents so it blends
-// with the dark app shell instead of fighting it.
 const CATEGORY_COLORS: Record<string, string> = {
-  "Realtime AI": "#60a5fa", // blue-400
-  "Brain LLM": "#a78bfa", // violet-400
-  STT: "#34d399", // emerald-400
-  TTS: "#f59e0b", // amber-500
+  Realtime: "#60a5fa",
+  Brain: "#a78bfa",
 }
 
 type Bucket = {
@@ -26,41 +22,29 @@ export async function CostTab({
 }) {
   const catalog = await loadPricingCatalog()
 
-  // Categorise by span name. Relay voice-turn spans = realtime AI. openclaw.llm
-  // = the brain's Haiku/Sonnet call. openclaw.tool / chat_completions are
-  // internal plumbing we don't bill directly. STT/TTS stay as placeholders
-  // until we add those spans on the relay side.
   const buckets: Record<string, Bucket> = {
-    "Realtime AI": { label: "Realtime AI", cost_usd: 0, tokens: 0 },
-    "Brain LLM": { label: "Brain LLM", cost_usd: 0, tokens: 0 },
-    STT: { label: "STT (placeholder)", cost_usd: 0, tokens: 0 },
-    TTS: { label: "TTS (placeholder)", cost_usd: 0, tokens: 0 },
+    Realtime: { label: "Realtime", cost_usd: 0, tokens: 0 },
+    Brain: { label: "Brain", cost_usd: 0, tokens: 0 },
   }
 
+  let realtimeTurnCount = 0
   for (const o of observations) {
     const tokensIn = o.tokens_input ?? 0
     const tokensOut = o.tokens_output ?? 0
     const cached = o.tokens_cached ?? 0
     const reported = o.cost_usd ?? 0
-
-    if (o.name === "voice-turn") {
-      // Prefer the collector-resolved cost_usd; if it's zero (e.g. audio-token
-      // pricing gap) fall back to the pricing helper.
-      const cost =
-        reported > 0
-          ? reported
-          : computeCost(catalog, o.model, { input: tokensIn, output: tokensOut, cached }).total_usd
-      buckets["Realtime AI"].cost_usd += cost
-      buckets["Realtime AI"].tokens += tokensIn + tokensOut
-    } else if (o.name === "openclaw.llm") {
-      const cost =
-        reported > 0
-          ? reported
-          : computeCost(catalog, o.model, { input: tokensIn, output: tokensOut, cached }).total_usd
-      buckets["Brain LLM"].cost_usd += cost
-      buckets["Brain LLM"].tokens += tokensIn + tokensOut
-    }
+    const bucketName = categorize(o)
+    if (!bucketName) continue
+    if (bucketName === "Realtime") realtimeTurnCount += 1
+    if (tokensIn + tokensOut === 0 && reported === 0) continue
+    const cost =
+      reported > 0
+        ? reported
+        : computeCost(catalog, o.model, { input: tokensIn, output: tokensOut, cached }).total_usd
+    buckets[bucketName].cost_usd += cost
+    buckets[bucketName].tokens += tokensIn + tokensOut
   }
+  const realtimeMissing = realtimeTurnCount > 0 && buckets.Realtime.tokens === 0
 
   const entries = Object.values(buckets)
   const total = entries.reduce((acc, b) => acc + b.cost_usd, 0)
@@ -70,7 +54,7 @@ export async function CostTab({
     .map((b) => ({
       label: b.label,
       value: b.cost_usd,
-      color: CATEGORY_COLORS[b.label.replace(" (placeholder)", "")] ?? "#71717a",
+      color: CATEGORY_COLORS[b.label] ?? "#71717a",
     }))
 
   return (
@@ -104,6 +88,13 @@ export async function CostTab({
 
       <div className="space-y-2">
         <div className="text-xs uppercase tracking-wide text-zinc-500">Breakdown</div>
+        {realtimeMissing ? (
+          <div className="rounded border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/80">
+            Realtime tokens unavailable — the relay hasn&apos;t stamped{" "}
+            <code>gen_ai.usage.*</code> on voice-turn spans for this session. Cost will populate
+            once the relay backend starts emitting usage per turn.
+          </div>
+        ) : null}
         <table className="w-full text-xs border border-zinc-800 rounded overflow-hidden">
           <thead className="bg-zinc-900 text-zinc-400 text-left">
             <tr>
@@ -143,6 +134,18 @@ function KpiCard({ label, value }: { label: string; value: string }) {
       <div className="text-lg tabular-nums mt-0.5">{value}</div>
     </div>
   )
+}
+
+function categorize(o: ObservationRow): "Realtime" | "Brain" | null {
+  const name = o.name ?? ""
+  if (name === "openclaw.llm") return "Brain"
+  if (name === "voice-turn") return "Realtime"
+  if (name.startsWith("gemini.") || name.startsWith("openai.") || name.startsWith("realtime.")) {
+    return "Realtime"
+  }
+  const model = (o.model ?? "").toLowerCase()
+  if (model.includes("realtime") || model.includes("live-preview")) return "Realtime"
+  return null
 }
 
 function formatDuration(ms: number): string {

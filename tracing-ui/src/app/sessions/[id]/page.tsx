@@ -1,12 +1,16 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import {
   getVoiceTurnsForSession,
+  listMediaForSession,
   listObservationsForSession,
   listTracesWithObservationsForSession,
+  type MediaRow,
   type ObservationRow,
 } from "@/lib/db"
 import { SessionTabs, TABS, type TabKey } from "@/components/SessionTabs"
 import { TranscriptTab } from "@/components/TranscriptTab"
+import { TurnsTab } from "@/components/TurnsTab"
 import { LogsTab, type LogRow } from "@/components/LogsTab"
 import { CostTab } from "@/components/CostTab"
 import { LatencyTab } from "@/components/LatencyTab"
@@ -30,12 +34,14 @@ export default async function SessionDetailPage({
   let traces: ReturnType<typeof listTracesWithObservationsForSession> = []
   let observations: ObservationRow[] = []
   let voiceTurns: ReturnType<typeof getVoiceTurnsForSession> = []
+  let media: MediaRow[] = []
   let error: string | null = null
 
   try {
     traces = listTracesWithObservationsForSession(sessionId)
     observations = listObservationsForSession(sessionId)
     voiceTurns = getVoiceTurnsForSession(sessionId)
+    media = listMediaForSession(sessionId)
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
   }
@@ -99,36 +105,40 @@ export default async function SessionDetailPage({
             value={new Date(Number(startNs) / 1e6).toLocaleTimeString()}
           />
         </div>
-        <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Turns</div>
-          <ul className="space-y-1 text-xs">
-            {traces.map((t, i) => (
-              <li
-                key={t.trace_id}
-                className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1"
-              >
-                <div className="flex items-center justify-between text-zinc-400">
-                  <span>#{i + 1}</span>
-                  <span className="tabular-nums text-zinc-500">
-                    +{Math.round((t.start_time_ns - startNs) / 1e6).toLocaleString()}ms
-                  </span>
-                </div>
-                <div className="text-zinc-300 truncate">{t.name ?? "(unnamed)"}</div>
-                <div className="font-mono text-[10px] text-zinc-600">
-                  {t.trace_id.slice(0, 16)}…
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {activeTab !== "turns" ? (
+          <div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Turns</div>
+            <ul className="space-y-1 text-xs">
+              {traces.map((t, i) => (
+                <li
+                  key={t.trace_id}
+                  className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1"
+                >
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span>#{i + 1}</span>
+                    <span className="tabular-nums text-zinc-500">
+                      +{Math.round((t.start_time_ns - startNs) / 1e6).toLocaleString()}ms
+                    </span>
+                  </div>
+                  <div className="text-zinc-300 truncate">{t.name ?? "(unnamed)"}</div>
+                  <div className="font-mono text-[10px] text-zinc-600">
+                    {t.trace_id.slice(0, 16)}…
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </aside>
       <section className="flex-1 overflow-y-auto">
         <SessionTabs sessionId={sessionId} active={activeTab} />
         <TabContent
           tab={activeTab}
+          sessionId={sessionId}
           voiceTurns={voiceTurns}
           observations={observations}
           traces={traces}
+          media={media}
           startNs={startNs}
           totalMs={totalMs}
         />
@@ -139,22 +149,38 @@ export default async function SessionDetailPage({
 
 function TabContent({
   tab,
+  sessionId,
   voiceTurns,
   observations,
   traces,
+  media,
   startNs,
   totalMs,
 }: {
   tab: TabKey
+  sessionId: string
   voiceTurns: ReturnType<typeof getVoiceTurnsForSession>
   observations: ObservationRow[]
   traces: ReturnType<typeof listTracesWithObservationsForSession>
+  media: MediaRow[]
   startNs: number
   totalMs: number
 }) {
   switch (tab) {
     case "transcript":
       return <TranscriptTab turns={voiceTurns} sessionStartNs={startNs} />
+    case "turns":
+      // TurnsTab uses useSearchParams — wrap in Suspense per Next.js 15 rules.
+      return (
+        <Suspense fallback={<div className="px-6 py-8 text-sm text-zinc-400">Loading…</div>}>
+          <TurnsTab
+            sessionId={sessionId}
+            traces={traces}
+            media={media}
+            sessionStartNs={startNs}
+          />
+        </Suspense>
+      )
     case "logs":
       return <LogsTab rows={toLogRows(observations, startNs)} />
     case "cost":
@@ -197,14 +223,21 @@ function toLogRows(observations: ObservationRow[], startNs: number): LogRow[] {
 }
 
 // Compress a span's attributes into a one-line preview for the Logs table.
-// Prefers the input/output shipped via langfuse.observation.* over the full
-// attribute dump so the summary column stays legible.
+// Prefers the input/output shipped via vendor-neutral gen_ai.* attrs when
+// present, falling back to legacy langfuse.observation.* so existing data
+// still renders.
 function summarise(o: ObservationRow): string {
   if (!o.attributes_json) return ""
   try {
     const attrs = JSON.parse(o.attributes_json) as Record<string, unknown>
-    const input = attrs["langfuse.observation.input"]
-    const output = attrs["langfuse.observation.output"]
+    const input =
+      attrs["gen_ai.tool.input"] ??
+      attrs["gen_ai.request.input"] ??
+      attrs["langfuse.observation.input"]
+    const output =
+      attrs["gen_ai.tool.output"] ??
+      attrs["gen_ai.response.output"] ??
+      attrs["langfuse.observation.output"]
     const preferred = output ?? input
     if (typeof preferred === "string") {
       const trimmed = preferred.replace(/\s+/g, " ").trim()

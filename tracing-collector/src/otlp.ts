@@ -12,7 +12,7 @@
 // deep-import it to avoid pulling in protobufjs + the proto file manually.
 // Pinned path: `@opentelemetry/otlp-transformer` 0.215.
 import otlpRootModule from "@opentelemetry/otlp-transformer/build/esm/generated/root.js"
-import { openDb, upsertTrace, upsertObservation, type TraceRow, type ObservationRow } from "./db.js"
+import { openDb, upsertTrace, upsertObservation, upsertMedia, type TraceRow, type ObservationRow, type MediaRow } from "./db.js"
 import type Database from "better-sqlite3"
 
 type ProtoType = { decode: (buf: Uint8Array) => unknown }
@@ -113,6 +113,15 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
           cost_usd: null, // TODO: compute via pricing module
         }
         upsertObservation(db, obs)
+
+        // Media: when the span carries `media.<role>.path` (or a Langfuse
+        // media id) from the relay's capture pipeline, insert one row per
+        // modality so the tracing UI's Turns tab can locate the bytes. Each
+        // (span_id, kind) is a natural key — re-emitting the same span
+        // updates the existing row rather than duplicating.
+        for (const row of extractMediaRows(attrs, traceId, spanId, sessionIdFromResource ?? stringAttr(attrs, "session.id"))) {
+          upsertMedia(db, row)
+        }
 
         // Update (or insert) the trace-level row. Service name hints at the
         // trace's origin; session/user come from resource attrs.
@@ -216,6 +225,50 @@ function stringAttr(attrs: Record<string, unknown>, key: string): string | null 
 function numberAttr(attrs: Record<string, unknown>, key: string): number | null {
   const v = attrs[key]
   return typeof v === "number" ? v : null
+}
+
+// Media rows are emitted by the relay on the voice-turn span using the
+// vendor-neutral `media.<role>.*` attribute family. `<role>` is one of
+// `user_audio`, `assistant_audio`, `user_video` (relay-owned; extend here
+// when new modalities ship). A missing `path` + missing `url` means there's
+// nothing to serve, so we skip the row.
+function extractMediaRows(
+  attrs: Record<string, unknown>,
+  traceId: string,
+  spanId: string,
+  sessionId: string | null,
+): MediaRow[] {
+  const rows: MediaRow[] = []
+  const roles: { attrKey: string; kind: string }[] = [
+    { attrKey: "user_audio", kind: "user_audio" },
+    { attrKey: "assistant_audio", kind: "assistant_audio" },
+    { attrKey: "user_video", kind: "video" },
+  ]
+  for (const { attrKey, kind } of roles) {
+    const path = stringAttr(attrs, `media.${attrKey}.path`)
+    const url = stringAttr(attrs, `media.${attrKey}.url`)
+    const langfuseId = stringAttr(attrs, `media.${attrKey}.langfuse_id`)
+    if (!path && !url && !langfuseId) continue
+    const codec = stringAttr(attrs, `media.${attrKey}.codec`)
+    const sampleRate = numberAttr(attrs, `media.${attrKey}.sample_rate`)
+    const bytes = numberAttr(attrs, `media.${attrKey}.bytes`)
+    const duration = numberAttr(attrs, `media.${attrKey}.duration_ms`)
+    const startOffset = numberAttr(attrs, `media.${attrKey}.start_offset_ms`) ?? 0
+    rows.push({
+      trace_id: traceId,
+      span_id: spanId,
+      session_id: sessionId,
+      kind,
+      codec: codec ?? null,
+      sample_rate_hz: sampleRate,
+      bytes,
+      duration_ms: duration,
+      start_offset_ms: startOffset,
+      file_path: path ?? null,
+      langfuse_media_id: langfuseId ?? null,
+    })
+  }
+  return rows
 }
 
 function extractFromUsageDetails(attrs: Record<string, unknown>, key: string): number | null {

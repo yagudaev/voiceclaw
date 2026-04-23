@@ -17,9 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               VoiceClaw Tracing
             </Link>
             <nav className="flex gap-4 text-sm text-zinc-400">
+              <Link href="/dashboard" className="hover:text-zinc-100">Dashboard</Link>
               <Link href="/sessions" className="hover:text-zinc-100">Sessions</Link>
               <Link href="/users" className="hover:text-zinc-100">Users</Link>
-              <Link href="/dashboard" className="hover:text-zinc-100">Dashboard</Link>
             </nav>
           </header>
           <main className="flex-1">{children}</main>

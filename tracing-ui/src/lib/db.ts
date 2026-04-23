@@ -122,7 +122,9 @@ export type ObservationRow = {
   end_time_ns: number | null
   duration_ms: number | null
   status_code: string | null
+  status_message: string | null
   attributes_json: string | null
+  events_json: string | null
   model: string | null
   tokens_input: number | null
   tokens_output: number | null
@@ -134,7 +136,8 @@ export function listObservationsForTrace(traceId: string): ObservationRow[] {
   return db()
     .prepare(`
       SELECT span_id, trace_id, parent_span_id, name, observation_type, service_name,
-             start_time_ns, end_time_ns, duration_ms, status_code, attributes_json,
+             start_time_ns, end_time_ns, duration_ms, status_code, status_message,
+             attributes_json, events_json,
              model, tokens_input, tokens_output, tokens_cached, cost_usd
       FROM observations
       WHERE trace_id = ?
@@ -145,7 +148,8 @@ export function listObservationsForTrace(traceId: string): ObservationRow[] {
 
 export function listObservationsForSession(sessionId: string): ObservationRow[] {
   const cols = `o.span_id, o.trace_id, o.parent_span_id, o.name, o.observation_type, o.service_name,
-                o.start_time_ns, o.end_time_ns, o.duration_ms, o.status_code, o.attributes_json,
+                o.start_time_ns, o.end_time_ns, o.duration_ms, o.status_code, o.status_message,
+                o.attributes_json, o.events_json,
                 o.model, o.tokens_input, o.tokens_output, o.tokens_cached, o.cost_usd`
   if (sessionId === "(no session)") {
     return db()
@@ -229,6 +233,61 @@ export function getVoiceTurnsForSession(sessionId: string): VoiceTurn[] {
       attributes: attrs,
     }
   })
+}
+
+// Media rows — one per captured audio stream or video frame-sequence per turn.
+// Schema matches tracing-collector/src/db.ts: `kind` identifies role+modality
+// ("user_audio", "assistant_audio", "video"); `file_path` is the on-disk PCM /
+// JPEG folder; `langfuse_media_id` is populated only when the relay uploaded
+// the stream to Langfuse Media. Rows may be absent (session predates capture,
+// or relay had capture disabled) — the Turns tab renders a friendly fallback.
+export type MediaRow = {
+  trace_id: string
+  span_id: string | null
+  session_id: string | null
+  kind: string
+  codec: string | null
+  sample_rate_hz: number | null
+  bytes: number | null
+  duration_ms: number | null
+  start_offset_ms: number | null
+  file_path: string | null
+  langfuse_media_id: string | null
+}
+
+export function listMediaForSession(sessionId: string): MediaRow[] {
+  if (sessionId === "(no session)") {
+    return db()
+      .prepare(`
+        SELECT trace_id, span_id, session_id, kind, codec, sample_rate_hz, bytes,
+               duration_ms, start_offset_ms, file_path, langfuse_media_id
+        FROM media
+        WHERE session_id IS NULL
+        ORDER BY start_offset_ms ASC, id ASC
+      `)
+      .all() as MediaRow[]
+  }
+  return db()
+    .prepare(`
+      SELECT trace_id, span_id, session_id, kind, codec, sample_rate_hz, bytes,
+             duration_ms, start_offset_ms, file_path, langfuse_media_id
+      FROM media
+      WHERE session_id = ?
+      ORDER BY start_offset_ms ASC, id ASC
+    `)
+    .all(sessionId) as MediaRow[]
+}
+
+export function listMediaForTrace(traceId: string): MediaRow[] {
+  return db()
+    .prepare(`
+      SELECT trace_id, span_id, session_id, kind, codec, sample_rate_hz, bytes,
+             duration_ms, start_offset_ms, file_path, langfuse_media_id
+      FROM media
+      WHERE trace_id = ?
+      ORDER BY kind ASC, id ASC
+    `)
+    .all(traceId) as MediaRow[]
 }
 
 function parseJson<T>(s: string | null | undefined): T | null {
