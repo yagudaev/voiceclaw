@@ -82,6 +82,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private lastInputTranscriptionAtMs: number | null = null
   private lastUpstreamAudioAtMs: number | null = null
   private firstModelAudioAtMs: number | null = null
+  private firstModelTextAtMs: number | null = null
   private turnWasInterrupted = false
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
@@ -551,6 +552,9 @@ export class GeminiAdapter implements ProviderAdapter {
         this.currentUserText = ""
       }
       this.userSpeaking = false
+      if (this.firstModelTextAtMs == null) {
+        this.firstModelTextAtMs = Date.now()
+      }
       this.currentAssistantText += content.outputTranscription.text
       this.sendToClient?.({
         type: "transcript.delta",
@@ -802,18 +806,33 @@ export class GeminiAdapter implements ProviderAdapter {
     this.lastInputTranscriptionAtMs = null
     this.lastUpstreamAudioAtMs = null
     this.firstModelAudioAtMs = null
+    this.firstModelTextAtMs = null
     this.turnWasInterrupted = false
   }
 
   private emitLatencyMetrics() {
-    // Skip interrupted turns or turns with no model audio — a missing metric is
-    // better than a misleading one. Gemini's interrupted flag sets a "...
-    // truncated" transcript but does not define a meaningful first-audio boundary.
-    if (this.turnWasInterrupted || this.firstModelAudioAtMs == null) {
+    // Skip interrupted turns — barge-ins don't define a meaningful first-
+    // output boundary. Gemini's interrupted flag sets a "... truncated"
+    // transcript but does not give us a clean mark.
+    if (this.turnWasInterrupted) {
       this.resetLatencyMarks()
       return
     }
+    // VoiceClaw accepts either modality — users sometimes paste links or
+    // ask for text output, and voice turns still land. Stamp whichever
+    // came first as the canonical "first output" anchor; surface both
+    // modality-specific marks too.
     const firstAudioAt = this.firstModelAudioAtMs
+    const firstTextAt = this.firstModelTextAtMs
+    const firstOutputAt = pickEarliest(firstAudioAt, firstTextAt)
+    if (firstOutputAt == null) {
+      this.resetLatencyMarks()
+      return
+    }
+    const firstOutputModality =
+      firstAudioAt != null && (firstTextAt == null || firstAudioAt <= firstTextAt)
+        ? "audio"
+        : "text"
     // Prefer last input-transcription delta over last upstream audio: the
     // transcription signal reflects the provider's view of speech content
     // landing, which aligns better with when VAD would have cut the turn.
@@ -825,12 +844,18 @@ export class GeminiAdapter implements ProviderAdapter {
       : this.lastUpstreamAudioAtMs != null
         ? "last_audio_frame"
         : undefined
-    const endpointMs = endpointStart != null ? Math.max(0, firstAudioAt - endpointStart) : undefined
+    const endpointMs = endpointStart != null ? Math.max(0, firstOutputAt - endpointStart) : undefined
     const providerFirstByteMs = this.lastUpstreamAudioAtMs != null
-      ? Math.max(0, firstAudioAt - this.lastUpstreamAudioAtMs)
+      ? Math.max(0, firstOutputAt - this.lastUpstreamAudioAtMs)
       : undefined
-    const firstAudioFromTurnStartMs = this.turnStartedAtMs != null
+    const firstAudioFromTurnStartMs = firstAudioAt != null && this.turnStartedAtMs != null
       ? Math.max(0, firstAudioAt - this.turnStartedAtMs)
+      : undefined
+    const firstTextFromTurnStartMs = firstTextAt != null && this.turnStartedAtMs != null
+      ? Math.max(0, firstTextAt - this.turnStartedAtMs)
+      : undefined
+    const firstOutputFromTurnStartMs = this.turnStartedAtMs != null
+      ? Math.max(0, firstOutputAt - this.turnStartedAtMs)
       : undefined
 
     this.sendToClient?.({
@@ -839,9 +864,18 @@ export class GeminiAdapter implements ProviderAdapter {
       endpointSource,
       providerFirstByteMs,
       firstAudioFromTurnStartMs,
+      firstTextFromTurnStartMs,
+      firstOutputFromTurnStartMs,
+      firstOutputModality,
     })
     this.resetLatencyMarks()
   }
+}
+
+function pickEarliest(a: number | null, b: number | null): number | null {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.min(a, b)
 }
 
 // --- helpers ---

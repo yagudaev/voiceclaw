@@ -257,6 +257,9 @@ export class TurnTracer {
     endpointSource?: string
     providerFirstByteMs?: number
     firstAudioFromTurnStartMs?: number
+    firstTextFromTurnStartMs?: number
+    firstOutputFromTurnStartMs?: number
+    firstOutputModality?: string
   }, turnId?: string) {
     const target = this.resolveTarget(turnId) ?? this.resolveUsageTarget(turnId)
     if (!target) return
@@ -272,6 +275,15 @@ export class TurnTracer {
     }
     if (isNonNegativeFinite(metrics.firstAudioFromTurnStartMs)) {
       attrs["voice.latency.first_audio_from_turn_start_ms"] = Math.round(metrics.firstAudioFromTurnStartMs)
+    }
+    if (isNonNegativeFinite(metrics.firstTextFromTurnStartMs)) {
+      attrs["voice.latency.first_text_from_turn_start_ms"] = Math.round(metrics.firstTextFromTurnStartMs)
+    }
+    if (isNonNegativeFinite(metrics.firstOutputFromTurnStartMs)) {
+      attrs["voice.latency.first_output_from_turn_start_ms"] = Math.round(metrics.firstOutputFromTurnStartMs)
+    }
+    if (metrics.firstOutputModality) {
+      attrs["voice.latency.first_output.modality"] = metrics.firstOutputModality
     }
     if (Object.keys(attrs).length === 0) return
     target.otelSpan.setAttributes(attrs)

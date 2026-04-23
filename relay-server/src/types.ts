@@ -188,6 +188,15 @@ export interface LatencyMetricsEvent {
   // started talking" (first input-transcription delta or speech_started), so
   // this captures the full wait including endpointing.
   firstAudioFromTurnStartMs?: number
+  // turn.started → first model TEXT delta. VoiceClaw accepts text output too
+  // (links, structured replies, fallback when the model declines audio); this
+  // lets dashboards see both modalities separately.
+  firstTextFromTurnStartMs?: number
+  // turn.started → first model output byte, regardless of modality. This is
+  // the "TTFT" we surface to the UI by default — whichever came first.
+  firstOutputFromTurnStartMs?: number
+  // Which modality won the race to first-output. "audio" | "text".
+  firstOutputModality?: string
 }
 
 // Adapter signals that the upstream model gave up on a tool call

@@ -74,6 +74,9 @@ export class RelaySession {
           endpointSource: event.endpointSource,
           providerFirstByteMs: event.providerFirstByteMs,
           firstAudioFromTurnStartMs: event.firstAudioFromTurnStartMs,
+          firstTextFromTurnStartMs: event.firstTextFromTurnStartMs,
+          firstOutputFromTurnStartMs: event.firstOutputFromTurnStartMs,
+          firstOutputModality: event.firstOutputModality,
         })
         // Internal only — do not forward to client
         return

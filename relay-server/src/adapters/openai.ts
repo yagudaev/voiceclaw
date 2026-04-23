@@ -31,6 +31,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   // are performance.now()-style monotonic ms from Date.now(); good enough for
   // ms-scale latency math, we don't need monotonic clock guarantees here.
   private turnStartedAtMs: number | null = null
+  private firstTextDeltaAtMs: number | null = null
   private speechStoppedAtMs: number | null = null
   private lastUpstreamAudioAtMs: number | null = null
   private firstAudioDeltaAtMs: number | null = null
@@ -372,6 +373,9 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Transcripts
       case "response.audio_transcript.delta":
+        if (this.firstTextDeltaAtMs == null) {
+          this.firstTextDeltaAtMs = Date.now()
+        }
         this.sendToClient?.({
           type: "transcript.delta",
           text: event.delta,
@@ -557,13 +561,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.speechStoppedAtMs = null
     this.lastUpstreamAudioAtMs = null
     this.firstAudioDeltaAtMs = null
+    this.firstTextDeltaAtMs = null
     this.turnWasInterrupted = false
   }
 
   private emitLatencyMetrics(responseStatus?: string) {
-    // Skip interrupted / no-audio turns — a missing metric is better than a
-    // misleading one. "cancelled" / "failed" statuses and barge-ins don't have
-    // a meaningful "first audio byte" boundary to measure against.
+    // Skip interrupted turns — barge-ins don't have a meaningful "first
+    // output" boundary. "cancelled" / "failed" statuses similarly.
     if (this.turnWasInterrupted) {
       this.resetLatencyMarks()
       return
@@ -572,26 +576,40 @@ export class OpenAIAdapter implements ProviderAdapter {
       this.resetLatencyMarks()
       return
     }
+    // VoiceClaw accepts either modality — users sometimes paste links or
+    // ask for text output, and voice turns still land. Stamp whichever
+    // modality came first as the "first output" anchor; emit both specific
+    // marks separately too so dashboards can distinguish.
     const firstAudioAt = this.firstAudioDeltaAtMs
-    if (firstAudioAt == null) {
-      // Text-only response, or response ended before any audio. Skip — the
-      // metric is defined in terms of first audio byte, stamping it off text
-      // would misrepresent the user-perceived latency.
+    const firstTextAt = this.firstTextDeltaAtMs
+    const firstOutputAt = pickEarliest(firstAudioAt, firstTextAt)
+    if (firstOutputAt == null) {
+      // No output at all — nothing meaningful to measure against.
       this.resetLatencyMarks()
       return
     }
+    const firstOutputModality =
+      firstAudioAt != null && (firstTextAt == null || firstAudioAt <= firstTextAt)
+        ? "audio"
+        : "text"
     const endpointStart = this.speechStoppedAtMs ?? this.lastUpstreamAudioAtMs ?? null
     const endpointSource = this.speechStoppedAtMs != null
       ? "server_eos"
       : this.lastUpstreamAudioAtMs != null
         ? "last_audio_frame"
         : undefined
-    const endpointMs = endpointStart != null ? Math.max(0, firstAudioAt - endpointStart) : undefined
+    const endpointMs = endpointStart != null ? Math.max(0, firstOutputAt - endpointStart) : undefined
     const providerFirstByteMs = this.lastUpstreamAudioAtMs != null
-      ? Math.max(0, firstAudioAt - this.lastUpstreamAudioAtMs)
+      ? Math.max(0, firstOutputAt - this.lastUpstreamAudioAtMs)
       : undefined
-    const firstAudioFromTurnStartMs = this.turnStartedAtMs != null
+    const firstAudioFromTurnStartMs = firstAudioAt != null && this.turnStartedAtMs != null
       ? Math.max(0, firstAudioAt - this.turnStartedAtMs)
+      : undefined
+    const firstTextFromTurnStartMs = firstTextAt != null && this.turnStartedAtMs != null
+      ? Math.max(0, firstTextAt - this.turnStartedAtMs)
+      : undefined
+    const firstOutputFromTurnStartMs = this.turnStartedAtMs != null
+      ? Math.max(0, firstOutputAt - this.turnStartedAtMs)
       : undefined
 
     this.sendToClient?.({
@@ -600,7 +618,16 @@ export class OpenAIAdapter implements ProviderAdapter {
       endpointSource,
       providerFirstByteMs,
       firstAudioFromTurnStartMs,
+      firstTextFromTurnStartMs,
+      firstOutputFromTurnStartMs,
+      firstOutputModality,
     })
     this.resetLatencyMarks()
   }
+}
+
+function pickEarliest(a: number | null, b: number | null): number | null {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.min(a, b)
 }
