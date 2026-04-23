@@ -1,6 +1,7 @@
 // Relay session — manages the lifecycle of a single client connection
 
 import { randomUUID } from "node:crypto"
+import { context } from "@opentelemetry/api"
 import type { WebSocket } from "ws"
 import type {
   ClientEvent,
@@ -140,11 +141,13 @@ export class RelaySession {
 
     // Immediately unblock Gemini so the user can keep talking.
     // Gemini will naturally say something like "Let me check on that."
+    // The tool span stays OPEN past this point — it closes only when the real
+    // brain response lands, so span duration reflects the actual brain call
+    // and traceparent injection in askBrain() uses a live span as parent.
     this.adapter?.sendToolResult(callId, JSON.stringify({
       status: "searching",
       message: "Looking into it now. I'll share what I find in a moment.",
     }))
-    this.tracer.endToolCall(callId, '{"status":"searching"}')
 
     // Run the brain agent in the background.
     // Keep the controller in inFlightTools so cleanup() can abort it on disconnect.
@@ -156,18 +159,27 @@ export class RelaySession {
     const brainStart = Date.now()
     log(`[session:${this.id}] ask_brain (async) → ${gatewayUrl}`)
 
-    askBrain(query, {
+    // Run the fetch inside the tool span's OTel context so `propagation.inject`
+    // in brain.ts sees it as the active parent and writes a `traceparent`
+    // header linking openclaw's incoming request back to this span.
+    const brainCtx = this.tracer.getToolSpanContext(callId) ?? context.active()
+    const runAskBrain = () => askBrain(query, {
       gatewayUrl,
       authToken,
       sessionId: sessionKey,
-    }, sendToClient, callId, controller.signal).then((result) => {
+    }, sendToClient, callId, controller.signal)
+
+    context.with(brainCtx, runAskBrain).then((result) => {
       const brainMs = Date.now() - brainStart
       log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
 
       if (controller.signal.aborted) {
         log(`[session:${this.id}] ask_brain (${callId}) was cancelled — discarding result`)
+        this.tracer.endToolCall(callId, JSON.stringify({ status: "cancelled" }), "cancelled")
         return
       }
+
+      this.tracer.endToolCall(callId, result)
 
       // Inject the result back into the conversation so Gemini speaks it
       this.adapter?.injectContext(
@@ -176,6 +188,8 @@ export class RelaySession {
     }).catch((err) => {
       const message = err instanceof Error ? err.message : "brain agent call failed"
       logError(`[session:${this.id}] ask_brain error:`, message)
+
+      this.tracer.endToolCall(callId, JSON.stringify({ error: message }), message)
 
       if (!controller.signal.aborted) {
         this.adapter?.injectContext(

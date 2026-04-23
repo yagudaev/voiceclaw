@@ -1,6 +1,7 @@
 // Brain agent tool — sends queries to the brain gateway via /v1/chat/completions
 // Uses SSE streaming to get responses, signals step completions for live progress injection
 
+import { context, propagation } from "@opentelemetry/api"
 import type { SendToClient } from "../adapters/types.js"
 import { log, error as logError } from "../log.js"
 
@@ -46,6 +47,15 @@ export async function askBrain(
     externalSignal?.removeEventListener("abort", onExternalAbort)
   }
 
+  // W3C trace context propagation. When this fetch runs inside the
+  // ask_brain tool span's OTel context (session.ts wraps it in context.with),
+  // propagation.inject writes a `traceparent` header whose trace-id matches
+  // the relay's active trace. The openclaw gateway extracts it on the other
+  // side and opens its root span as a child, giving us one unified trace
+  // across both services in Langfuse.
+  const traceHeaders: Record<string, string> = {}
+  propagation.inject(context.active(), traceHeaders)
+
   let response: Response
   try {
     response = await fetch(url, {
@@ -54,6 +64,7 @@ export async function askBrain(
         "Content-Type": "application/json",
         "Authorization": `Bearer ${config.authToken}`,
         "x-openclaw-session-key": config.sessionId,
+        ...traceHeaders,
       },
       body: JSON.stringify({
         model: "openclaw",

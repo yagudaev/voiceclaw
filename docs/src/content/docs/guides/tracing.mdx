@@ -1,0 +1,55 @@
+---
+title: Tracing (Langfuse + OpenTelemetry)
+description: How voice-turn observability crosses the relay ↔ brain boundary so one Langfuse trace covers both services.
+---
+
+VoiceClaw's relay server emits OpenTelemetry spans that ship to Langfuse via `LangfuseSpanProcessor`. One span tree corresponds to one **voice turn** (user utterance → assistant finished speaking). Tool calls made during that turn — notably `ask_brain` — nest under the turn.
+
+When `ask_brain` fires it hits the OpenClaw brain gateway over HTTP. The relay propagates a W3C `traceparent` header so OpenClaw's spans can nest under the relay's `ask_brain` tool span, producing a single unified trace across both services.
+
+## Enabling
+
+Set these in `relay-server/.env`:
+
+```
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+```
+
+Missing keys soft-disable tracing — the relay still runs, no spans emit, no network calls to Langfuse.
+
+Optional: `OTEL_SERVICE_NAME=voiceclaw-relay` (the default). Set if you run multiple relays and want to distinguish them in Langfuse's service filter.
+
+## Trace shape
+
+```
+voice-turn                     [GENERATION]    service: voiceclaw-relay
+├── ask_brain                  [TOOL]          service: voiceclaw-relay
+│   └── openclaw-gateway-...   [SPAN]          service: openclaw-gateway
+│       └── openclaw-llm       [GENERATION]    service: openclaw-gateway
+│           └── openclaw-step  [SPAN]          service: openclaw-gateway  (repeats per agent step)
+└── (other tools if any)
+```
+
+- **`voice-turn`** — opened on `turn.started`, closed on `turn.ended`. Carries `model`, `turnId`, and per-turn usage (input/output/audio tokens).
+- **`ask_brain`** — opened when Gemini/OpenAI emit a tool call with `name=ask_brain`, closed when the real brain response lands (not when the "searching" placeholder is sent). Duration reflects the actual brain call.
+- **Everything below** — emitted by the OpenClaw fork once it's running with the matching Langfuse keys. Requires both services to speak the same trace context.
+
+## How propagation works
+
+1. `session.ts` starts the `ask_brain` tool span and asks `TurnTracer.getToolSpanContext(callId)` for an OTel `Context` rooted at that span.
+2. The outbound `fetch()` runs inside `context.with(ctx, …)`, so `context.active()` inside `brain.ts` points at the tool span.
+3. `propagation.inject(context.active(), headers)` writes a `traceparent` header into the request — e.g. `00-<traceId>-<spanId>-01`.
+4. The OpenClaw gateway's HTTP handler calls `propagation.extract(headers)` on the incoming request and runs the rest of the request inside that extracted context. Any spans it creates become children of the relay's tool span.
+5. Both services export to the same Langfuse project, which joins them into one trace because the `trace-id` matches.
+
+## Debugging
+
+- **`ask_brain` span has no children in Langfuse.** OpenClaw isn't emitting spans — either its Langfuse keys aren't set, its tracing init didn't run, or it's not extracting `traceparent` from the request. Check the OpenClaw gateway logs for a `[langfuse] tracing enabled` line at startup.
+- **Child spans appear as a separate trace.** The extraction is happening but on a different `context.with` — verify the OpenClaw handler wraps its entire request flow in the extracted context, not just the first line.
+- **`traceparent` missing from the request entirely.** Run `relay-server/test/test-brain-traceparent.ts` to confirm injection works locally. If it does, check that the relay's `NodeSDK` has started (look for the `[langfuse] tracing enabled` log line at boot).
+
+## Testing
+
+`npx tsx test/test-brain-traceparent.ts` runs a mock HTTP server and asserts `ask_brain` injects a valid W3C `traceparent` matching the active span's trace-id / span-id, plus the no-context fallback (no header when no span is active).

@@ -14,6 +14,7 @@
 // need to guard every site.
 
 import { randomUUID } from "node:crypto"
+import { context, trace, type Context } from "@opentelemetry/api"
 import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
 
@@ -115,6 +116,18 @@ export class TurnTracer {
     })
     span.end()
     this.activeToolSpans.delete(callId)
+  }
+
+  // Returns an OTel Context rooted at the tool span for `callId`, or null if no
+  // such span exists. Callers run outbound work (e.g. the ask_brain fetch)
+  // inside `context.with(ctx, …)` so W3C traceparent headers injected by
+  // `propagation.inject` attribute to this span — downstream services (the
+  // openclaw gateway) then build their spans as children of it, producing a
+  // single unified trace across the two services.
+  getToolSpanContext(callId: string): Context | null {
+    const span = this.activeToolSpans.get(callId)
+    if (!span) return null
+    return trace.setSpan(context.active(), span.otelSpan)
   }
 
   attachClientTiming(phase: string, ms: number, turnId?: string) {

@@ -28,6 +28,9 @@ export function initLangfuse() {
 
   try {
     sdk = new NodeSDK({
+      // Named so Langfuse / any OTEL consumer can distinguish relay-emitted
+      // spans from openclaw-emitted spans in the same unified trace.
+      serviceName: process.env.OTEL_SERVICE_NAME ?? "voiceclaw-relay",
       spanProcessors: [
         new LangfuseSpanProcessor({
           publicKey,
