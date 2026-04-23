@@ -5,9 +5,32 @@
 // We accept both protobuf and JSON OTLP per the spec — the exporter uses
 // protobuf by default; JSON is handy for curl-based testing.
 
-import { ProtobufTraceSerializer, JsonTraceSerializer } from "@opentelemetry/otlp-transformer"
+// `@opentelemetry/otlp-transformer` is the OTel-JS exporter-side library, so
+// its public API only exposes `deserializeResponse` (for sender-side response
+// parsing). We need the reverse — decode an incoming ExportTraceServiceRequest
+// body. The protobuf types are bundled in the package's generated root; we
+// deep-import it to avoid pulling in protobufjs + the proto file manually.
+// Pinned path: `@opentelemetry/otlp-transformer` 0.215.
+import otlpRootModule from "@opentelemetry/otlp-transformer/build/esm/generated/root.js"
 import { openDb, upsertTrace, upsertObservation, type TraceRow, type ObservationRow } from "./db.js"
 import type Database from "better-sqlite3"
+
+type ProtoType = { decode: (buf: Uint8Array) => unknown }
+type OtlpRoot = {
+  opentelemetry: {
+    proto: {
+      collector: {
+        trace: {
+          v1: { ExportTraceServiceRequest: ProtoType }
+        }
+      }
+    }
+  }
+}
+const otlpRoot = (otlpRootModule as unknown as { default?: OtlpRoot }).default
+  ?? (otlpRootModule as unknown as OtlpRoot)
+const ExportTraceServiceRequest =
+  otlpRoot.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
 
 type AnyValue = { stringValue?: string; intValue?: number | string; doubleValue?: number; boolValue?: boolean; kvlistValue?: { values: KeyValue[] }; arrayValue?: { values: AnyValue[] } }
 type KeyValue = { key: string; value?: AnyValue }
@@ -93,22 +116,38 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
 
         // Update (or insert) the trace-level row. Service name hints at the
         // trace's origin; session/user come from resource attrs.
+        //
+        // Merge semantics:
+        //  - session/user/name/input/output — first-writer-wins on first
+        //    non-null value (late root span can still supply name/input if
+        //    children land first).
+        //  - status — "error wins": once any span in the trace is an error
+        //    the trace is tagged error, regardless of arrival order. OTel
+        //    StatusCode: 0=UNSET, 1=OK, 2=ERROR.
         const prev = tracesTouched.get(traceId)
+        const isRoot = parentSpanId == null
+        const spanStatusIsError = Number(span.status?.code ?? 0) === 2
+        const nextStatus =
+          prev?.status === "error" || spanStatusIsError ? "error" : (prev?.status ?? "ok")
         const merged: TraceRow = {
           trace_id: traceId,
           session_id:
             (prev?.session_id ?? sessionIdFromResource ?? stringAttr(attrs, "session.id")) ?? null,
           user_id: (prev?.user_id ?? userIdFromResource ?? stringAttr(attrs, "user.id")) ?? null,
-          name: prev?.name ?? (parentSpanId == null ? span.name ?? null : null),
+          name: prev?.name ?? (isRoot ? span.name ?? null : null),
           start_time_ns: Math.min(prev?.start_time_ns ?? startNs ?? 0, startNs ?? Number.MAX_SAFE_INTEGER),
           end_time_ns:
             prev?.end_time_ns != null && endNs != null
               ? Math.max(prev.end_time_ns, endNs)
               : (endNs ?? prev?.end_time_ns ?? null),
-          input_json: prev?.input_json ?? stringAttr(attrs, "langfuse.observation.input") ?? null,
-          output_json: prev?.output_json ?? stringAttr(attrs, "langfuse.observation.output") ?? null,
+          input_json:
+            prev?.input_json ??
+            (isRoot ? stringAttr(attrs, "langfuse.observation.input") ?? null : null),
+          output_json:
+            prev?.output_json ??
+            (isRoot ? stringAttr(attrs, "langfuse.observation.output") ?? null : null),
           metadata_json: null,
-          status: prev?.status ?? (span.status?.code === 2 ? "error" : "ok"),
+          status: nextStatus,
         }
         tracesTouched.set(traceId, merged)
       }
@@ -122,9 +161,17 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
 
 function decode(buf: Buffer, contentType: string): OtlpRequest {
   if (contentType.startsWith("application/json")) {
-    return JsonTraceSerializer.deserializeResponse(buf) as unknown as OtlpRequest
+    // JSON OTLP — the encoded values (traceId, spanId, timestamps) follow the
+    // OTel JSON mapping (hex strings for ids, decimal strings for 64-bit ints).
+    // Our downstream coercers already handle both hex + Uint8Array ids and
+    // number/string/bigint timestamps.
+    return JSON.parse(buf.toString("utf8")) as OtlpRequest
   }
-  return ProtobufTraceSerializer.deserializeResponse(buf) as unknown as OtlpRequest
+  // Protobuf — decode via the generated ExportTraceServiceRequest type. Do NOT
+  // use the otlp-transformer's `deserializeResponse` helper here: it decodes
+  // the collector-side response body (a different proto message) so nested
+  // fields silently mis-parse.
+  return ExportTraceServiceRequest.decode(buf) as OtlpRequest
 }
 
 function attrsToObject(kvs: KeyValue[]): Record<string, unknown> {

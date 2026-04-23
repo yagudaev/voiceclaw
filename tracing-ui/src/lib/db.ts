@@ -17,7 +17,11 @@ export function db(): Database.Database {
   if (handle) return handle
   const path = process.env.VOICECLAW_TRACING_DB ?? DEFAULT_PATH
   handle = new Database(path, { readonly: true, fileMustExist: false })
-  handle.pragma("journal_mode = WAL")
+  // WAL mode is persistent at the database level — set once by the collector.
+  // Readers don't need to (and shouldn't) set it; we just configure a busy
+  // timeout so lock contention under concurrent writes yields a clean retry
+  // instead of an immediate SQLITE_BUSY.
+  handle.pragma("busy_timeout = 5000")
   return handle
 }
 
@@ -38,20 +42,35 @@ export type SessionRow = {
 // session_id (e.g. direct HTTP probes bypassing the voice relay) get grouped
 // into a synthetic "(no session)" bucket so they're not invisible.
 export function listSessions(limit = 50, offset = 0): SessionRow[] {
+  // Aggregate per session via a two-step CTE: first pre-aggregate each trace
+  // so `turn_count` is one-per-trace (otherwise the JOIN fans out and turn
+  // count = number of observations, not turns).
   const rows = db()
     .prepare(`
+      WITH trace_totals AS (
+        SELECT
+          t.trace_id,
+          t.session_id,
+          t.user_id,
+          t.start_time_ns,
+          COALESCE(t.end_time_ns, t.start_time_ns) AS end_time_ns,
+          COALESCE(SUM(o.cost_usd), 0) AS cost_usd,
+          COALESCE(SUM(COALESCE(o.tokens_input, 0) + COALESCE(o.tokens_output, 0)), 0) AS tokens
+        FROM traces t
+        LEFT JOIN observations o ON o.trace_id = t.trace_id
+        GROUP BY t.trace_id
+      )
       SELECT
-        COALESCE(t.session_id, '(no session)')       AS session_id,
-        MAX(t.user_id)                               AS user_id,
-        MIN(t.start_time_ns)                         AS started_at_ns,
-        MAX(COALESCE(t.end_time_ns, t.start_time_ns)) AS last_activity_ns,
-        COUNT(*)                                      AS turn_count,
-        COALESCE(SUM(o.cost_usd), 0)                 AS total_cost_usd,
-        COALESCE(SUM(COALESCE(o.tokens_input, 0) + COALESCE(o.tokens_output, 0)), 0) AS total_tokens,
-        CAST((MAX(COALESCE(t.end_time_ns, t.start_time_ns)) - MIN(t.start_time_ns)) / 1000000 AS INTEGER) AS duration_ms
-      FROM traces t
-      LEFT JOIN observations o ON o.trace_id = t.trace_id
-      GROUP BY COALESCE(t.session_id, '(no session)')
+        COALESCE(session_id, '(no session)')         AS session_id,
+        MAX(user_id)                                 AS user_id,
+        MIN(start_time_ns)                           AS started_at_ns,
+        MAX(end_time_ns)                             AS last_activity_ns,
+        COUNT(*)                                     AS turn_count,
+        COALESCE(SUM(cost_usd), 0)                   AS total_cost_usd,
+        COALESCE(SUM(tokens), 0)                     AS total_tokens,
+        CAST((MAX(end_time_ns) - MIN(start_time_ns)) / 1000000 AS INTEGER) AS duration_ms
+      FROM trace_totals
+      GROUP BY COALESCE(session_id, '(no session)')
       ORDER BY last_activity_ns DESC
       LIMIT ? OFFSET ?
     `)
