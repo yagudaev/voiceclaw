@@ -12,6 +12,7 @@ import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
 import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
+import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
@@ -282,7 +283,24 @@ export class RelaySession {
     log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter (model=${config.model || "default"})`)
     this.config = config
     this.startedAt = Date.now()
-    this.tracer.startSession(config.sessionKey ?? this.id, config.userId ?? null, config.model ?? null)
+    // Capture the assembled system prompt so every voice-turn span carries the
+    // full context Gemini / OpenAI Realtime was configured with. Uses the same
+    // buildInstructions the Gemini adapter feeds to the provider, so the trace
+    // and the live session see the same string (minus anything the adapter
+    // conditionally appends, e.g. tool schemas).
+    const assembledInstructions = (() => {
+      try {
+        return buildInstructions(config)
+      } catch {
+        return null
+      }
+    })()
+    this.tracer.startSession(
+      config.sessionKey ?? this.id,
+      config.userId ?? null,
+      config.model ?? null,
+      assembledInstructions,
+    )
 
     try {
       this.adapter = createAdapter(config.provider)

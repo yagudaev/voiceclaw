@@ -30,6 +30,11 @@ export class TurnTracer {
   private sessionId: string | null = null
   private userId: string | null = null
   private model: string | null = null
+  // Assembled system prompt that the realtime provider was configured with —
+  // attached to every voice-turn span so the trace is self-contained and a
+  // reader can see exactly what instructions Gemini / OpenAI Realtime was
+  // running under without cross-referencing the relay code.
+  private sessionInstructions: string | null = null
 
   private activeGeneration: LangfuseGeneration | null = null
   private activeTurnId: string | null = null
@@ -38,6 +43,16 @@ export class TurnTracer {
   // Monotonic per-session counter so a Langfuse session's traces sort
   // chronologically at a glance even without timestamp math.
   private turnIndex = 0
+  // Lazy-creation state. A voice turn is recorded in startTurn but the
+  // LangfuseGeneration is not materialized until the first piece of real
+  // content (user/assistant text or a tool call) arrives — that way
+  // VAD / false-positive turns that fire turn.started + turn.ended with
+  // no content don't pollute the session with empty traces.
+  private pendingTurn: {
+    turnId: string
+    turnIndex: number
+    turnStartedAt: string
+  } | null = null
 
   private currentUserText = ""
   private currentAssistantText = ""
@@ -46,10 +61,16 @@ export class TurnTracer {
     return this.activeTurnId
   }
 
-  startSession(sessionId: string, userId: string | null, model: string | null) {
+  startSession(
+    sessionId: string,
+    userId: string | null,
+    model: string | null,
+    instructions: string | null = null,
+  ) {
     this.sessionId = sessionId
     this.userId = userId
     this.model = model
+    this.sessionInstructions = instructions
     this.turnIndex = 0
   }
 
@@ -57,22 +78,34 @@ export class TurnTracer {
     if (!isLangfuseEnabled()) return
     // Close any leftover generation (defensive — shouldn't happen if turn.ended fires)
     this.endTurn()
-    // Any still-pending trailing updates from the prior turn must be flushed
-    // before a new generation takes over as the target for attach* calls.
     this.flushPending()
 
     this.currentUserText = ""
     this.currentAssistantText = ""
+    this.activeTurnId = randomUUID()
+    this.turnIndex += 1
+    // Intentionally defer startObservation until the first real event arrives.
+    this.pendingTurn = {
+      turnId: this.activeTurnId,
+      turnIndex: this.turnIndex,
+      turnStartedAt: new Date().toISOString(),
+    }
+  }
 
+  private ensureActiveGeneration() {
+    if (this.activeGeneration || !this.pendingTurn) return
+    const pending = this.pendingTurn
+    this.pendingTurn = null
+    const metadata: Record<string, unknown> = {
+      turnId: pending.turnId,
+      turnIndex: pending.turnIndex,
+      "client.turnStartedAt": pending.turnStartedAt,
+    }
     // propagateAttributes writes sessionId/userId onto the OTel context so the
     // span created inside the callback (and its children) inherit them. Setting
     // them via metadata.langfuseSessionId is the Langchain integration pattern
     // and does NOT populate the trace's session field in the @langfuse/tracing
     // direct SDK.
-    this.activeTurnId = randomUUID()
-    this.turnIndex += 1
-    const turnIndex = this.turnIndex
-    const turnStartedAt = new Date().toISOString()
     propagateAttributes(
       {
         ...(this.sessionId ? { sessionId: this.sessionId } : {}),
@@ -83,11 +116,7 @@ export class TurnTracer {
           "voice-turn",
           {
             model: this.model ?? undefined,
-            metadata: {
-              turnId: this.activeTurnId,
-              turnIndex,
-              "client.turnStartedAt": turnStartedAt,
-            },
+            metadata,
           },
           { asType: "generation" },
         )
@@ -96,17 +125,23 @@ export class TurnTracer {
   }
 
   appendUserText(text: string) {
+    if (!text) return
+    this.ensureActiveGeneration()
     if (!this.activeGeneration) return
     this.currentUserText += text
   }
 
   appendAssistantText(text: string) {
+    if (!text) return
+    this.ensureActiveGeneration()
     if (!this.activeGeneration) return
     this.currentAssistantText += text
   }
 
   startToolCall(callId: string, name: string, args: string) {
-    if (!isLangfuseEnabled() || !this.activeGeneration) return
+    if (!isLangfuseEnabled()) return
+    this.ensureActiveGeneration()
+    if (!this.activeGeneration) return
     const span = this.activeGeneration.startObservation(
       name,
       {
@@ -170,12 +205,32 @@ export class TurnTracer {
   }
 
   endTurn(errorMessage?: string) {
-    if (!this.activeGeneration) return
+    if (!this.activeGeneration) {
+      // Lazy-create path: the turn ended before any real content landed, so
+      // we never materialized a span. Just drop the pending state — no empty
+      // voice-turn trace will appear in Langfuse.
+      this.pendingTurn = null
+      this.activeTurnId = null
+      return
+    }
+    // Compose the input as a chat conversation including the system prompt
+    // Gemini / OpenAI Realtime was configured with, so each trace is self-
+    // contained: a reader can see the full context the voice model ran under
+    // without cross-referencing the relay code.
+    const chatInput: Array<{ role: string; content: string }> = []
+    if (this.sessionInstructions) {
+      chatInput.push({ role: "system", content: this.sessionInstructions })
+    }
+    if (this.currentUserText) {
+      chatInput.push({ role: "user", content: this.currentUserText })
+    }
+    const inputForSpan =
+      chatInput.length > 0 ? chatInput : this.currentUserText || undefined
     // Tool spans may legitimately outlive the turn they started in — async tools
     // (e.g. ask_brain) often resolve on a later turn. Leave them open; endSession
     // will WARNING-close anything still dangling when the socket closes.
     this.activeGeneration.update({
-      input: this.currentUserText || undefined,
+      input: inputForSpan,
       output: this.currentAssistantText || undefined,
       ...(errorMessage ? { level: "ERROR" as const, statusMessage: errorMessage } : {}),
     })
