@@ -39,7 +39,12 @@ export class TurnTracer {
   private activeGeneration: LangfuseGeneration | null = null
   private activeTurnId: string | null = null
   private activeToolSpans = new Map<string, LangfuseTool>()
-  private pendingEnd: { generation: LangfuseGeneration, turnId: string, timer: ReturnType<typeof setTimeout> } | null = null
+  // Recently-ended turns — generation is kept alive briefly so async
+  // side-effects (media finalize, late usage metrics, client timing) can still
+  // stamp attrs on the OTel span before it closes. Keyed by turnId because
+  // multiple turns can be in this "draining" state concurrently when media
+  // finalize (fs writes) takes longer than the gap to the next turn.
+  private pendingEnds = new Map<string, { generation: LangfuseGeneration, timer: ReturnType<typeof setTimeout> }>()
   // Monotonic per-session counter so a Langfuse session's traces sort
   // chronologically at a glance even without timestamp math.
   private turnIndex = 0
@@ -76,9 +81,12 @@ export class TurnTracer {
 
   startTurn() {
     if (!isLangfuseEnabled()) return
-    // Close any leftover generation (defensive — shouldn't happen if turn.ended fires)
+    // Close any leftover generation (defensive — shouldn't happen if turn.ended fires).
+    // Do NOT flush recently-ended turns here: each pendingEnd entry owns its own
+    // timer, and flushing eagerly would race async media finalize on the prior
+    // turn (fs writes can outlast the gap between turn.ended and the next
+    // turn.started).
     this.endTurn()
-    this.flushPending()
 
     this.currentUserText = ""
     this.currentAssistantText = ""
@@ -311,15 +319,24 @@ export class TurnTracer {
     target.update({ usageDetails })
   }
 
-  // Stamp media-capture attrs on the CURRENT active voice-turn span, if any.
-  // Called by RelaySession from the capture pipeline after the PCM files are
-  // finalized. No-ops on the lazy path (no span yet) or after end (pendingEnd
-  // still reachable via the generation object) — in both cases we fall back to
-  // metadata so the fields still travel with the span.
-  attachMediaAttrs(attrs: Record<string, unknown>) {
-    const target = this.resolveTarget() ?? this.pendingEnd?.generation ?? null
+  // Stamp media-capture attrs on the voice-turn span for `turnId`. Written as
+  // top-level OTel attributes (not Langfuse metadata) so the collector's
+  // extractMediaRows — which reads `media.<role>.path` from span attrs
+  // directly — can persist one media row per modality. turnId is required so
+  // a late-resolving media finalize binds to the correct span even when the
+  // next turn has already started (common in live voice conversations where
+  // fs writes outlast the inter-turn gap).
+  attachMediaAttrs(attrs: Record<string, unknown>, turnId: string) {
+    const target = this.resolveTarget(turnId)
     if (!target) return
-    target.update({ metadata: attrs })
+    const otelAttrs: Record<string, string | number | boolean> = {}
+    for (const [k, v] of Object.entries(attrs)) {
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        otelAttrs[k] = v
+      }
+    }
+    if (Object.keys(otelAttrs).length === 0) return
+    target.otelSpan.setAttributes(otelAttrs)
   }
 
   endTurn(errorMessage?: string) {
@@ -353,15 +370,16 @@ export class TurnTracer {
       ...(errorMessage ? { level: "ERROR" as const, statusMessage: errorMessage } : {}),
     })
     // Keep the generation around briefly so trailing usage.metrics /
-    // client.timing can still attach before we call .end() and hand the
-    // span off to the exporter. Any earlier pending flushes first.
-    this.flushPending()
+    // client.timing / media finalize can still attach before we call .end()
+    // and hand the span off to the exporter. Each entry gets its own timer so
+    // the next turn starting doesn't nuke this one's draining window.
     const generation = this.activeGeneration
     const turnId = this.activeTurnId ?? ""
-    this.pendingEnd = {
-      generation,
-      turnId,
-      timer: setTimeout(() => this.flushPending(), PENDING_FLUSH_MS),
+    if (turnId) {
+      const timer = setTimeout(() => this.flushPending(turnId), PENDING_FLUSH_MS)
+      this.pendingEnds.set(turnId, { generation, timer })
+    } else {
+      generation.end()
     }
     this.activeGeneration = null
     this.activeTurnId = null
@@ -369,7 +387,9 @@ export class TurnTracer {
 
   endSession() {
     this.endTurn()
-    this.flushPending()
+    for (const turnId of Array.from(this.pendingEnds.keys())) {
+      this.flushPending(turnId)
+    }
     for (const [callId, span] of this.activeToolSpans) {
       span.update({ level: "WARNING", statusMessage: "tool span closed without result" })
       span.end()
@@ -382,9 +402,13 @@ export class TurnTracer {
     if (this.activeGeneration && (!turnId || turnId === this.activeTurnId)) {
       return this.activeGeneration
     }
-    // Recently-ended turn — usage/timing from the tail of the last turn.
-    if (this.pendingEnd && (!turnId || turnId === this.pendingEnd.turnId)) {
-      return this.pendingEnd.generation
+    // Recently-ended turn — usage/timing/media from the tail of that turn.
+    if (turnId) {
+      const p = this.pendingEnds.get(turnId)
+      if (p) return p.generation
+    } else if (this.pendingEnds.size > 0) {
+      // No turnId supplied — fall back to the most-recently-ended turn.
+      return Array.from(this.pendingEnds.values()).at(-1)?.generation ?? null
     }
     return null
   }
@@ -393,8 +417,11 @@ export class TurnTracer {
     // Usage telemetry describes the turn that just completed, so prefer the
     // just-ended generation over any new active one. This matters when a late
     // usageMetadata lands after the user has already started the next turn.
-    if (this.pendingEnd && (!turnId || turnId === this.pendingEnd.turnId)) {
-      return this.pendingEnd.generation
+    if (turnId) {
+      const p = this.pendingEnds.get(turnId)
+      if (p) return p.generation
+    } else if (this.pendingEnds.size > 0) {
+      return Array.from(this.pendingEnds.values()).at(-1)?.generation ?? null
     }
     if (this.activeGeneration && (!turnId || turnId === this.activeTurnId)) {
       return this.activeGeneration
@@ -402,11 +429,12 @@ export class TurnTracer {
     return null
   }
 
-  private flushPending() {
-    if (!this.pendingEnd) return
-    clearTimeout(this.pendingEnd.timer)
-    this.pendingEnd.generation.end()
-    this.pendingEnd = null
+  private flushPending(turnId: string) {
+    const p = this.pendingEnds.get(turnId)
+    if (!p) return
+    clearTimeout(p.timer)
+    p.generation.end()
+    this.pendingEnds.delete(turnId)
   }
 }
 

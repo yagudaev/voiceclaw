@@ -74,14 +74,15 @@ export class RelaySession {
         // the file contents exactly match what the client hears.
         this.media.onAssistantAudioChunk(event.data)
         break
-      case "turn.ended":
-        // Finalize media FIRST so the attrs land on the still-active voice-turn
-        // span. Order matters: `tracer.endTurn()` moves the span to pendingEnd
-        // and starts a 2s window where updates still attach, but if we end the
-        // turn first we also have to race the flush.
-        void this.finalizeMediaTurn()
+      case "turn.ended": {
+        // Capture the turnId BEFORE endTurn() clears it so the async media
+        // finalize (which races against the next turn starting) can target
+        // the correct voice-turn span via attachMediaAttrs(attrs, turnId).
+        const endingTurnId = this.tracer.getActiveTurnId()
+        void this.finalizeMediaTurn(endingTurnId)
         this.tracer.endTurn()
         break
+      }
       case "usage.metrics":
         this.tracer.attachUsage(event)
         // Internal only — do not forward to client
@@ -309,7 +310,7 @@ export class RelaySession {
       // Order matters: flush capture + attach media attrs BEFORE the tracer
       // closes. Otherwise finalize resolves against a dead tracer and the
       // media.* attrs never reach the span.
-      await this.finalizeMediaTurn().catch(() => undefined)
+      await this.finalizeMediaTurn(this.tracer.getActiveTurnId()).catch(() => undefined)
       await this.media.endSession().catch(() => undefined)
       this.tracer.endSession()
     }
@@ -364,7 +365,7 @@ export class RelaySession {
     this.abortAllInFlightTools("session ended")
     // Order matters: flush turn capture + close media BEFORE the tracer ends
     // so media.* attrs can attach to the still-open voice-turn span.
-    await this.finalizeMediaTurn().catch(() => undefined)
+    await this.finalizeMediaTurn(this.tracer.getActiveTurnId()).catch(() => undefined)
     await this.media.endSession().catch(() => undefined)
     this.tracer.endSession()
     this.syncTranscriptToBrain()
@@ -380,12 +381,13 @@ export class RelaySession {
     this.media.startTurn(turnId)
   }
 
-  private async finalizeMediaTurn() {
+  private async finalizeMediaTurn(turnId: string | null) {
     if (!this.media.isEnabled()) return
+    if (!turnId) return
     try {
       const attrs = await this.media.finalizeTurn()
       if (attrs && Object.keys(attrs).length > 0) {
-        this.tracer.attachMediaAttrs(attrs)
+        this.tracer.attachMediaAttrs(attrs, turnId)
       }
     } catch (err) {
       logError(`[session:${this.id}] media finalize failed:`, err instanceof Error ? err.message : err)

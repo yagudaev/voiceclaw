@@ -158,6 +158,11 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS media_session ON media(session_id, kind, start_offset_ms);
     CREATE INDEX IF NOT EXISTS media_trace   ON media(trace_id);
+    -- Older DBs created the media table before the UNIQUE(span_id, kind)
+    -- constraint existed. A unique INDEX is accepted by SQLite as the ON
+    -- CONFLICT target, so creating it non-destructively here brings pre-
+    -- existing DBs up to spec without requiring a table rewrite.
+    CREATE UNIQUE INDEX IF NOT EXISTS media_span_kind ON media(span_id, kind);
   `)
 }
 
