@@ -1,7 +1,7 @@
 // Relay session — manages the lifecycle of a single client connection
 
 import { randomUUID } from "node:crypto"
-import { context } from "@opentelemetry/api"
+import { context, ROOT_CONTEXT } from "@opentelemetry/api"
 import type { WebSocket } from "ws"
 import type {
   ClientEvent,
@@ -161,8 +161,11 @@ export class RelaySession {
 
     // Run the fetch inside the tool span's OTel context so `propagation.inject`
     // in brain.ts sees it as the active parent and writes a `traceparent`
-    // header linking openclaw's incoming request back to this span.
-    const brainCtx = this.tracer.getToolSpanContext(callId) ?? context.active()
+    // header linking openclaw's incoming request back to this span. If the
+    // tool span is missing for any reason, fall back to ROOT_CONTEXT — never
+    // context.active(), which could be whatever ambient (unrelated) span
+    // happens to be live at this moment and would produce a misleading trace.
+    const brainCtx = this.tracer.getToolSpanContext(callId) ?? ROOT_CONTEXT
     const runAskBrain = () => askBrain(query, {
       gatewayUrl,
       authToken,
