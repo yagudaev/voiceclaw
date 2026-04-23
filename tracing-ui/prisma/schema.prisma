@@ -12,9 +12,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// The runtime connection is owned by `@prisma/adapter-better-sqlite3` (see
+// src/lib/db.ts). Prisma 6's schema validator still requires a `url` on the
+// datasource block at generate time, so we use a harmless placeholder that's
+// never consulted at runtime — the adapter opens the real DB from env vars.
 datasource db {
   provider = "sqlite"
-  url      = env("VOICECLAW_TRACING_DB_URL")
+  url      = "file:./__unused.db"
 }
 
 model Trace {

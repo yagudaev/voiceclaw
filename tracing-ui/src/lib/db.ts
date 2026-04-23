@@ -3,10 +3,17 @@
 // safe because the collector sets WAL mode at startup — Prisma's SQLite
 // driver does not re-issue `journal_mode` on connect.
 //
+// The runtime connection is owned by `@prisma/adapter-better-sqlite3`, not
+// Prisma's bundled Rust engine. That lets us open the DB read-only and keeps
+// the connection config in one place (this file) instead of being smeared
+// across schema.prisma + env vars. The `url` on the datasource block in
+// schema.prisma is an unused placeholder — the adapter is the source of truth.
+//
 // This module must only be imported from Server Components, Route Handlers,
 // or server actions. Public function signatures match the previous raw-SQL
 // reader so no caller changes are required.
 
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3"
 import { Prisma, PrismaClient } from "@prisma/client"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -18,11 +25,7 @@ const DEFAULT_PATH = join(homedir(), ".voiceclaw", "tracing.db")
 const globalForPrisma = globalThis as unknown as { __vcTracingPrisma?: PrismaClient }
 
 export const prisma: PrismaClient =
-  globalForPrisma.__vcTracingPrisma ??
-  new PrismaClient({
-    datasources: { db: { url: resolveDbUrl() } },
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  })
+  globalForPrisma.__vcTracingPrisma ?? createPrisma()
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.__vcTracingPrisma = prisma
 
@@ -93,14 +96,19 @@ export type TraceRow = {
   status: string | null
 }
 
-// We use $queryRaw for the trace/observation fetches because Prisma's SQLite
-// connector rejects INTEGER column values > INT32 even on raw queries — the
-// engine performs a range check based on the live column type regardless of
-// the schema field type or cast level. Our start_time_ns values are
-// nanosecond timestamps (≈ 1.8e18), so we CAST them to REAL in SQL so Prisma
-// sees a REAL column at the wire level. Precision loss is below the
-// microsecond floor, which is well below the display resolution the UI uses
-// (everything is shown in ms). See the PR description for the writeup.
+// We use $queryRaw + CAST for every fetch that projects a timestamp. Prisma
+// rejects any INTEGER column whose declared DDL type is `INTEGER` when the
+// value exceeds INT32 — even through the `@prisma/adapter-better-sqlite3`
+// driver adapter. The adapter reports the column type by mapping SQLite's
+// DDL decltype to ColumnTypeEnum.Int32 (see
+// node_modules/@prisma/adapter-better-sqlite3 `mapDeclType`), and the engine
+// then applies the i32 range check before we ever see the row. Neither
+// fluent reads nor `$queryRaw` without CAST survive this path — the only
+// fixes are (a) change the collector's DDL to `BIGINT`, which is outside
+// this package's ownership, or (b) project through `CAST(... AS REAL)` so
+// the column arrives at the engine as Double. We use (b). Precision loss is
+// below the microsecond floor, which is well below the ms display the UI
+// uses. See the PR description for the writeup.
 export async function listTracesForSession(sessionId: string): Promise<TraceRow[]> {
   if (sessionId === "(no session)") {
     const rows = await prisma.$queryRaw<RawTraceRow[]>(Prisma.sql`
@@ -246,14 +254,26 @@ export async function getVoiceTurnsForSession(sessionId: string): Promise<VoiceT
 
 // -- helpers ---------------------------------------------------------------
 
-// We accept VOICECLAW_TRACING_DB (legacy, plain path used by the collector)
-// or VOICECLAW_TRACING_DB_URL (Prisma-style, already `file:…` prefixed).
-// Falling back to the default path keeps local dev friction-free.
-function resolveDbUrl(): string {
-  const fromUrl = process.env.VOICECLAW_TRACING_DB_URL
-  if (fromUrl && fromUrl.length > 0) return fromUrl
-  const fromPath = process.env.VOICECLAW_TRACING_DB ?? DEFAULT_PATH
-  return fromPath.startsWith("file:") ? fromPath : `file:${fromPath}`
+// VOICECLAW_TRACING_DB is the same env var the collector reads — a plain
+// filesystem path (no `file:` prefix). With the driver adapter owning the
+// connection there is no Prisma-style URL involved.
+function resolveDbPath(): string {
+  const fromEnv = process.env.VOICECLAW_TRACING_DB
+  if (fromEnv && fromEnv.length > 0) return fromEnv
+  return DEFAULT_PATH
+}
+
+function createPrisma(): PrismaClient {
+  const adapter = new PrismaBetterSqlite3({
+    url: `file:${resolveDbPath()}`,
+    readonly: true,
+    fileMustExist: false,
+    timeout: 5000,
+  })
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  })
 }
 
 type RawSessionRow = {
