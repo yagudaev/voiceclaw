@@ -1,29 +1,30 @@
-// Server-only SQLite reader. The tracing-collector is the writer; we open
-// the same DB file in read-only WAL mode so concurrent reads are safe.
+// Server-only Prisma reader. The tracing-collector is the writer; we open
+// the same SQLite file through Prisma for typed reads. Concurrent reads are
+// safe because the collector sets WAL mode at startup — Prisma's SQLite
+// driver does not re-issue `journal_mode` on connect.
 //
-// This module is safe to import only from Server Components, Route Handlers,
-// or server actions. Never from client code — `better-sqlite3` is a native
-// module, listed in `serverExternalPackages`.
+// This module must only be imported from Server Components, Route Handlers,
+// or server actions. Public function signatures match the previous raw-SQL
+// reader so no caller changes are required.
 
-import Database from "better-sqlite3"
+import { Prisma, PrismaClient } from "@prisma/client"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
 const DEFAULT_PATH = join(homedir(), ".voiceclaw", "tracing.db")
 
-let handle: Database.Database | null = null
+// Singleton Prisma client. In dev, Next.js hot-reloads the module graph on
+// every request; stash the client on globalThis to avoid connection churn.
+const globalForPrisma = globalThis as unknown as { __vcTracingPrisma?: PrismaClient }
 
-export function db(): Database.Database {
-  if (handle) return handle
-  const path = process.env.VOICECLAW_TRACING_DB ?? DEFAULT_PATH
-  handle = new Database(path, { readonly: true, fileMustExist: false })
-  // WAL mode is persistent at the database level — set once by the collector.
-  // Readers don't need to (and shouldn't) set it; we just configure a busy
-  // timeout so lock contention under concurrent writes yields a clean retry
-  // instead of an immediate SQLITE_BUSY.
-  handle.pragma("busy_timeout = 5000")
-  return handle
-}
+export const prisma: PrismaClient =
+  globalForPrisma.__vcTracingPrisma ??
+  new PrismaClient({
+    datasources: { db: { url: resolveDbUrl() } },
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  })
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.__vcTracingPrisma = prisma
 
 export type SessionRow = {
   session_id: string
@@ -36,46 +37,48 @@ export type SessionRow = {
   duration_ms: number
 }
 
-// Sessions view is derived from observations at query time (no materialized
-// `sessions` table in v1). Groups by session_id present on any observation,
-// aggregates across all traces for that session. Orphan traces without a
-// session_id (e.g. direct HTTP probes bypassing the voice relay) get grouped
-// into a synthetic "(no session)" bucket so they're not invisible.
-export function listSessions(limit = 50, offset = 0): SessionRow[] {
-  // Aggregate per session via a two-step CTE: first pre-aggregate each trace
-  // so `turn_count` is one-per-trace (otherwise the JOIN fans out and turn
-  // count = number of observations, not turns).
-  const rows = db()
-    .prepare(`
-      WITH trace_totals AS (
-        SELECT
-          t.trace_id,
-          t.session_id,
-          t.user_id,
-          t.start_time_ns,
-          COALESCE(t.end_time_ns, t.start_time_ns) AS end_time_ns,
-          COALESCE(SUM(o.cost_usd), 0) AS cost_usd,
-          COALESCE(SUM(COALESCE(o.tokens_input, 0) + COALESCE(o.tokens_output, 0)), 0) AS tokens
-        FROM traces t
-        LEFT JOIN observations o ON o.trace_id = t.trace_id
-        GROUP BY t.trace_id
-      )
+// Sessions view is derived from traces + observations at query time. Uses a
+// CTE to aggregate per-trace first so `turn_count` stays one-per-trace and
+// doesn't fan out over the observations join.
+export async function listSessions(limit = 50, offset = 0): Promise<SessionRow[]> {
+  const rows = await prisma.$queryRaw<RawSessionRow[]>(Prisma.sql`
+    WITH trace_totals AS (
       SELECT
-        COALESCE(session_id, '(no session)')         AS session_id,
-        MAX(user_id)                                 AS user_id,
-        MIN(start_time_ns)                           AS started_at_ns,
-        MAX(end_time_ns)                             AS last_activity_ns,
-        COUNT(*)                                     AS turn_count,
-        COALESCE(SUM(cost_usd), 0)                   AS total_cost_usd,
-        COALESCE(SUM(tokens), 0)                     AS total_tokens,
-        CAST((MAX(end_time_ns) - MIN(start_time_ns)) / 1000000 AS INTEGER) AS duration_ms
-      FROM trace_totals
-      GROUP BY COALESCE(session_id, '(no session)')
-      ORDER BY last_activity_ns DESC
-      LIMIT ? OFFSET ?
-    `)
-    .all(limit, offset) as SessionRow[]
-  return rows
+        t.trace_id,
+        t.session_id,
+        t.user_id,
+        CAST(t.start_time_ns AS REAL) AS start_time_ns,
+        CAST(COALESCE(t.end_time_ns, t.start_time_ns) AS REAL) AS end_time_ns,
+        COALESCE(SUM(o.cost_usd), 0) AS cost_usd,
+        COALESCE(SUM(COALESCE(o.tokens_input, 0) + COALESCE(o.tokens_output, 0)), 0) AS tokens
+      FROM traces t
+      LEFT JOIN observations o ON o.trace_id = t.trace_id
+      GROUP BY t.trace_id
+    )
+    SELECT
+      COALESCE(session_id, '(no session)')         AS session_id,
+      MAX(user_id)                                 AS user_id,
+      MIN(start_time_ns)                           AS started_at_ns,
+      MAX(end_time_ns)                             AS last_activity_ns,
+      COUNT(*)                                     AS turn_count,
+      COALESCE(SUM(cost_usd), 0)                   AS total_cost_usd,
+      COALESCE(SUM(tokens), 0)                     AS total_tokens,
+      CAST((MAX(end_time_ns) - MIN(start_time_ns)) / 1000000 AS REAL) AS duration_ms
+    FROM trace_totals
+    GROUP BY COALESCE(session_id, '(no session)')
+    ORDER BY last_activity_ns DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `)
+  return rows.map((r) => ({
+    session_id: r.session_id,
+    user_id: r.user_id,
+    started_at_ns: toNumber(r.started_at_ns) ?? 0,
+    last_activity_ns: toNumber(r.last_activity_ns) ?? 0,
+    turn_count: toNumber(r.turn_count) ?? 0,
+    total_cost_usd: toNumber(r.total_cost_usd) ?? 0,
+    total_tokens: toNumber(r.total_tokens) ?? 0,
+    duration_ms: toNumber(r.duration_ms) ?? 0,
+  }))
 }
 
 export type TraceRow = {
@@ -90,25 +93,37 @@ export type TraceRow = {
   status: string | null
 }
 
-export function listTracesForSession(sessionId: string): TraceRow[] {
+// We use $queryRaw for the trace/observation fetches because Prisma's SQLite
+// connector rejects INTEGER column values > INT32 even on raw queries — the
+// engine performs a range check based on the live column type regardless of
+// the schema field type or cast level. Our start_time_ns values are
+// nanosecond timestamps (≈ 1.8e18), so we CAST them to REAL in SQL so Prisma
+// sees a REAL column at the wire level. Precision loss is below the
+// microsecond floor, which is well below the display resolution the UI uses
+// (everything is shown in ms). See the PR description for the writeup.
+export async function listTracesForSession(sessionId: string): Promise<TraceRow[]> {
   if (sessionId === "(no session)") {
-    return db()
-      .prepare(`
-        SELECT trace_id, session_id, user_id, name, start_time_ns, end_time_ns, input_json, output_json, status
-        FROM traces
-        WHERE session_id IS NULL
-        ORDER BY start_time_ns ASC
-      `)
-      .all() as TraceRow[]
-  }
-  return db()
-    .prepare(`
-      SELECT trace_id, session_id, user_id, name, start_time_ns, end_time_ns, input_json, output_json, status
+    const rows = await prisma.$queryRaw<RawTraceRow[]>(Prisma.sql`
+      SELECT trace_id, session_id, user_id, name,
+             CAST(start_time_ns AS REAL) AS start_time_ns,
+             CAST(end_time_ns   AS REAL) AS end_time_ns,
+             input_json, output_json, status
       FROM traces
-      WHERE session_id = ?
+      WHERE session_id IS NULL
       ORDER BY start_time_ns ASC
     `)
-    .all(sessionId) as TraceRow[]
+    return rows.map(toTraceRow)
+  }
+  const rows = await prisma.$queryRaw<RawTraceRow[]>(Prisma.sql`
+    SELECT trace_id, session_id, user_id, name,
+           CAST(start_time_ns AS REAL) AS start_time_ns,
+           CAST(end_time_ns   AS REAL) AS end_time_ns,
+           input_json, output_json, status
+    FROM traces
+    WHERE session_id = ${sessionId}
+    ORDER BY start_time_ns ASC
+  `)
+  return rows.map(toTraceRow)
 }
 
 export type ObservationRow = {
@@ -130,55 +145,51 @@ export type ObservationRow = {
   cost_usd: number | null
 }
 
-export function listObservationsForTrace(traceId: string): ObservationRow[] {
-  return db()
-    .prepare(`
-      SELECT span_id, trace_id, parent_span_id, name, observation_type, service_name,
-             start_time_ns, end_time_ns, duration_ms, status_code, attributes_json,
-             model, tokens_input, tokens_output, tokens_cached, cost_usd
-      FROM observations
-      WHERE trace_id = ?
-      ORDER BY start_time_ns ASC
-    `)
-    .all(traceId) as ObservationRow[]
+export async function listObservationsForTrace(traceId: string): Promise<ObservationRow[]> {
+  const rows = await prisma.$queryRaw<RawObservationRow[]>(Prisma.sql`
+    SELECT ${OBSERVATION_COLS}
+    FROM observations
+    WHERE trace_id = ${traceId}
+    ORDER BY start_time_ns ASC
+  `)
+  return rows.map(toObservationRow)
 }
 
-export function listObservationsForSession(sessionId: string): ObservationRow[] {
-  const cols = `o.span_id, o.trace_id, o.parent_span_id, o.name, o.observation_type, o.service_name,
-                o.start_time_ns, o.end_time_ns, o.duration_ms, o.status_code, o.attributes_json,
-                o.model, o.tokens_input, o.tokens_output, o.tokens_cached, o.cost_usd`
+export async function listObservationsForSession(sessionId: string): Promise<ObservationRow[]> {
   if (sessionId === "(no session)") {
-    return db()
-      .prepare(`
-        SELECT ${cols}
-        FROM observations o
-        JOIN traces t ON t.trace_id = o.trace_id
-        WHERE t.session_id IS NULL
-        ORDER BY o.start_time_ns ASC
-      `)
-      .all() as ObservationRow[]
-  }
-  return db()
-    .prepare(`
-      SELECT ${cols}
+    const rows = await prisma.$queryRaw<RawObservationRow[]>(Prisma.sql`
+      SELECT ${OBSERVATION_COLS_PREFIXED}
       FROM observations o
       JOIN traces t ON t.trace_id = o.trace_id
-      WHERE t.session_id = ?
+      WHERE t.session_id IS NULL
       ORDER BY o.start_time_ns ASC
     `)
-    .all(sessionId) as ObservationRow[]
+    return rows.map(toObservationRow)
+  }
+  const rows = await prisma.$queryRaw<RawObservationRow[]>(Prisma.sql`
+    SELECT ${OBSERVATION_COLS_PREFIXED}
+    FROM observations o
+    JOIN traces t ON t.trace_id = o.trace_id
+    WHERE t.session_id = ${sessionId}
+    ORDER BY o.start_time_ns ASC
+  `)
+  return rows.map(toObservationRow)
 }
 
 // Grouped fetch: traces for the session with their observations nested under
 // each trace. Returned in trace-start order, observations in span-start order.
 export type TraceWithObservations = TraceRow & { observations: ObservationRow[] }
 
-export function listTracesWithObservationsForSession(sessionId: string): TraceWithObservations[] {
-  const traces = listTracesForSession(sessionId)
+export async function listTracesWithObservationsForSession(
+  sessionId: string,
+): Promise<TraceWithObservations[]> {
+  const [traces, obs] = await Promise.all([
+    listTracesForSession(sessionId),
+    listObservationsForSession(sessionId),
+  ])
   if (traces.length === 0) return []
   const byTrace = new Map<string, ObservationRow[]>()
   for (const t of traces) byTrace.set(t.trace_id, [])
-  const obs = listObservationsForSession(sessionId)
   for (const o of obs) {
     const bucket = byTrace.get(o.trace_id)
     if (bucket) bucket.push(o)
@@ -210,8 +221,10 @@ export type ChatMessage = {
   content: string
 }
 
-export function getVoiceTurnsForSession(sessionId: string): VoiceTurn[] {
-  const obs = listObservationsForSession(sessionId).filter((o) => o.name === "voice-turn")
+export async function getVoiceTurnsForSession(sessionId: string): Promise<VoiceTurn[]> {
+  const obs = (await listObservationsForSession(sessionId)).filter(
+    (o) => o.name === "voice-turn",
+  )
   return obs.map((o) => {
     const attrs = parseJson<Record<string, unknown>>(o.attributes_json) ?? {}
     const rawInput = (attrs["langfuse.observation.input"] as unknown) ?? null
@@ -229,6 +242,120 @@ export function getVoiceTurnsForSession(sessionId: string): VoiceTurn[] {
       attributes: attrs,
     }
   })
+}
+
+// -- helpers ---------------------------------------------------------------
+
+// We accept VOICECLAW_TRACING_DB (legacy, plain path used by the collector)
+// or VOICECLAW_TRACING_DB_URL (Prisma-style, already `file:…` prefixed).
+// Falling back to the default path keeps local dev friction-free.
+function resolveDbUrl(): string {
+  const fromUrl = process.env.VOICECLAW_TRACING_DB_URL
+  if (fromUrl && fromUrl.length > 0) return fromUrl
+  const fromPath = process.env.VOICECLAW_TRACING_DB ?? DEFAULT_PATH
+  return fromPath.startsWith("file:") ? fromPath : `file:${fromPath}`
+}
+
+type RawSessionRow = {
+  session_id: string
+  user_id: string | null
+  started_at_ns: bigint | number | null
+  last_activity_ns: bigint | number | null
+  turn_count: bigint | number
+  total_cost_usd: bigint | number | null
+  total_tokens: bigint | number | null
+  duration_ms: bigint | number | null
+}
+
+type RawTraceRow = {
+  trace_id: string
+  session_id: string | null
+  user_id: string | null
+  name: string | null
+  start_time_ns: bigint | number | null
+  end_time_ns: bigint | number | null
+  input_json: string | null
+  output_json: string | null
+  status: string | null
+}
+
+type RawObservationRow = {
+  span_id: string
+  trace_id: string
+  parent_span_id: string | null
+  name: string | null
+  observation_type: string | null
+  service_name: string | null
+  start_time_ns: bigint | number | null
+  end_time_ns: bigint | number | null
+  duration_ms: bigint | number | null
+  status_code: string | null
+  attributes_json: string | null
+  model: string | null
+  tokens_input: bigint | number | null
+  tokens_output: bigint | number | null
+  tokens_cached: bigint | number | null
+  cost_usd: number | null
+}
+
+// start_time_ns / end_time_ns are cast to REAL so Prisma's INT overflow
+// check on the SQLite column doesn't fire — see listTracesForSession for
+// the writeup. duration_ms, tokens_* stay INTEGER because they never come
+// close to the INT32 boundary.
+const OBSERVATION_COLS = Prisma.raw(
+  `span_id, trace_id, parent_span_id, name, observation_type, service_name,
+   CAST(start_time_ns AS REAL) AS start_time_ns,
+   CAST(end_time_ns   AS REAL) AS end_time_ns,
+   duration_ms, status_code, attributes_json,
+   model, tokens_input, tokens_output, tokens_cached, cost_usd`,
+)
+
+const OBSERVATION_COLS_PREFIXED = Prisma.raw(
+  `o.span_id, o.trace_id, o.parent_span_id, o.name, o.observation_type, o.service_name,
+   CAST(o.start_time_ns AS REAL) AS start_time_ns,
+   CAST(o.end_time_ns   AS REAL) AS end_time_ns,
+   o.duration_ms, o.status_code, o.attributes_json,
+   o.model, o.tokens_input, o.tokens_output, o.tokens_cached, o.cost_usd`,
+)
+
+function toTraceRow(r: RawTraceRow): TraceRow {
+  return {
+    trace_id: r.trace_id,
+    session_id: r.session_id,
+    user_id: r.user_id,
+    name: r.name,
+    start_time_ns: toNumber(r.start_time_ns) ?? 0,
+    end_time_ns: toNumber(r.end_time_ns),
+    input_json: r.input_json,
+    output_json: r.output_json,
+    status: r.status,
+  }
+}
+
+function toObservationRow(r: RawObservationRow): ObservationRow {
+  return {
+    span_id: r.span_id,
+    trace_id: r.trace_id,
+    parent_span_id: r.parent_span_id,
+    name: r.name,
+    observation_type: r.observation_type,
+    service_name: r.service_name,
+    start_time_ns: toNumber(r.start_time_ns) ?? 0,
+    end_time_ns: toNumber(r.end_time_ns),
+    duration_ms: toNumber(r.duration_ms),
+    status_code: r.status_code,
+    attributes_json: r.attributes_json,
+    model: r.model,
+    tokens_input: toNumber(r.tokens_input),
+    tokens_output: toNumber(r.tokens_output),
+    tokens_cached: toNumber(r.tokens_cached),
+    cost_usd: r.cost_usd,
+  }
+}
+
+function toNumber(v: bigint | number | null | undefined): number | null {
+  if (v == null) return null
+  return typeof v === "bigint" ? Number(v) : v
 }
 
 function parseJson<T>(s: string | null | undefined): T | null {

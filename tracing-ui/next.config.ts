@@ -2,8 +2,9 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { NextConfig } from "next"
 
-// better-sqlite3 is a native module. Next.js's server-components bundler needs
-// to treat it as external so it isn't re-bundled for the server runtime.
+// @prisma/client ships native engine binaries; Next.js's server-components
+// bundler needs to treat it as external so the engines aren't re-bundled for
+// the server runtime (and so runtime file resolution works).
 //
 // `outputFileTracingRoot` is pinned to this workspace to silence Next's
 // "multiple lockfiles" warning when the repo is opened inside a broader yarn
@@ -11,7 +12,7 @@ import type { NextConfig } from "next"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["@prisma/client", ".prisma/client"],
   outputFileTracingRoot: __dirname,
 }
 

@@ -4,6 +4,8 @@ import {
   listObservationsForSession,
   listTracesWithObservationsForSession,
   type ObservationRow,
+  type TraceWithObservations,
+  type VoiceTurn,
 } from "@/lib/db"
 import { SessionTabs, TABS, type TabKey } from "@/components/SessionTabs"
 import { TranscriptTab } from "@/components/TranscriptTab"
@@ -27,15 +29,17 @@ export default async function SessionDetailPage({
   const sessionId = decodeURIComponent(id)
   const activeTab = resolveTab(tabParam)
 
-  let traces: ReturnType<typeof listTracesWithObservationsForSession> = []
+  let traces: TraceWithObservations[] = []
   let observations: ObservationRow[] = []
-  let voiceTurns: ReturnType<typeof getVoiceTurnsForSession> = []
+  let voiceTurns: VoiceTurn[] = []
   let error: string | null = null
 
   try {
-    traces = listTracesWithObservationsForSession(sessionId)
-    observations = listObservationsForSession(sessionId)
-    voiceTurns = getVoiceTurnsForSession(sessionId)
+    ;[traces, observations, voiceTurns] = await Promise.all([
+      listTracesWithObservationsForSession(sessionId),
+      listObservationsForSession(sessionId),
+      getVoiceTurnsForSession(sessionId),
+    ])
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
   }
@@ -146,9 +150,9 @@ function TabContent({
   totalMs,
 }: {
   tab: TabKey
-  voiceTurns: ReturnType<typeof getVoiceTurnsForSession>
+  voiceTurns: VoiceTurn[]
   observations: ObservationRow[]
-  traces: ReturnType<typeof listTracesWithObservationsForSession>
+  traces: TraceWithObservations[]
   startNs: number
   totalMs: number
 }) {

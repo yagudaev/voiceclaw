@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic"
 
-import { listSessions } from "@/lib/db"
+import { listSessions, type SessionRow } from "@/lib/db"
 
-export default function DashboardPage() {
-  let sessions: ReturnType<typeof listSessions> = []
+export default async function DashboardPage() {
+  let sessions: SessionRow[] = []
   let error: string | null = null
   try {
-    sessions = listSessions(1000)
+    sessions = await listSessions(1000)
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
   }

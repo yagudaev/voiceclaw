@@ -1,0 +1,98 @@
+// Schema for the tracing-ui reader. The tracing-collector owns the schema;
+// this file is a hand-written mirror so Prisma can type the read path.
+//
+// DO NOT run `prisma migrate` here — the collector is authoritative. This
+// schema must stay in lock-step with tracing-collector/src/db.ts.
+//
+// WAL mode is set once by the collector at startup. Prisma's SQLite connector
+// does not re-issue `journal_mode` on connect, so opening this DB from the UI
+// is safe for concurrent reads while the collector writes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("VOICECLAW_TRACING_DB_URL")
+}
+
+model Trace {
+  id           Int     @id @default(autoincrement())
+  traceId      String  @unique @map("trace_id")
+  sessionId    String? @map("session_id")
+  userId       String? @map("user_id")
+  name         String?
+  startTimeNs  BigInt? @map("start_time_ns")
+  endTimeNs    BigInt? @map("end_time_ns")
+  inputJson    String? @map("input_json")
+  outputJson   String? @map("output_json")
+  metadataJson String? @map("metadata_json")
+  status       String?
+
+  @@index([sessionId, startTimeNs], map: "traces_session")
+  @@index([userId, startTimeNs], map: "traces_user")
+  @@map("traces")
+}
+
+model Observation {
+  id              Int     @id @default(autoincrement())
+  spanId          String  @unique @map("span_id")
+  traceId         String  @map("trace_id")
+  parentSpanId    String? @map("parent_span_id")
+  name            String?
+  kind            String?
+  observationType String? @map("observation_type")
+  serviceName     String? @map("service_name")
+  startTimeNs     BigInt? @map("start_time_ns")
+  endTimeNs       BigInt? @map("end_time_ns")
+  durationMs      Int?    @map("duration_ms")
+  statusCode      String? @map("status_code")
+  statusMessage   String? @map("status_message")
+  attributesJson  String? @map("attributes_json")
+  eventsJson      String? @map("events_json")
+  model           String?
+  tokensInput     Int?    @map("tokens_input")
+  tokensOutput    Int?    @map("tokens_output")
+  tokensCached    Int?    @map("tokens_cached")
+  costUsd         Float?  @map("cost_usd")
+
+  @@index([traceId, startTimeNs], map: "obs_trace")
+  @@index([parentSpanId], map: "obs_parent")
+  @@index([serviceName, startTimeNs], map: "obs_service")
+  @@map("observations")
+}
+
+model Session {
+  id           Int     @id @default(autoincrement())
+  sessionId    String  @unique @map("session_id")
+  userId       String? @map("user_id")
+  startedAtNs  BigInt? @map("started_at_ns")
+  lastActivity BigInt? @map("last_activity")
+  turnCount    Int?    @map("turn_count")
+  totalCostUsd Float?  @map("total_cost_usd")
+  totalTokens  Int?    @map("total_tokens")
+  durationMs   Int?    @map("duration_ms")
+
+  @@index([userId, lastActivity(sort: Desc)], map: "sessions_user")
+  @@map("sessions")
+}
+
+model Media {
+  id              Int     @id @default(autoincrement())
+  traceId         String  @map("trace_id")
+  spanId          String? @map("span_id")
+  sessionId       String? @map("session_id")
+  kind            String
+  codec           String?
+  sampleRateHz    Int?    @map("sample_rate_hz")
+  bytes           Int?
+  durationMs      Int?    @map("duration_ms")
+  startOffsetMs   Int?    @map("start_offset_ms")
+  filePath        String? @map("file_path")
+  langfuseMediaId String? @map("langfuse_media_id")
+  createdAt       BigInt? @map("created_at")
+
+  @@index([sessionId, kind, startOffsetMs], map: "media_session")
+  @@map("media")
+}

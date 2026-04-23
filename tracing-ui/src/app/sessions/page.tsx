@@ -1,13 +1,13 @@
 import Link from "next/link"
-import { listSessions } from "@/lib/db"
+import { listSessions, type SessionRow } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-export default function SessionsPage() {
-  let sessions: ReturnType<typeof listSessions> = []
+export default async function SessionsPage() {
+  let sessions: SessionRow[] = []
   let error: string | null = null
   try {
-    sessions = listSessions(100)
+    sessions = await listSessions(100)
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
   }
