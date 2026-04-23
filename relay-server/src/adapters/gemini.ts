@@ -73,6 +73,18 @@ export class GeminiAdapter implements ProviderAdapter {
   private pendingVideo: string[] = []
   private pendingControl: string[] = []
 
+  // Per-turn latency marks, emitted on turnComplete. Gemini Live has no
+  // explicit "end-of-speech" event — we proxy it via the last inputTranscription
+  // delta timestamp (loose — includes transcription latency) and fall back to
+  // the last upstream audio write when transcription is quiet. Source-kind
+  // reported via voice.latency.endpoint.source so dashboards can weight it.
+  private turnStartedAtMs: number | null = null
+  private lastInputTranscriptionAtMs: number | null = null
+  private lastUpstreamAudioAtMs: number | null = null
+  private firstModelAudioAtMs: number | null = null
+  private firstModelTextAtMs: number | null = null
+  private turnWasInterrupted = false
+
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
     this.config = config
@@ -281,6 +293,7 @@ export class GeminiAdapter implements ProviderAdapter {
         },
       },
     }, "audio")
+    this.lastUpstreamAudioAtMs = Date.now()
     this.resetWatchdog()
   }
 
@@ -517,6 +530,9 @@ export class GeminiAdapter implements ProviderAdapter {
     if (content.modelTurn?.parts) {
       for (const part of content.modelTurn.parts) {
         if (part.inlineData) {
+          if (this.firstModelAudioAtMs == null) {
+            this.firstModelAudioAtMs = Date.now()
+          }
           this.sendToClient?.({ type: "audio.delta", data: part.inlineData.data })
           this.resetWatchdog()
         }
@@ -536,6 +552,9 @@ export class GeminiAdapter implements ProviderAdapter {
         this.currentUserText = ""
       }
       this.userSpeaking = false
+      if (this.firstModelTextAtMs == null) {
+        this.firstModelTextAtMs = Date.now()
+      }
       this.currentAssistantText += content.outputTranscription.text
       this.sendToClient?.({
         type: "transcript.delta",
@@ -547,8 +566,17 @@ export class GeminiAdapter implements ProviderAdapter {
     // Input transcription (user speech → text)
     // Synthesize turn.started so client stops playback (prevents echo)
     if (content.inputTranscription?.text) {
+      // Every input-transcription delta refreshes our proxy for end-of-speech
+      // — the LAST one before modelTurn is our best non-explicit signal.
+      this.lastInputTranscriptionAtMs = Date.now()
       if (!this.userSpeaking) {
         this.userSpeaking = true
+        // Reset per-turn marks at the start of the user's turn. Done here
+        // (not in turnComplete) because Gemini's turnComplete lands AFTER the
+        // assistant finishes — the next turn's marks would otherwise clobber
+        // in-flight state if the user is quick.
+        this.resetLatencyMarks()
+        this.turnStartedAtMs = Date.now()
         this.sendToClient?.({ type: "turn.started" })
       }
       // Flush any accumulated assistant text — user is speaking again
@@ -569,8 +597,10 @@ export class GeminiAdapter implements ProviderAdapter {
       })
     }
 
-    // Turn complete — flush accumulated transcriptions (user first, then assistant)
+    // Turn complete — emit latency metrics before turn.ended, then flush
+    // accumulated transcriptions (user first, then assistant).
     if (content.turnComplete) {
+      this.emitLatencyMetrics()
       if (this.currentUserText) {
         this.transcript.push({ role: "user", text: this.currentUserText })
         this.sendToClient?.({
@@ -596,6 +626,7 @@ export class GeminiAdapter implements ProviderAdapter {
     // Interrupted (barge-in) — flush both user and assistant text
     if (content.interrupted) {
       log("[gemini] Response interrupted by user")
+      this.turnWasInterrupted = true
       if (!this.userSpeaking) {
         this.userSpeaking = true
         this.sendToClient?.({ type: "turn.started" })
@@ -767,6 +798,84 @@ export class GeminiAdapter implements ProviderAdapter {
       this.watchdogTimer = null
     }
   }
+
+  // --- latency metrics ---
+
+  private resetLatencyMarks() {
+    this.turnStartedAtMs = null
+    this.lastInputTranscriptionAtMs = null
+    this.lastUpstreamAudioAtMs = null
+    this.firstModelAudioAtMs = null
+    this.firstModelTextAtMs = null
+    this.turnWasInterrupted = false
+  }
+
+  private emitLatencyMetrics() {
+    // Skip interrupted turns — barge-ins don't define a meaningful first-
+    // output boundary. Gemini's interrupted flag sets a "... truncated"
+    // transcript but does not give us a clean mark.
+    if (this.turnWasInterrupted) {
+      this.resetLatencyMarks()
+      return
+    }
+    // VoiceClaw accepts either modality — users sometimes paste links or
+    // ask for text output, and voice turns still land. Stamp whichever
+    // came first as the canonical "first output" anchor; surface both
+    // modality-specific marks too.
+    const firstAudioAt = this.firstModelAudioAtMs
+    const firstTextAt = this.firstModelTextAtMs
+    const firstOutputAt = pickEarliest(firstAudioAt, firstTextAt)
+    if (firstOutputAt == null) {
+      this.resetLatencyMarks()
+      return
+    }
+    const firstOutputModality =
+      firstAudioAt != null && (firstTextAt == null || firstAudioAt <= firstTextAt)
+        ? "audio"
+        : "text"
+    // Prefer last input-transcription delta over last upstream audio: the
+    // transcription signal reflects the provider's view of speech content
+    // landing, which aligns better with when VAD would have cut the turn.
+    // Fall back to last upstream audio when transcription is silent (rare —
+    // most sessions have inputAudioTranscription enabled).
+    const endpointStart = this.lastInputTranscriptionAtMs ?? this.lastUpstreamAudioAtMs ?? null
+    const endpointSource = this.lastInputTranscriptionAtMs != null
+      ? "transcription_proxy"
+      : this.lastUpstreamAudioAtMs != null
+        ? "last_audio_frame"
+        : undefined
+    const endpointMs = endpointStart != null ? Math.max(0, firstOutputAt - endpointStart) : undefined
+    const providerFirstByteMs = this.lastUpstreamAudioAtMs != null
+      ? Math.max(0, firstOutputAt - this.lastUpstreamAudioAtMs)
+      : undefined
+    const firstAudioFromTurnStartMs = firstAudioAt != null && this.turnStartedAtMs != null
+      ? Math.max(0, firstAudioAt - this.turnStartedAtMs)
+      : undefined
+    const firstTextFromTurnStartMs = firstTextAt != null && this.turnStartedAtMs != null
+      ? Math.max(0, firstTextAt - this.turnStartedAtMs)
+      : undefined
+    const firstOutputFromTurnStartMs = this.turnStartedAtMs != null
+      ? Math.max(0, firstOutputAt - this.turnStartedAtMs)
+      : undefined
+
+    this.sendToClient?.({
+      type: "latency.metrics",
+      endpointMs,
+      endpointSource,
+      providerFirstByteMs,
+      firstAudioFromTurnStartMs,
+      firstTextFromTurnStartMs,
+      firstOutputFromTurnStartMs,
+      firstOutputModality,
+    })
+    this.resetLatencyMarks()
+  }
+}
+
+function pickEarliest(a: number | null, b: number | null): number | null {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.min(a, b)
 }
 
 // --- helpers ---

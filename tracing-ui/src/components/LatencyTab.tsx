@@ -121,9 +121,21 @@ function KpiCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-// Map span names onto latency buckets. Names come from the relay/openclaw
-// instrumentation conventions. Anything we don't recognise falls into
-// "transport" so it's visible but doesn't mis-label.
+// Build the per-turn latency split. Two sources feed this:
+//
+//   1. voice.latency.* attributes stamped onto the voice-turn span by the
+//      relay adapters. These carry the endpoint + provider-first-byte
+//      metrics measured from provider wire events. They populate the
+//      `endpointing` and `transport` buckets directly.
+//
+//   2. Span durations, categorised by name, for everything else (brain/tool
+//      spans, external realtime spans, etc.). Anything we don't recognise
+//      falls into "transport" so it's visible but doesn't mis-label.
+//
+// The voice-turn span's OWN duration is split: endpoint_ms goes into the
+// `endpointing` bucket, the remainder counts as `llm_realtime`. Without this
+// split the endpointing time would double-count — once in the attr, once in
+// the span duration.
 function categorise(observations: ObservationRow[]): Record<LatencyCategory, number> {
   const out: Record<LatencyCategory, number> = {
     endpointing: 0,
@@ -137,6 +149,30 @@ function categorise(observations: ObservationRow[]): Record<LatencyCategory, num
     const dur = o.duration_ms ?? 0
     if (dur <= 0) continue
     const name = (o.name ?? "").toLowerCase()
+
+    if (name === "voice-turn") {
+      const attrs = parseAttrs(o.attributes_json)
+      const endpointMs = numberFromAttrs(attrs, "voice.latency.endpoint_ms")
+      const providerFirstByteMs = numberFromAttrs(attrs, "voice.latency.provider_first_byte_ms")
+      if (endpointMs != null) out.endpointing += endpointMs
+      // The provider-first-byte window overlaps the endpointing window — it's
+      // the relay's view of "how long after I stopped sending audio did the
+      // model start replying". Surface only the share that exceeds endpointing
+      // as transport, so the two buckets don't double-count.
+      if (providerFirstByteMs != null) {
+        const transportShare = endpointMs != null
+          ? Math.max(0, providerFirstByteMs - endpointMs)
+          : providerFirstByteMs
+        out.transport += transportShare
+      }
+      // Subtract endpoint time from the realtime-LLM slice so we don't
+      // double-count. Clamp at zero in case the attrs arrived from a
+      // different-protocol turn or are malformed.
+      const realtimeShare = Math.max(0, dur - (endpointMs ?? 0))
+      out.llm_realtime += realtimeShare
+      continue
+    }
+
     const cat = mapNameToCategory(name)
     out[cat] += dur
   }
@@ -147,7 +183,27 @@ function mapNameToCategory(name: string): LatencyCategory {
   if (name.includes("endpoint")) return "endpointing"
   if (name.includes("tts") || name.includes("voice-out") || name.includes("voice_out")) return "voice"
   if (name.includes("stt") || name.includes("transcrib")) return "transcriber"
-  if (name === "voice-turn" || name.includes("realtime")) return "llm_realtime"
+  if (name.includes("realtime")) return "llm_realtime"
   if (name.startsWith("openclaw") || name.includes("brain") || name === "ask_brain") return "brain"
   return "transport"
+}
+
+function parseAttrs(json: string | null): Record<string, unknown> {
+  if (!json) return {}
+  try {
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function numberFromAttrs(attrs: Record<string, unknown>, key: string): number | null {
+  const v = attrs[key]
+  if (typeof v === "number" && Number.isFinite(v)) return v
+  if (typeof v === "string") {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
 }

@@ -68,6 +68,18 @@ export class RelaySession {
         this.tracer.attachUsage(event)
         // Internal only — do not forward to client
         return
+      case "latency.metrics":
+        this.tracer.attachLatency({
+          endpointMs: event.endpointMs,
+          endpointSource: event.endpointSource,
+          providerFirstByteMs: event.providerFirstByteMs,
+          firstAudioFromTurnStartMs: event.firstAudioFromTurnStartMs,
+          firstTextFromTurnStartMs: event.firstTextFromTurnStartMs,
+          firstOutputFromTurnStartMs: event.firstOutputFromTurnStartMs,
+          firstOutputModality: event.firstOutputModality,
+        })
+        // Internal only — do not forward to client
+        return
       case "tool.cancelled":
         this.handleToolCancelled(event.callIds)
         // Fall through — also forward to client so it can update UI
