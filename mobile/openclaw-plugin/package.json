@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "openclaw": "^2026.3.24"
+    "openclaw": "^2026.4.15"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
