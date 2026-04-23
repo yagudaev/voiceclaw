@@ -2,14 +2,22 @@
 
 import { LATENCY_CATEGORIES, type LatencyCategory } from "./LatencyTab.shared"
 
-// A pure-CSS horizontal stacked bar. Uses flexbox so each segment's width is
-// proportional to its duration without pulling in another Chart.js dataset.
-// Segments with zero duration are skipped so the bar doesn't render
-// zero-width flex children with tooltips attached.
-export function LatencyStackedBar({ values }: { values: Record<LatencyCategory, number> }) {
-  const total = LATENCY_CATEGORIES.reduce((acc, c) => acc + values[c.key], 0)
+export type CategoryStats = {
+  avg_ms: number
+  total_ms: number
+  min_ms: number
+  max_ms: number
+  p50_ms: number
+  p95_ms: number
+  count: number
+}
 
-  if (total === 0) {
+export type CategoryStatsMap = Record<LatencyCategory, CategoryStats>
+
+export function LatencyStackedBar({ stats }: { stats: CategoryStatsMap }) {
+  const avgTotal = LATENCY_CATEGORIES.reduce((acc, c) => acc + stats[c.key].avg_ms, 0)
+
+  if (avgTotal === 0) {
     return (
       <div className="h-8 rounded border border-dashed border-zinc-800 flex items-center justify-center text-xs text-zinc-600">
         no latency data
@@ -18,22 +26,50 @@ export function LatencyStackedBar({ values }: { values: Record<LatencyCategory, 
   }
 
   return (
-    <div className="h-8 rounded overflow-hidden flex border border-zinc-800">
+    <div className="h-8 rounded overflow-visible flex border border-zinc-800 relative">
       {LATENCY_CATEGORIES.map((c) => {
-        const v = values[c.key]
-        if (v <= 0) return null
-        const pct = (v / total) * 100
+        const s = stats[c.key]
+        if (s.avg_ms <= 0) return null
+        const pct = (s.avg_ms / avgTotal) * 100
         return (
           <div
             key={c.key}
-            title={`${c.label}: ${v.toLocaleString()}ms (${pct.toFixed(1)}%)`}
             style={{ width: `${pct}%`, background: c.color }}
-            className="flex items-center justify-center text-[10px] font-medium text-zinc-900"
+            className="group relative flex items-center justify-center text-[10px] font-medium text-zinc-900 cursor-default first:rounded-l last:rounded-r"
           >
             {pct >= 6 ? `${c.label.split(" ")[0]}` : ""}
+            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 hidden group-hover:block whitespace-nowrap rounded border border-zinc-700 bg-zinc-900 shadow-lg px-3 py-2 text-[11px] text-zinc-200 text-left">
+              <div className="font-semibold pb-1 mb-1 border-b border-zinc-700 flex items-center gap-2">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: c.color }} />
+                {c.label}
+              </div>
+              <StatsGrid stats={s} />
+            </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function StatsGrid({ stats }: { stats: CategoryStats }) {
+  const rows: [string, string][] = [
+    ["Avg", `${Math.round(stats.avg_ms).toLocaleString()}ms`],
+    ["p50", `${Math.round(stats.p50_ms).toLocaleString()}ms`],
+    ["p95", `${Math.round(stats.p95_ms).toLocaleString()}ms`],
+    ["Min", `${Math.round(stats.min_ms).toLocaleString()}ms`],
+    ["Max", `${Math.round(stats.max_ms).toLocaleString()}ms`],
+    ["Total", `${Math.round(stats.total_ms).toLocaleString()}ms`],
+    ["Turns", stats.count.toLocaleString()],
+  ]
+  return (
+    <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 tabular-nums">
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <span className="text-zinc-400">{k}</span>
+          <span className="text-right">{v}</span>
+        </div>
+      ))}
     </div>
   )
 }

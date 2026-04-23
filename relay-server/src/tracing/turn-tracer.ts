@@ -311,6 +311,17 @@ export class TurnTracer {
     target.update({ usageDetails })
   }
 
+  // Stamp media-capture attrs on the CURRENT active voice-turn span, if any.
+  // Called by RelaySession from the capture pipeline after the PCM files are
+  // finalized. No-ops on the lazy path (no span yet) or after end (pendingEnd
+  // still reachable via the generation object) — in both cases we fall back to
+  // metadata so the fields still travel with the span.
+  attachMediaAttrs(attrs: Record<string, unknown>) {
+    const target = this.resolveTarget() ?? this.pendingEnd?.generation ?? null
+    if (!target) return
+    target.update({ metadata: attrs })
+  }
+
   endTurn(errorMessage?: string) {
     if (!this.activeGeneration) {
       // Lazy-create path: the turn ended before any real content landed, so

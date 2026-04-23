@@ -15,6 +15,7 @@ import { askBrain } from "./tools/brain.js"
 import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
+import { MediaCapture } from "./media/capture.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
 
 export class RelaySession {
@@ -25,6 +26,11 @@ export class RelaySession {
   private startedAt: number = Date.now()
   private turnCount: number = 0
   private tracer = new TurnTracer()
+  private media = new MediaCapture()
+  // Wall-clock timestamp of the current turn's start, used for video frame
+  // offset_ms values (turn-relative, not session-relative — playback aligns
+  // each turn's video to its own audio).
+  private currentTurnStartMs = 0
   private inFlightTools = new Map<string, AbortController>()
 
   constructor(ws: WebSocket) {
@@ -53,6 +59,7 @@ export class RelaySession {
     switch (event.type) {
       case "turn.started":
         this.tracer.startTurn()
+        this.startMediaTurn()
         break
       case "transcript.delta":
         if (event.role === "user") this.tracer.appendUserText(event.text)
@@ -61,7 +68,18 @@ export class RelaySession {
       case "tool.call":
         this.tracer.startToolCall(event.callId, event.name, event.arguments)
         break
+      case "audio.delta":
+        // Tee the model's outbound audio into the assistant capture file BEFORE
+        // forwarding. Doing it pre-send keeps the wire format unchanged and
+        // the file contents exactly match what the client hears.
+        this.media.onAssistantAudioChunk(event.data)
+        break
       case "turn.ended":
+        // Finalize media FIRST so the attrs land on the still-active voice-turn
+        // span. Order matters: `tracer.endTurn()` moves the span to pendingEnd
+        // and starts a 2s window where updates still attach, but if we end the
+        // turn first we also have to race the flush.
+        void this.finalizeMediaTurn()
         this.tracer.endTurn()
         break
       case "usage.metrics":
@@ -243,12 +261,20 @@ export class RelaySession {
         await this.handleSessionConfig(event)
         break
       case "audio.append":
+        // Tee mic PCM into the user capture file before forwarding upstream.
+        this.media.onUserAudioChunk(event.data)
         this.adapter?.sendAudio(event.data)
         break
       case "audio.commit":
         this.adapter?.commitAudio()
         break
       case "frame.append":
+        // Tee video frames (JPEG base64) into the per-turn frame sequence.
+        // Offset is turn-relative so playback aligns with the turn's audio.
+        this.media.onVideoFrame(
+          event.data,
+          Math.max(0, Date.now() - this.currentTurnStartMs),
+        )
         this.adapter?.sendFrame(event.data, event.mimeType)
         break
       case "response.create":
@@ -280,6 +306,11 @@ export class RelaySession {
       // startSession() overwrites session metadata. Otherwise leftover
       // generations/tool spans stay open and late tool results land on the
       // wrong session.
+      // Order matters: flush capture + attach media attrs BEFORE the tracer
+      // closes. Otherwise finalize resolves against a dead tracer and the
+      // media.* attrs never reach the span.
+      await this.finalizeMediaTurn().catch(() => undefined)
+      await this.media.endSession().catch(() => undefined)
       this.tracer.endSession()
     }
 
@@ -313,6 +344,7 @@ export class RelaySession {
       config.model ?? null,
       assembledInstructions,
     )
+    this.media.startSession(config.sessionKey ?? this.id)
 
     try {
       this.adapter = createAdapter(config.provider)
@@ -327,13 +359,37 @@ export class RelaySession {
     }
   }
 
-  private cleanup() {
+  private async cleanup() {
     log(`[session:${this.id}] Disconnecting`)
     this.abortAllInFlightTools("session ended")
+    // Order matters: flush turn capture + close media BEFORE the tracer ends
+    // so media.* attrs can attach to the still-open voice-turn span.
+    await this.finalizeMediaTurn().catch(() => undefined)
+    await this.media.endSession().catch(() => undefined)
     this.tracer.endSession()
     this.syncTranscriptToBrain()
     this.adapter?.disconnect()
     this.adapter = null
+  }
+
+  private startMediaTurn() {
+    if (!this.media.isEnabled()) return
+    const turnId = this.tracer.getActiveTurnId()
+    if (!turnId) return
+    this.currentTurnStartMs = Date.now()
+    this.media.startTurn(turnId)
+  }
+
+  private async finalizeMediaTurn() {
+    if (!this.media.isEnabled()) return
+    try {
+      const attrs = await this.media.finalizeTurn()
+      if (attrs && Object.keys(attrs).length > 0) {
+        this.tracer.attachMediaAttrs(attrs)
+      }
+    } catch (err) {
+      logError(`[session:${this.id}] media finalize failed:`, err instanceof Error ? err.message : err)
+    }
   }
 
   private abortAllInFlightTools(reason: string) {
