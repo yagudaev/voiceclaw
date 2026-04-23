@@ -359,9 +359,22 @@ export class RelaySession {
 
     log(`[session:${sessionId}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)
 
+    // Wrap the transcript-sync in a background observation that shares this
+    // session's id with the voice-turn traces, so the end-of-call memory save
+    // appears under the same call in Langfuse's Sessions view (instead of as
+    // an orphan trace). The ctx also propagates traceparent to openclaw so
+    // openclaw's spans nest under this span.
+    const bg = this.tracer.startBackgroundObservation("memory.save-transcript", {
+      input: prompt,
+    })
+
     // Fire-and-forget with bounded retries — gateway may be busy with the
     // tail of an ask_brain call that hadn't finished when the session ended.
-    void retryTranscriptSync({ prompt, gatewayUrl, authToken, sessionKey, sessionId })
+    void context.with(bg.ctx, () =>
+      retryTranscriptSync({ prompt, gatewayUrl, authToken, sessionKey, sessionId })
+        .then((result) => bg.end({ output: result }))
+        .catch((err) => bg.end({ error: err instanceof Error ? err.message : String(err) })),
+    )
   }
 }
 
@@ -374,11 +387,11 @@ async function retryTranscriptSync(opts: {
   authToken: string
   sessionKey: string
   sessionId: string
-}) {
+}): Promise<string> {
   const { prompt, gatewayUrl, authToken, sessionKey, sessionId } = opts
   for (let attempt = 1; attempt <= TRANSCRIPT_SYNC_BACKOFF_MS.length + 1; attempt++) {
     try {
-      await askBrain(
+      const result = await askBrain(
         prompt,
         { gatewayUrl, authToken, sessionId: sessionKey },
         noopSendToClient,
@@ -387,16 +400,17 @@ async function retryTranscriptSync(opts: {
       if (attempt > 1) {
         log(`[session:${sessionId}] Transcript sync succeeded on attempt ${attempt}`)
       }
-      return
+      return result
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const backoff = TRANSCRIPT_SYNC_BACKOFF_MS[attempt - 1]
       if (backoff === undefined) {
         logError(`[session:${sessionId}] Transcript sync gave up after ${attempt} attempts: ${message}`)
-        return
+        throw err
       }
       logError(`[session:${sessionId}] Transcript sync attempt ${attempt} failed (${message}), retrying in ${backoff}ms`)
       await new Promise((resolve) => setTimeout(resolve, backoff))
     }
   }
+  throw new Error("transcript sync loop exited without result")
 }

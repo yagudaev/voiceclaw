@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto"
 import { context, trace, type Context } from "@opentelemetry/api"
-import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseTool } from "@langfuse/tracing"
+import { propagateAttributes, startObservation, type LangfuseGeneration, type LangfuseSpan, type LangfuseTool } from "@langfuse/tracing"
 import { isLangfuseEnabled } from "./langfuse.js"
 
 // How long to keep the generation object around after endTurn() so trailing
@@ -174,6 +174,51 @@ export class TurnTracer {
     const span = this.activeToolSpans.get(callId)
     if (!span) return null
     return trace.setSpan(context.active(), span.otelSpan)
+  }
+
+  // Start a top-level observation outside the turn lifecycle — for background
+  // work like the end-of-call transcript-sync that isn't tied to a specific
+  // voice-turn but still belongs in the same Langfuse session. Returned
+  // context propagates sessionId/userId so downstream (openclaw) spans land
+  // on this trace and the whole thing groups under the call in Sessions view.
+  startBackgroundObservation(
+    name: string,
+    opts?: { input?: unknown },
+  ): { ctx: Context, end: (params?: { output?: unknown, error?: string }) => void } {
+    if (!isLangfuseEnabled()) {
+      return { ctx: context.active(), end: () => {} }
+    }
+    let span: LangfuseSpan | null = null
+    propagateAttributes(
+      {
+        ...(this.sessionId ? { sessionId: this.sessionId } : {}),
+        ...(this.userId ? { userId: this.userId } : {}),
+      },
+      () => {
+        span = startObservation(name, {
+          ...(opts?.input !== undefined ? { input: opts.input } : {}),
+        })
+      },
+    )
+    if (!span) {
+      return { ctx: context.active(), end: () => {} }
+    }
+    const openedSpan: LangfuseSpan = span
+    const ctx = trace.setSpan(context.active(), openedSpan.otelSpan)
+    return {
+      ctx,
+      end: (params) => {
+        if (params?.output !== undefined || params?.error) {
+          openedSpan.update({
+            ...(params?.output !== undefined ? { output: params.output } : {}),
+            ...(params?.error
+              ? { level: "ERROR" as const, statusMessage: params.error }
+              : {}),
+          })
+        }
+        openedSpan.end()
+      },
+    }
   }
 
   attachClientTiming(phase: string, ms: number, turnId?: string) {
