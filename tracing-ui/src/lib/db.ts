@@ -168,3 +168,131 @@ export function listObservationsForSession(sessionId: string): ObservationRow[] 
     `)
     .all(sessionId) as ObservationRow[]
 }
+
+// Grouped fetch: traces for the session with their observations nested under
+// each trace. Returned in trace-start order, observations in span-start order.
+export type TraceWithObservations = TraceRow & { observations: ObservationRow[] }
+
+export function listTracesWithObservationsForSession(sessionId: string): TraceWithObservations[] {
+  const traces = listTracesForSession(sessionId)
+  if (traces.length === 0) return []
+  const byTrace = new Map<string, ObservationRow[]>()
+  for (const t of traces) byTrace.set(t.trace_id, [])
+  const obs = listObservationsForSession(sessionId)
+  for (const o of obs) {
+    const bucket = byTrace.get(o.trace_id)
+    if (bucket) bucket.push(o)
+  }
+  return traces.map((t) => ({ ...t, observations: byTrace.get(t.trace_id) ?? [] }))
+}
+
+// Voice-turn spans only, with parsed input/output. The `voice-turn` span is
+// emitted once per turn by the relay and carries the user utterance (input as
+// chat-format JSON) and the assistant reply (output as plain text or JSON).
+export type VoiceTurn = {
+  trace_id: string
+  span_id: string
+  start_time_ns: number
+  end_time_ns: number | null
+  duration_ms: number | null
+  status_code: string | null
+  model: string | null
+  // Parsed messages from langfuse.observation.input — usually a JSON array of
+  // {role, content} messages, though callers may send a single string.
+  input_messages: ChatMessage[]
+  // Parsed output — string by default, but some services emit JSON.
+  output_text: string
+  attributes: Record<string, unknown>
+}
+
+export type ChatMessage = {
+  role: string
+  content: string
+}
+
+export function getVoiceTurnsForSession(sessionId: string): VoiceTurn[] {
+  const obs = listObservationsForSession(sessionId).filter((o) => o.name === "voice-turn")
+  return obs.map((o) => {
+    const attrs = parseJson<Record<string, unknown>>(o.attributes_json) ?? {}
+    const rawInput = (attrs["langfuse.observation.input"] as unknown) ?? null
+    const rawOutput = (attrs["langfuse.observation.output"] as unknown) ?? null
+    return {
+      trace_id: o.trace_id,
+      span_id: o.span_id,
+      start_time_ns: o.start_time_ns,
+      end_time_ns: o.end_time_ns,
+      duration_ms: o.duration_ms,
+      status_code: o.status_code,
+      model: o.model,
+      input_messages: coerceMessages(rawInput),
+      output_text: coerceText(rawOutput),
+      attributes: attrs,
+    }
+  })
+}
+
+function parseJson<T>(s: string | null | undefined): T | null {
+  if (!s) return null
+  try {
+    return JSON.parse(s) as T
+  } catch {
+    return null
+  }
+}
+
+function coerceMessages(raw: unknown): ChatMessage[] {
+  if (raw == null) return []
+  // langfuse stores input as a string-encoded JSON blob in attributes_json.
+  if (typeof raw === "string") {
+    const parsed = parseJson<unknown>(raw)
+    if (parsed == null) return [{ role: "user", content: raw }]
+    return coerceMessages(parsed)
+  }
+  if (Array.isArray(raw)) {
+    return raw
+      .map((m) => {
+        if (m && typeof m === "object") {
+          const role = String((m as { role?: unknown }).role ?? "user")
+          const content = coerceText((m as { content?: unknown }).content)
+          return { role, content }
+        }
+        return { role: "user", content: coerceText(m) }
+      })
+      .filter((m) => m.content.length > 0)
+  }
+  if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>
+    if (typeof obj.role === "string") {
+      return [{ role: obj.role, content: coerceText(obj.content) }]
+    }
+    return [{ role: "user", content: JSON.stringify(raw) }]
+  }
+  return [{ role: "user", content: String(raw) }]
+}
+
+function coerceText(raw: unknown): string {
+  if (raw == null) return ""
+  if (typeof raw === "string") return raw
+  if (Array.isArray(raw)) {
+    // Anthropic-style content blocks: [{type:"text", text:"…"}]
+    return raw
+      .map((b) => {
+        if (b && typeof b === "object") {
+          const bb = b as Record<string, unknown>
+          if (typeof bb.text === "string") return bb.text
+          if (typeof bb.content === "string") return bb.content
+        }
+        if (typeof b === "string") return b
+        return ""
+      })
+      .filter(Boolean)
+      .join("\n")
+  }
+  if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>
+    if (typeof obj.text === "string") return obj.text
+    if (typeof obj.content === "string") return obj.content
+    return JSON.stringify(raw)
+  }
+  return String(raw)
+}
