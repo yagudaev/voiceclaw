@@ -154,7 +154,10 @@ export class RelaySession {
     const sendToClient: SendToClient = (event) => this.send(event)
     const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
     const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
-    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
+    // Fall back to this connection's id so Langfuse Sessions show one entry
+    // per real conversation instead of collapsing every anonymous client
+    // into a single shared "voiceclaw:realtime" session.
+    const sessionKey = this.config.sessionKey || this.id
 
     const brainStart = Date.now()
     log(`[session:${this.id}] ask_brain (async) → ${gatewayUrl}`)
@@ -279,7 +282,7 @@ export class RelaySession {
     log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter (model=${config.model || "default"})`)
     this.config = config
     this.startedAt = Date.now()
-    this.tracer.startSession(config.sessionKey ?? this.id, null, config.model ?? null)
+    this.tracer.startSession(config.sessionKey ?? this.id, config.userId ?? null, config.model ?? null)
 
     try {
       this.adapter = createAdapter(config.provider)
@@ -333,7 +336,7 @@ export class RelaySession {
 
     const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
     const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
-    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
+    const sessionKey = this.config.sessionKey || this.id
     const sessionId = this.id
 
     log(`[session:${sessionId}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)

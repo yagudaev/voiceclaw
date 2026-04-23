@@ -35,6 +35,9 @@ export class TurnTracer {
   private activeTurnId: string | null = null
   private activeToolSpans = new Map<string, LangfuseTool>()
   private pendingEnd: { generation: LangfuseGeneration, turnId: string, timer: ReturnType<typeof setTimeout> } | null = null
+  // Monotonic per-session counter so a Langfuse session's traces sort
+  // chronologically at a glance even without timestamp math.
+  private turnIndex = 0
 
   private currentUserText = ""
   private currentAssistantText = ""
@@ -47,6 +50,7 @@ export class TurnTracer {
     this.sessionId = sessionId
     this.userId = userId
     this.model = model
+    this.turnIndex = 0
   }
 
   startTurn() {
@@ -66,6 +70,9 @@ export class TurnTracer {
     // and does NOT populate the trace's session field in the @langfuse/tracing
     // direct SDK.
     this.activeTurnId = randomUUID()
+    this.turnIndex += 1
+    const turnIndex = this.turnIndex
+    const turnStartedAt = new Date().toISOString()
     propagateAttributes(
       {
         ...(this.sessionId ? { sessionId: this.sessionId } : {}),
@@ -76,7 +83,11 @@ export class TurnTracer {
           "voice-turn",
           {
             model: this.model ?? undefined,
-            metadata: { turnId: this.activeTurnId },
+            metadata: {
+              turnId: this.activeTurnId,
+              turnIndex,
+              "client.turnStartedAt": turnStartedAt,
+            },
           },
           { asType: "generation" },
         )
