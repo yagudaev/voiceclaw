@@ -93,6 +93,12 @@ export default defineConfig({
             { slug: 'guides/custom-agent' },
           ],
         },
+        {
+          label: 'Observability',
+          items: [
+            { slug: 'guides/tracing' },
+          ],
+        },
       ],
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,

@@ -19,6 +19,9 @@ export interface SessionConfigEvent {
   brainAgent: "enabled" | "none"
   apiKey: string
   sessionKey?: string
+  // Stable identifier for the human behind this session (telegram chat id,
+  // app user id, etc.). Propagated to Langfuse so traces group per-user.
+  userId?: string
   deviceContext?: {
     timezone?: string
     locale?: string

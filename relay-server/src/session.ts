@@ -1,6 +1,7 @@
 // Relay session — manages the lifecycle of a single client connection
 
 import { randomUUID } from "node:crypto"
+import { context, ROOT_CONTEXT } from "@opentelemetry/api"
 import type { WebSocket } from "ws"
 import type {
   ClientEvent,
@@ -11,6 +12,7 @@ import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
 import { createAdapter } from "./adapters/index.js"
 import { handleToolCall } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
+import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
 const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
@@ -140,34 +142,51 @@ export class RelaySession {
 
     // Immediately unblock Gemini so the user can keep talking.
     // Gemini will naturally say something like "Let me check on that."
+    // The tool span stays OPEN past this point — it closes only when the real
+    // brain response lands, so span duration reflects the actual brain call
+    // and traceparent injection in askBrain() uses a live span as parent.
     this.adapter?.sendToolResult(callId, JSON.stringify({
       status: "searching",
       message: "Looking into it now. I'll share what I find in a moment.",
     }))
-    this.tracer.endToolCall(callId, '{"status":"searching"}')
 
     // Run the brain agent in the background.
     // Keep the controller in inFlightTools so cleanup() can abort it on disconnect.
     const sendToClient: SendToClient = (event) => this.send(event)
     const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
     const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
-    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
+    // Fall back to this connection's id so Langfuse Sessions show one entry
+    // per real conversation instead of collapsing every anonymous client
+    // into a single shared "voiceclaw:realtime" session.
+    const sessionKey = this.config.sessionKey || this.id
 
     const brainStart = Date.now()
     log(`[session:${this.id}] ask_brain (async) → ${gatewayUrl}`)
 
-    askBrain(query, {
+    // Run the fetch inside the tool span's OTel context so `propagation.inject`
+    // in brain.ts sees it as the active parent and writes a `traceparent`
+    // header linking openclaw's incoming request back to this span. If the
+    // tool span is missing for any reason, fall back to ROOT_CONTEXT — never
+    // context.active(), which could be whatever ambient (unrelated) span
+    // happens to be live at this moment and would produce a misleading trace.
+    const brainCtx = this.tracer.getToolSpanContext(callId) ?? ROOT_CONTEXT
+    const runAskBrain = () => askBrain(query, {
       gatewayUrl,
       authToken,
       sessionId: sessionKey,
-    }, sendToClient, callId, controller.signal).then((result) => {
+    }, sendToClient, callId, controller.signal)
+
+    context.with(brainCtx, runAskBrain).then((result) => {
       const brainMs = Date.now() - brainStart
       log(`[session:${this.id}] ask_brain completed in ${brainMs}ms`)
 
       if (controller.signal.aborted) {
         log(`[session:${this.id}] ask_brain (${callId}) was cancelled — discarding result`)
+        this.tracer.endToolCall(callId, JSON.stringify({ status: "cancelled" }), "cancelled")
         return
       }
+
+      this.tracer.endToolCall(callId, result)
 
       // Inject the result back into the conversation so Gemini speaks it
       this.adapter?.injectContext(
@@ -176,6 +195,8 @@ export class RelaySession {
     }).catch((err) => {
       const message = err instanceof Error ? err.message : "brain agent call failed"
       logError(`[session:${this.id}] ask_brain error:`, message)
+
+      this.tracer.endToolCall(callId, JSON.stringify({ error: message }), message)
 
       if (!controller.signal.aborted) {
         this.adapter?.injectContext(
@@ -262,7 +283,24 @@ export class RelaySession {
     log(`[session:${this.id}] Auth passed, creating ${config.provider} adapter (model=${config.model || "default"})`)
     this.config = config
     this.startedAt = Date.now()
-    this.tracer.startSession(config.sessionKey ?? this.id, null, config.model ?? null)
+    // Capture the assembled system prompt so every voice-turn span carries the
+    // full context Gemini / OpenAI Realtime was configured with. Uses the same
+    // buildInstructions the Gemini adapter feeds to the provider, so the trace
+    // and the live session see the same string (minus anything the adapter
+    // conditionally appends, e.g. tool schemas).
+    const assembledInstructions = (() => {
+      try {
+        return buildInstructions(config)
+      } catch {
+        return null
+      }
+    })()
+    this.tracer.startSession(
+      config.sessionKey ?? this.id,
+      config.userId ?? null,
+      config.model ?? null,
+      assembledInstructions,
+    )
 
     try {
       this.adapter = createAdapter(config.provider)
@@ -316,14 +354,27 @@ export class RelaySession {
 
     const gatewayUrl = process.env.BRAIN_GATEWAY_URL || process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789"
     const authToken = process.env.BRAIN_GATEWAY_AUTH_TOKEN || process.env.OPENCLAW_GATEWAY_AUTH_TOKEN || this.config.apiKey
-    const sessionKey = this.config.sessionKey || `voiceclaw:realtime`
+    const sessionKey = this.config.sessionKey || this.id
     const sessionId = this.id
 
     log(`[session:${sessionId}] Syncing transcript to brain (${transcript.length} turns, ${durationMin}min)`)
 
+    // Wrap the transcript-sync in a background observation that shares this
+    // session's id with the voice-turn traces, so the end-of-call memory save
+    // appears under the same call in Langfuse's Sessions view (instead of as
+    // an orphan trace). The ctx also propagates traceparent to openclaw so
+    // openclaw's spans nest under this span.
+    const bg = this.tracer.startBackgroundObservation("memory.save-transcript", {
+      input: prompt,
+    })
+
     // Fire-and-forget with bounded retries — gateway may be busy with the
     // tail of an ask_brain call that hadn't finished when the session ended.
-    void retryTranscriptSync({ prompt, gatewayUrl, authToken, sessionKey, sessionId })
+    void context.with(bg.ctx, () =>
+      retryTranscriptSync({ prompt, gatewayUrl, authToken, sessionKey, sessionId })
+        .then((result) => bg.end({ output: result }))
+        .catch((err) => bg.end({ error: err instanceof Error ? err.message : String(err) })),
+    )
   }
 }
 
@@ -336,11 +387,11 @@ async function retryTranscriptSync(opts: {
   authToken: string
   sessionKey: string
   sessionId: string
-}) {
+}): Promise<string> {
   const { prompt, gatewayUrl, authToken, sessionKey, sessionId } = opts
   for (let attempt = 1; attempt <= TRANSCRIPT_SYNC_BACKOFF_MS.length + 1; attempt++) {
     try {
-      await askBrain(
+      const result = await askBrain(
         prompt,
         { gatewayUrl, authToken, sessionId: sessionKey },
         noopSendToClient,
@@ -349,16 +400,17 @@ async function retryTranscriptSync(opts: {
       if (attempt > 1) {
         log(`[session:${sessionId}] Transcript sync succeeded on attempt ${attempt}`)
       }
-      return
+      return result
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const backoff = TRANSCRIPT_SYNC_BACKOFF_MS[attempt - 1]
       if (backoff === undefined) {
         logError(`[session:${sessionId}] Transcript sync gave up after ${attempt} attempts: ${message}`)
-        return
+        throw err
       }
       logError(`[session:${sessionId}] Transcript sync attempt ${attempt} failed (${message}), retrying in ${backoff}ms`)
       await new Promise((resolve) => setTimeout(resolve, backoff))
     }
   }
+  throw new Error("transcript sync loop exited without result")
 }
