@@ -40,12 +40,22 @@ export type PricingCatalog = Record<string, ModelEntry>
 // Fallback table for models/modalities models.dev either doesn't cover or
 // undercounts. Keep minimal and override-friendly (extend as new costs come
 // up). Values are $/MTok.
+//
+// Realtime/live voice models are priced at their AUDIO rate — the dominant
+// modality for this app. Text-only reasoning models (Claude) use their
+// standard text rates.
 const FALLBACK_PRICING: PricingCatalog = {
-  "gemini-2.5-flash-native-audio": { id: "gemini-2.5-flash-native-audio", cost: { input: 3, output: 12 } },
-  "gemini-live-2.5-flash": { id: "gemini-live-2.5-flash", cost: { input: 0.5, output: 2 } },
-  "gpt-4o-realtime-preview": { id: "gpt-4o-realtime-preview", cost: { input: 5, output: 20 } },
+  // Google Gemini — realtime / live only
+  "gemini-3.1-flash-live-preview": { id: "gemini-3.1-flash-live-preview", cost: { input: 3, output: 12 } },
+
+  // OpenAI Realtime
+  "gpt-realtime": { id: "gpt-realtime", cost: { input: 32, output: 64, cache_read: 0.4 } },
+  "gpt-realtime-mini": { id: "gpt-realtime-mini", cost: { input: 10, output: 20, cache_read: 0.3 } },
+
+  // Anthropic Claude (text)
+  "claude-opus-4-7": { id: "claude-opus-4-7", cost: { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 } },
+  "claude-sonnet-4-6": { id: "claude-sonnet-4-6", cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 } },
   "claude-haiku-4-5": { id: "claude-haiku-4-5", cost: { input: 1, output: 5, cache_read: 0.1, cache_write: 1.25 } },
-  "claude-sonnet-4-5": { id: "claude-sonnet-4-5", cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 } },
 }
 
 let cached: { at: number; catalog: PricingCatalog } | null = null
