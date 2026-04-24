@@ -15,6 +15,10 @@ out/
 # mobile build artifacts
 mobile/build/
 
+# desktop icon intermediates — regenerable from scripts/build-mac-icon.py
+desktop/build/icon.iconset/
+desktop/build/icon-master.png
+
 # IDE
 .idea/
 .vscode/
