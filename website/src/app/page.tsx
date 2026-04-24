@@ -19,6 +19,7 @@ import {
   VoiceClawMark,
 } from "@/components/brand/brand-system"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { TrackCtaLink } from "@/components/telemetry/track-cta"
 import {
   getLatestMacReleaseDownload,
   type MacReleaseDownload,
@@ -68,7 +69,9 @@ function Header({
             Download
           </Link>
           <ThemeSwitcher />
-          <Link
+          <TrackCtaLink
+            ctaLocation="header"
+            ctaLabel="Download Mac"
             href={MAC_DOWNLOAD_URL}
             aria-label="Download for Mac"
             title={downloadTitle(macRelease)}
@@ -76,7 +79,7 @@ function Header({
           >
             <Download className="size-4" />
             <span className="hidden sm:inline">Download Mac</span>
-          </Link>
+          </TrackCtaLink>
         </nav>
       </div>
     </header>
@@ -110,14 +113,16 @@ function HeroSection({
               the transcript while your agent does the real work.
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackCtaLink
+                ctaLocation="hero"
+                ctaLabel="Download for Mac"
                 href={MAC_DOWNLOAD_URL}
                 title={downloadTitle(macRelease)}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
               >
                 <Download className="size-4" />
                 Download for Mac
-              </Link>
+              </TrackCtaLink>
               <Link
                 href="#demo"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
@@ -380,14 +385,16 @@ function GetStartedSection({
           </p>
         </div>
         <div className="flex flex-col justify-end gap-3">
-          <Link
+          <TrackCtaLink
+            ctaLocation="get_started"
+            ctaLabel="Download for Mac"
             href={MAC_DOWNLOAD_URL}
             title={downloadTitle(macRelease)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
           >
             <Download className="size-4" />
             Download for Mac
-          </Link>
+          </TrackCtaLink>
           <MacDownloadVersion release={macRelease} contrast />
           <a
             href={REPO_URL}

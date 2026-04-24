@@ -1,4 +1,5 @@
 import { db } from './client'
+import { captureMobile } from '@/lib/telemetry'
 
 export type Conversation = {
   id: number
@@ -15,6 +16,8 @@ export async function createConversation(title?: string): Promise<Conversation> 
     'INSERT INTO conversations (title, created_at, updated_at) VALUES (?, ?, ?)',
     [title ?? 'New Conversation', now, now]
   )
+  // Fire-and-forget. captureMobile no-ops if telemetry is disabled.
+  captureMobile('conversation_started', { has_custom_title: title != null })
   return {
     id: result.lastInsertRowId,
     title: title ?? 'New Conversation',

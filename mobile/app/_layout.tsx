@@ -4,6 +4,7 @@ import { runMigrations } from '@/db/migrations'
 import { ConversationProvider } from '@/lib/conversation-context'
 import { BRAND } from '@/lib/brand'
 import { NAV_THEME } from '@/lib/theme'
+import { captureMobile, getClient as getPostHogClient } from '@/lib/telemetry'
 import { ThemeProvider } from '@react-navigation/native'
 import { PortalHost } from '@rn-primitives/portal'
 import { Stack } from 'expo-router'
@@ -30,6 +31,15 @@ export default function RootLayout() {
     runMigrations()
       .then(() => setDbReady(true))
       .then(() => SplashScreen.hideAsync())
+      .then(() => {
+        // Bootstrap PostHog after the DB is ready so the distinct_id
+        // can be read from the settings table.
+        getPostHogClient()
+          .then(() => captureMobile('app_launched'))
+          .catch(() => {
+            // never throw from telemetry
+          })
+      })
       .catch(console.error)
   }, [])
 

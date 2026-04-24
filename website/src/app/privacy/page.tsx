@@ -14,6 +14,12 @@ export default function PrivacyPage() {
       lastUpdated="April 24, 2026"
       lede="VoiceClaw is a voice layer that lives on your own Mac and phone. Your audio, transcripts, and provider API keys stay on your devices — we never receive them. This page describes the narrow slice of data we do collect, why, and what we promise not to do with it."
     >
+      {/*
+        Telemetry note: error tracking is handled by PostHog's built-in
+        captureException + session replay (same SDK as analytics). The
+        previous separate "Sentry for crash reports" line is gone — one
+        vendor, one opt-out switch.
+      */}
       <h2>The short version</h2>
       <ul>
         <li>
@@ -29,8 +35,9 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>We use:</strong> Vercel to host this website, Neon (Postgres) to
-          store your account, PostHog for anonymous product analytics, Sentry
-          for crash reports.
+          store your account, and PostHog for anonymous product analytics,
+          error tracking, and session replays (with all input fields
+          masked).
         </li>
         <li>
           <strong>You can:</strong> delete your account, export your data, or opt
@@ -73,25 +80,40 @@ export default function PrivacyPage() {
         original from the hash).
       </p>
 
-      <h3>Analytics</h3>
+      <h3>Analytics, error tracking, and session replay</h3>
       <p>
-        We use <a href="https://posthog.com">PostHog</a> to track anonymous
-        product events: which onboarding steps you completed, which provider
-        and brain you selected, how long a step took, whether the test call
-        succeeded. These events include a random device ID but are not linked
-        to your identity. We do not send the contents of your conversations or
-        any audio.
+        We use <a href="https://posthog.com">PostHog</a> for three things:
+      </p>
+      <ul>
+        <li>
+          <strong>Anonymous product analytics</strong> — which onboarding
+          steps you completed, which provider and brain you selected, how
+          long a step took, whether the test call succeeded.
+        </li>
+        <li>
+          <strong>Error tracking</strong> — uncaught exceptions, unhandled
+          promise rejections, and renderer crashes, with stack traces and
+          some system metadata (OS version, app version). Stack traces can
+          include file paths and variable names but not the contents of
+          your conversations.
+        </li>
+        <li>
+          <strong>Session replays of the website only</strong> — a recording
+          of clicks and DOM events on{" "}
+          <code>getvoiceclaw.com</code> so we can debug UI bugs. All input
+          fields are masked: your typing is never recorded. Session replays
+          do <em>not</em> run inside the desktop or mobile apps.
+        </li>
+      </ul>
+      <p>
+        Events include a random device ID but are not linked to your
+        identity. We do not send the contents of your conversations, any
+        audio, or any provider API keys.
       </p>
       <p>
-        You can turn analytics off in Settings → Privacy at any time.
-      </p>
-
-      <h3>Crash reports</h3>
-      <p>
-        If the app crashes, we use <a href="https://sentry.io">Sentry</a> to
-        send the crash&apos;s stack trace and some system metadata (OS version, app
-        version). Crash reports can include file paths and variable names in
-        the stack, but not the contents of your conversations.
+        You can turn telemetry off in Settings → Privacy at any time. The
+        toggle covers analytics, error tracking, and session replay
+        together.
       </p>
 
       <h2>What we do not receive</h2>
@@ -134,11 +156,9 @@ export default function PrivacyPage() {
           in the United States.
         </li>
         <li>
-          <strong>PostHog</strong> — anonymous product analytics, as described
-          above. Opt-out in Settings.
-        </li>
-        <li>
-          <strong>Sentry</strong> — crash reports, as described above.
+          <strong>PostHog</strong> — anonymous product analytics, error
+          tracking, and (website only) session replay with input masking,
+          as described above. Opt-out in Settings.
         </li>
         <li>
           <strong>Google / Apple</strong> — OAuth providers for sign-in. They
@@ -163,7 +183,7 @@ export default function PrivacyPage() {
 
       <h2>International transfers</h2>
       <p>
-        Our servers (Vercel, Neon, PostHog, Sentry) are located in the United
+        Our servers (Vercel, Neon, PostHog) are located in the United
         States. If you access VoiceClaw from outside the US, your account data
         is transferred to and stored in the US. For users in the EU / EEA, we
         rely on Standard Contractual Clauses with our processors as the legal

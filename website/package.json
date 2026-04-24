@@ -20,6 +20,8 @@
     "jose": "^6.2.2",
     "lucide-react": "^1.6.0",
     "next": "16.2.4",
+    "posthog-js": "^1.372.1",
+    "posthog-node": "^5.30.4",
     "prisma": "^6",
     "react": "19.2.5",
     "react-dom": "19.2.5",

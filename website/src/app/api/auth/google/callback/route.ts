@@ -5,6 +5,7 @@ import { clearOAuthCookies, readOAuthCookies } from "@/lib/auth/cookies"
 import { isDatabaseConfigured, prisma } from "@/lib/auth/db"
 import { mintAuthTicket } from "@/lib/auth/tokens"
 import { buildAuthCallbackDeepLink, buildCallbackPageHtml } from "@/lib/auth/deep-link"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // GET /api/auth/google/callback?code=...&state=...
 //
@@ -13,7 +14,7 @@ import { buildAuthCallbackDeepLink, buildCallbackPageHtml } from "@/lib/auth/dee
 // browser then shows a waiting page (in case the app isn't installed)
 // that also tries to open the deep link programmatically.
 
-export async function GET(request: NextRequest) {
+export const GET = withCapture(async (request: NextRequest) => {
   if (!isGoogleConfigured() || !isDatabaseConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 501 })
   }
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
   )
   clearOAuthCookies(res)
   return res
-}
+}, "/api/auth/google/callback")
 
 // ---------------------------------------------------------------------------
 // Helpers

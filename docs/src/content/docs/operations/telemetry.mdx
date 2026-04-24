@@ -1,0 +1,112 @@
+---
+title: Telemetry
+description: What VoiceClaw captures with PostHog, how PII is handled, and how to opt out.
+---
+
+VoiceClaw uses [PostHog](https://posthog.com) for product analytics, error
+tracking, and (website-only) session replay. One vendor across all three
+clients keeps the privacy story simple and the opt-out a single switch.
+
+## What we capture
+
+A small, deliberate set of events. We do not auto-instrument every click
+on first launch — premature instrumentation creates noise that buries
+signal.
+
+| Surface  | Event                    | Properties                                  |
+| -------- | ------------------------ | ------------------------------------------- |
+| Website  | `cta_clicked`            | `location`, `label`, `href`                 |
+| Website  | `$pageview`              | `$current_url`                              |
+| Desktop  | `app_launched`           | `dev` (boolean)                             |
+| Desktop  | `provider_key_saved`     | `provider`, `model` — never the key itself  |
+| Desktop  | `test_call_completed`    | `success`, `surface`, `reason?`             |
+| Desktop  | `onboarding_step_viewed` | `step` (wired by the wizard step files)     |
+| Desktop  | `onboarding_completed`   | (wired by the wizard final step)            |
+| Mobile   | `app_launched`           | (none)                                      |
+| Mobile   | `relay_connected`        | `model`                                     |
+| Mobile   | `conversation_started`   | `has_custom_title`                          |
+
+We also capture:
+
+- **Errors.** Uncaught exceptions, unhandled promise rejections, renderer
+  crashes (Electron `render-process-gone`), and React render errors via
+  PostHog's built-in `captureException`. Stack traces include file paths
+  and variable names but never conversation content.
+- **Session replay** — *website only*. A recording of clicks and DOM
+  events on `getvoiceclaw.com`. All input fields are masked
+  (`maskAllInputs: true`). Anything inside an element with the
+  `data-ph-mask` attribute is also redacted. Session replay does not run
+  inside the desktop or mobile apps.
+
+## What we never capture
+
+- Audio
+- Transcripts of conversations
+- Provider API keys (Gemini, OpenAI, xAI, custom)
+- Anything entered into a password / secret input on the website
+- The contents of voice sessions, transcripts, or chat messages
+
+The desktop main process strips inputs on the wire by storing only
+provider names alongside `provider_key_saved`. The renderer's PostHog
+client masks input elements during session replay (which is off by
+default in desktop and mobile).
+
+## Distinct ID
+
+Each install gets a stable random UUID stored in its local SQLite. It
+survives app updates but differs across machines. When the user signs
+in (Google or Apple), we call `posthog.identify(userId)` so events from
+the anonymous device are merged with the signed-in identity.
+
+## How to opt out
+
+A single toggle controls all telemetry — analytics, error tracking, and
+(future) session replay together.
+
+- **Desktop**: Settings → Privacy → "Share anonymous diagnostics"
+- **Mobile**: Settings → "Share Anonymous Diagnostics"
+- **Website**: managed via the PostHog opt-out cookie. We will add a UI
+  toggle in a follow-up; for now, set
+  `localStorage.setItem('ph_<token>_posthog_opt_out', '1')` and reload.
+
+When opted out, all `capture()` and `captureException()` calls are
+no-ops.
+
+## Verifying telemetry yourself
+
+PostHog has a "Live events" view for the project. Trigger an action in
+the app, switch to that view, and you should see the event arrive
+within a second or two. If nothing appears:
+
+1. Check that the env vars below are set in the right place.
+2. Open the app's developer tools (Cmd-Option-I on desktop) and confirm
+   no `posthog-js` errors appear in the console.
+3. Confirm the opt-out toggle is **off** in Settings.
+
+## Environment variables
+
+| Var                                | Where                                       |
+| ---------------------------------- | ------------------------------------------- |
+| `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`| Vercel (website), `desktop/.env.build`      |
+| `NEXT_PUBLIC_POSTHOG_HOST`         | Vercel (website), `desktop/.env.build`      |
+| `VITE_POSTHOG_PROJECT_TOKEN`       | `desktop/.env.build` (renderer bundle)      |
+| `VITE_POSTHOG_HOST`                | `desktop/.env.build` (renderer bundle)      |
+| `EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN`| `mobile/.env` or EAS secrets                |
+| `EXPO_PUBLIC_POSTHOG_HOST`         | `mobile/.env` or EAS secrets                |
+
+The same project token can be reused across all three clients —
+PostHog's cross-platform identification stitches the events together
+under one project.
+
+## Internal: where the code lives
+
+- `website/src/lib/telemetry/posthog-client.ts` — browser SDK init and
+  helpers (used by the layout-level provider).
+- `website/src/lib/telemetry/posthog-server.ts` — `captureException`
+  for API routes, plus a `withCapture()` wrapper used by
+  `/api/download/mac`, `/api/me`, and the `/api/auth/*` routes.
+- `desktop/src/main/telemetry.ts` — main-process client, distinct-id
+  bootstrap, opt-out, process-level error handlers.
+- `desktop/src/renderer/src/lib/telemetry.ts` — renderer init via
+  posthog-js. Inherits the distinct ID from main over IPC.
+- `mobile/lib/telemetry.ts` — RN init via `posthog-react-native`.

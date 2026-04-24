@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
+    "posthog-js": "^1.372.1",
+    "posthog-node": "^5.30.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.5.0"
