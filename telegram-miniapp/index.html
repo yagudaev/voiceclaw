@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>VoiceClaw</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1>VoiceClaw</h1>
+        <div id="status" class="status">Idle</div>
+      </header>
+
+      <section class="call-area">
+        <button id="callButton" class="call-button" type="button">
+          <span id="callButtonLabel">Start call</span>
+        </button>
+        <button id="muteButton" class="mute-button" type="button" hidden>
+          Mute
+        </button>
+      </section>
+
+      <section id="transcript" class="transcript" aria-live="polite"></section>
+
+      <section id="setup" class="setup" hidden>
+        <p id="setupMessage"></p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

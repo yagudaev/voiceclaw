@@ -1,0 +1,181 @@
+---
+title: Telegram Mini App
+description: Static webview launched from an OpenClaw bot's /call command. Gives any Telegram user a one-tap voice call into their own relay + brain agent.
+---
+
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components'
+
+The Telegram Mini App is a tiny Vite + TypeScript webview that Telegram renders inside its own chat UI. It authenticates through Telegram's `initData` HMAC, opens a WebSocket to the user's per-user relay, and streams PCM16 audio with barge-in -- the same pipeline as the desktop and mobile clients.
+
+There's **one hosted mini app + one bot per persona**, but the relay is per user (each user runs their own on their Hetzner/home box with their own brain agent).
+
+## Architecture
+
+```
+Telegram client  --/call-->  OpenClaw bot (Pam / Holly / Buffet / ...)
+                             |
+                             v  reply: t.me/<bot>/voiceclaw?startapp=<AgentName>
+Telegram renders "Launch" pill
+  | tap
+  v
+Mini app (webview) -- initData signed by bot token
+  |
+  v  POST {relay}/auth/telegram
+{ ticket, sessionKey, bot:{firstName} }
+  |
+  v  WSS {relay}/ws   session.config.apiKey = ticket
+Relay <-> Gemini Live   audio.append / audio.delta
+```
+
+The ticket is an HMAC over `{tgUid, exp}` signed with `RELAY_API_KEY`. The raw `RELAY_API_KEY` never leaves the relay -- the webview only ever sees a short-lived `tgt.*` ticket.
+
+## Prerequisites
+
+- An OpenClaw-hosted bot (Pam, Holly, etc.). The bot process **must** be OpenClaw's Telegram channel (`extensions/telegram`) -- you cannot run a sidecar bot on the same token.
+- A running relay server with both `TELEGRAM_BOT_TOKEN` and `RELAY_API_KEY` set.
+- Public HTTPS for the relay and the mini app (Tailscale Funnel works for dev).
+
+## OpenClaw side
+
+Two things live on OpenClaw, not in this workspace:
+
+<Steps>
+1. **Menu entry** -- add a custom command so `/call` shows up in Telegram's slash menu:
+
+   ```yaml
+   # openclaw config
+   channels:
+     telegram:
+       customCommands:
+         - command: call
+           description: Start a voice call
+   ```
+
+   Restart the gateway so `setMyCommands` pushes the menu to Telegram.
+
+2. **Behaviour** -- a persistent agent instruction the bot follows:
+
+   > When the user sends `/call`, reply with **exactly** this URL and nothing else:
+   > `https://t.me/<bot>/voiceclaw?startapp=<AgentName>`
+
+   Telegram auto-renders the `t.me/<bot>/<shortname>` URL as a "Launch" pill. Do **not** attempt to use an inline `web_app` keyboard button -- OpenClaw's inline-keyboard builder (`extensions/telegram/src/inline-keyboard.ts`) drops anything that isn't `callback_data` today.
+</Steps>
+
+## BotFather setup
+
+Per bot:
+
+<Steps>
+1. `@BotFather` -> `/newapp` -> pick the bot
+2. Title, description, photo (640x360), GIF (skip with `/empty`)
+3. **Web App URL**: `https://<your-host>/?relay=https%3A%2F%2F<your-relay-host>%2F` (URL-encode the relay URL -- it becomes `?relay=...` in the mini app)
+4. Short name: `voiceclaw` (gives you `t.me/<bot>/voiceclaw`)
+</Steps>
+
+For multi-bot setups (Pam + Holly + Buffet), register the **same** Web App URL under each bot. Each bot signs its own `initData`.
+
+<Aside type="caution" title="One bot token per relay, today">
+The relay currently trusts the one token in `TELEGRAM_BOT_TOKEN`. Running Pam + Holly + Buffet off the same relay needs a multi-token extension (accept `TELEGRAM_BOT_TOKENS=t1,t2,...` and verify against each). Until then, run one relay per bot.
+</Aside>
+
+## Relay requirements
+
+`relay-server/.env` needs both:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:abc...     # the bot that will host this mini app
+RELAY_API_KEY=<32+ random hex bytes>  # signs session tickets
+```
+
+Generate `RELAY_API_KEY` with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+If either is missing, `/auth/telegram` returns `{"error":"telegram auth disabled"}`.
+
+## Auth + session flow
+
+1. **Mini app loads.** Reads `Telegram.WebApp.initData` (HMAC-signed by the bot token).
+2. **POST `/auth/telegram`.** Relay verifies the HMAC with `TELEGRAM_BOT_TOKEN`. On success, mints a `tgt.*` ticket (HMAC over `{tgUid, exp}` using `RELAY_API_KEY`, 5 min TTL) and returns `{ticket, sessionKey, bot:{firstName, username}}`.
+3. **WSS `/ws`.** Webview sends `session.config` with `apiKey: ticket`. Relay's `session.ts` detects the `tgt.` prefix, verifies the ticket, and proceeds with `sessionKey = telegram:<tgUid>`.
+4. **Audio streaming.** `audio.append` (PCM16 @ 24kHz) in, `audio.delta` out, with barge-in and transcript deltas.
+
+<Aside type="note" title="Why a ticket and not the raw RELAY_API_KEY?">
+Mini apps are public HTML. A shared key baked into the JS would leak instantly. The ticket flow keeps `RELAY_API_KEY` on the server, where it's only used to sign short-lived tickets bound to a verified Telegram user id.
+</Aside>
+
+## Local development
+
+Both the relay **and** the mini app need public HTTPS for Telegram to load them. With Tailscale Funnel:
+
+<Tabs>
+  <TabItem label="Relay">
+    ```bash
+    # Relay on :8080 -> Funnel :443
+    cd relay-server && yarn dev
+    tailscale funnel --bg --https=443 http://127.0.0.1:8080
+    ```
+  </TabItem>
+  <TabItem label="Mini app">
+    ```bash
+    # Mini app preview on :4173 -> Funnel :8443
+    yarn build:telegram
+    yarn workspace telegram-miniapp preview
+    tailscale funnel --bg --https=8443 http://127.0.0.1:4173
+    ```
+  </TabItem>
+</Tabs>
+
+Funnel only accepts ports `443`, `8443`, `10000` -- don't try other ports.
+
+Quick iteration without Telegram:
+
+```bash
+yarn dev:telegram   # :5173
+# open http://localhost:5173/?relay=http://localhost:8080
+```
+
+The page shows an "opened outside Telegram" guard -- `initData` is only injected by the Telegram client. For a full auth-path check locally, run `relay-server/test/test-telegram-integration.ts`, which signs fake `initData` with the bot token and exercises the WS handshake.
+
+## Agent name in the UI
+
+The transcript prefix (`Pam:`, `Holly:`) is resolved in this priority order:
+
+1. **`?startapp=<Name>`** from Telegram (`Telegram.WebApp.initDataUnsafe.start_param`) -- agent self-identifies via the URL the bot replies with. Cleanest: the persona picks its own name.
+2. **Bot `first_name`** from `getMe` via relay -- fallback if `startapp` is missing. Trailing `"Bot"` is stripped (`PamBot` -> `Pam`).
+3. **Literal `"Agent"`** -- last-resort default.
+
+Agent names are validated against `^[A-Za-z][A-Za-z0-9 _-]{0,30}$` and `_` / `-` become spaces.
+
+## Gotchas
+
+- **Vite preview `allowedHosts`.** `.ts.net` must be allowed or Funnel requests get a 403. Configured in `telegram-miniapp/vite.config.ts` under `preview`.
+- **AudioWorklet must be a separate asset.** Use `import("./audio-worklet-processor.js?url")`. iOS WKWebView rejects inline `data:` URL worklets.
+- **`initData` freshness window is 1 hour.** If the webview sits idle past that, re-auth 401s -- reload the mini app.
+- **Ticket cache (client-side).** The mini app reuses the ticket for 4 minutes on restart to skip re-auth. Invalidated on bundle reload, not on end-call.
+- **No `web_app` inline buttons.** OpenClaw drops them. The plain-URL Launch pill is the workaround.
+- **One bot token per relay.** See the caution above.
+
+## Hosting
+
+Any static host with HTTPS works (Cloudflare Pages, Vercel, Netlify, or `cloudflared` in front of `yarn workspace telegram-miniapp preview`). The URL must be registered with `@BotFather` via `/newapp` on the bot that will open it. No secrets are baked into the bundle -- the mini app is safe to host publicly.
+
+## Scripts
+
+From the monorepo root:
+
+```bash
+yarn dev:telegram      # Vite dev server on :5173
+yarn build:telegram    # static bundle -> telegram-miniapp/dist/
+```
+
+## Files
+
+- `telegram-miniapp/src/main.ts` -- entrypoint, auth + WS lifecycle, transcript UI
+- `telegram-miniapp/src/realtime-client.ts` -- WebSocket session + reconnect
+- `telegram-miniapp/src/audio-engine.ts` -- PCM16 capture + playback (copied from desktop)
+- `relay-server/src/telegram-auth.ts` -- `initData` HMAC validation + ticket mint/verify
+- `relay-server/src/index.ts` -- `/auth/telegram` endpoint, rate limiter, CORS
+- `telegram-miniapp/CLAUDE.md` -- contributor notes for future sessions

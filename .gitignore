@@ -30,3 +30,6 @@ mobile/build/
 
 # Dev logs
 logs/
+
+# Playwright MCP test artifacts
+.playwright-mcp/
