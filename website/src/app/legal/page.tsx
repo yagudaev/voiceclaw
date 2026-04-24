@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { LegalPage } from "@/components/legal/LegalPage"
 
 export const metadata: Metadata = {
@@ -15,11 +16,11 @@ export default function LegalIndexPage() {
     >
       <ul>
         <li>
-          <a href="/privacy">Privacy Policy</a> — what we collect, what we don&apos;t,
+          <Link href="/privacy">Privacy Policy</Link> — what we collect, what we don&apos;t,
           how we handle your data
         </li>
         <li>
-          <a href="/terms">Terms of Service</a> — the agreement between you and
+          <Link href="/terms">Terms of Service</Link> — the agreement between you and
           Nano 3 Labs Ltd.
         </li>
       </ul>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { LegalPage } from "@/components/legal/LegalPage"
 
 export const metadata: Metadata = {
@@ -111,7 +112,7 @@ export default function TermsPage() {
         files you share with the AI) stays on your device or goes directly to
         the AI provider you configured. We don&apos;t receive your content. For
         more detail see our{" "}
-        <a href="/privacy">Privacy Policy</a>.
+        <Link href="/privacy">Privacy Policy</Link>.
       </p>
       <p>
         To the extent we <em>do</em> hold data about you (your account, analytics

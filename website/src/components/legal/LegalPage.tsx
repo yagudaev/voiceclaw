@@ -1,3 +1,4 @@
+import Link from "next/link"
 import type { ReactNode } from "react"
 
 // Shared container for legal pages (privacy, terms, legal index).
@@ -16,9 +17,9 @@ export function LegalPage({ title, lastUpdated, lede, children }: LegalPageProps
   return (
     <div className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
       <nav className="mb-12 text-sm text-muted-foreground">
-        <a href="/" className="transition-colors hover:text-foreground">
+        <Link href="/" className="transition-colors hover:text-foreground">
           ← VoiceClaw
-        </a>
+        </Link>
       </nav>
 
       <header className="mb-10">
@@ -31,7 +32,7 @@ export function LegalPage({ title, lastUpdated, lede, children }: LegalPageProps
         ) : null}
       </header>
 
-      <div className="prose prose-invert max-w-none space-y-8 text-[15px] leading-7 [&_h2]:mt-12 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-6 [&_a]:underline [&_a]:underline-offset-2">
+      <div className="max-w-none space-y-8 text-[15px] leading-7 [&_h2]:mt-12 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-6 [&_a]:underline [&_a]:underline-offset-2">
         {children}
       </div>
 
