@@ -1,0 +1,115 @@
+# Build, sign, notarize, and publish the macOS desktop DMG on tag push.
+#
+# Trigger: push of a tag matching `v*.*.*` (e.g. `v0.1.0`).
+# Output: a GitHub Release matching the tag, containing the universal
+#         DMG, its `.blockmap`, and `latest-mac.yml` for electron-updater.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   APPLE_API_KEY_P8
+#     Base64-encoded contents of the App Store Connect API key .p8 file.
+#     Generate locally with: `base64 -i AuthKey_<ID>.p8 | pbcopy`.
+#   APPLE_API_KEY_ID
+#     The App Store Connect API key ID (e.g. `SG645CPQP8`).
+#   APPLE_API_ISSUER
+#     The App Store Connect issuer UUID
+#     (e.g. `69a6de83-015f-47e3-e053-5b8c7c11a4d1`).
+#   DEVELOPER_ID_CERT_P12
+#     Base64-encoded .p12 export of the "Developer ID Application"
+#     certificate (including its private key).
+#     Generate with Keychain Access → right-click cert → Export → .p12,
+#     then: `base64 -i cert.p12 | pbcopy`.
+#   DEVELOPER_ID_CERT_PASSWORD
+#     The password you chose when exporting the .p12.
+#
+# The default `GITHUB_TOKEN` secret is injected automatically; no manual
+# config needed for the GitHub Releases upload.
+
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist on origin)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build universal DMG
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('desktop/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Write App Store Connect API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstore
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
+          chmod 600 ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+
+      - name: Build, sign, notarize, and publish
+        working-directory: desktop
+        env:
+          # electron-builder reads these from the environment to sign +
+          # notarize. APPLE_API_KEY points at the .p8 written above; the
+          # id/issuer pair lets notarytool auth without username/password.
+          APPLE_API_KEY: ${{ format('/Users/runner/.appstore/AuthKey_{0}.p8', secrets.APPLE_API_KEY_ID) }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # GH_TOKEN scopes the GitHub Releases upload done by
+          # electron-builder's `--publish always`.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: yarn dist:mac --publish always
+
+      - name: Upload DMG as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voiceclaw-dmg
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.blockmap
+            desktop/dist/latest-mac.yml
+          if-no-files-found: warn
+          retention-days: 14
