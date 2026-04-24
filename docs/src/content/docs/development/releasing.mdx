@@ -19,6 +19,22 @@ flowchart LR
     D -->|v*.*.*| E[release-desktop.yml<br/>builds + signs + publishes DMG]
 ```
 
+## Maintainer setup
+
+The `release-please.yml` workflow requires a repository secret named `RELEASE_PLEASE_TOKEN`. Use a fine-grained personal access token or GitHub App token that can open pull requests, update issues, push tags, and create GitHub Releases in this repository.
+
+<Aside type="caution">
+Do not use the default `GITHUB_TOKEN` for release-please if desktop release automation should run. GitHub suppresses most workflows caused by refs created with `GITHUB_TOKEN`, so a `v*.*.*` tag pushed by release-please would not reliably trigger `release-desktop.yml`.
+</Aside>
+
+Required token capabilities:
+
+| Capability | Why |
+| :-- | :-- |
+| Contents: write | Commit version/changelog updates, push tags, and create GitHub Releases |
+| Pull requests: write | Open and update release PRs |
+| Issues: write | Maintain release PR labels and comments |
+
 ## Conventional Commits taxonomy
 
 Your PR title is what release-please reads (we squash-merge, so the PR title becomes the single commit on main). The `commitlint-pr-title` workflow blocks PRs whose titles don't match.

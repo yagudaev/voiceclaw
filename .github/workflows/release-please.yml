@@ -4,6 +4,9 @@
 # `release-desktop.yml` which builds + publishes the signed DMG.
 #
 # Docs: https://github.com/googleapis/release-please-action
+# Required secret:
+#   - RELEASE_PLEASE_TOKEN — PAT or GitHub App token that can create PRs,
+#     push tags, and trigger downstream workflows from those tags.
 #
 # Config:
 #   - release-please-config.json    — per-package release-type + tag scheme
@@ -26,6 +29,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   release-please:
@@ -36,6 +40,7 @@ jobs:
           # Let the action discover config + manifest at the repo root.
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Default GITHUB_TOKEN is sufficient for opening PRs + pushing tags
-          # in the same repo.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Do not use the default GITHUB_TOKEN here: GitHub suppresses most
+          # workflows caused by GITHUB_TOKEN-created refs, so desktop release
+          # tags would not reliably trigger release-desktop.yml.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
