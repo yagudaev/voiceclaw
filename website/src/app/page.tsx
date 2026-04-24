@@ -19,31 +19,41 @@ import {
   VoiceClawMark,
 } from "@/components/brand/brand-system"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import {
+  getLatestMacReleaseDownload,
+  type MacReleaseDownload,
+} from "@/lib/downloads"
 
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
-const MAC_DOWNLOAD_URL = "https://github.com/yagudaev/voiceclaw/releases"
+const MAC_DOWNLOAD_URL = "/api/download/mac"
 const TESTFLIGHT_SIGNUP_URL = ""
 const DEMO_EMBED_URL = "https://www.youtube.com/embed/iAS7vj2vRaA"
 const HERO_BARS = [26, 44, 58, 42, 24, 34, 52, 78, 50, 31, 66, 86, 60, 38, 54, 82, 48, 72]
 
-export default function Home() {
+export default async function Home() {
+  const macRelease = await getLatestMacReleaseDownload()
+
   return (
     <div className="min-h-screen text-[var(--brand-ink)]">
-      <Header />
+      <Header macRelease={macRelease} />
       <main>
-        <HeroSection />
+        <HeroSection macRelease={macRelease} />
         <DemoSection />
         <ProofSection />
         <WorkflowSection />
         <PlatformSection />
-        <GetStartedSection />
+        <GetStartedSection macRelease={macRelease} />
       </main>
       <Footer />
     </div>
   )
 }
 
-function Header() {
+function Header({
+  macRelease,
+}: {
+  macRelease: MacReleaseDownload | null
+}) {
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)]/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
@@ -57,10 +67,8 @@ function Header() {
           <ThemeSwitcher />
           <a
             href={MAC_DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
             aria-label="Download for Mac"
-            title="Download for Mac"
+            title={downloadTitle(macRelease)}
             className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 text-[var(--brand-ink)] shadow-[var(--brand-shadow)] transition hover:border-[var(--brand-accent)]"
           >
             <Download className="size-4" />
@@ -72,7 +80,11 @@ function Header() {
   )
 }
 
-function HeroSection() {
+function HeroSection({
+  macRelease,
+}: {
+  macRelease: MacReleaseDownload | null
+}) {
   return (
     <section className="relative isolate overflow-hidden border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)]">
       <div className="brand-hero-field absolute inset-0" />
@@ -97,8 +109,7 @@ function HeroSection() {
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a
                 href={MAC_DOWNLOAD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
+                title={downloadTitle(macRelease)}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
               >
                 <Download className="size-4" />
@@ -112,7 +123,8 @@ function HeroSection() {
                 Watch demo
               </Link>
             </div>
-            <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--brand-muted)]">
+            <MacDownloadVersion release={macRelease} />
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--brand-muted)]">
               <TestFlightSignupNotice />
             </p>
             <div className="mt-8 lg:hidden">
@@ -344,7 +356,11 @@ function PlatformSection() {
   )
 }
 
-function GetStartedSection() {
+function GetStartedSection({
+  macRelease,
+}: {
+  macRelease: MacReleaseDownload | null
+}) {
   return (
     <section className="bg-[var(--brand-contrast-bg)] px-5 py-20 text-[var(--brand-contrast-fg)] sm:px-8">
       <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -363,13 +379,13 @@ function GetStartedSection() {
         <div className="flex flex-col justify-end gap-3">
           <a
             href={MAC_DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+            title={downloadTitle(macRelease)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
           >
             <Download className="size-4" />
             Download for Mac
           </a>
+          <MacDownloadVersion release={macRelease} contrast />
           <a
             href={REPO_URL}
             target="_blank"
@@ -405,6 +421,40 @@ function Footer() {
         </div>
       </div>
     </footer>
+  )
+}
+
+function MacDownloadVersion({
+  release,
+  contrast = false,
+}: {
+  release: MacReleaseDownload | null
+  contrast?: boolean
+}) {
+  if (!release) {
+    return (
+      <p
+        className={`mt-3 font-mono text-xs ${
+          contrast
+            ? "text-[var(--brand-contrast-muted)]"
+            : "text-[var(--brand-muted)]"
+        }`}
+      >
+        Resolves to the latest Mac build.
+      </p>
+    )
+  }
+
+  return (
+    <p
+      className={`mt-3 font-mono text-xs ${
+        contrast
+          ? "text-[var(--brand-contrast-muted)]"
+          : "text-[var(--brand-muted)]"
+      }`}
+    >
+      Latest Mac build: {release.tagName} · {formatFileSize(release.size)}
+    </p>
   )
 }
 
@@ -586,4 +636,17 @@ function TranscriptBubble({
       <p className="mt-2 text-sm leading-6">{children}</p>
     </div>
   )
+}
+
+function downloadTitle(release: MacReleaseDownload | null) {
+  if (!release) {
+    return "Download latest Mac build"
+  }
+
+  return `Download ${release.tagName} for Mac`
+}
+
+function formatFileSize(size: number) {
+  const megabytes = size / 1024 / 1024
+  return `${Math.round(megabytes)} MB`
 }
