@@ -5,6 +5,7 @@ import {
   isSigningKeyConfigured,
   mintDeviceToken,
 } from "@/lib/auth/tokens"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // POST /api/auth/ticket/redeem
 // Body: { ticket: string, label?: string, platform?: "desktop-macos" | "ios" | "android" }
@@ -22,7 +23,7 @@ type Body = {
   platform?: unknown
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withCapture(async (request: NextRequest) => {
   if (!isDatabaseConfigured() || !isSigningKeyConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 501 })
   }
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
     device: { id: device.id, label: device.label, platform: device.platform },
     user,
   })
-}
+}, "/api/auth/ticket/redeem")
 
 // Quick cuid-like id since we need to supply the device id before we can
 // hash its token. Matches the shape Prisma generates elsewhere.

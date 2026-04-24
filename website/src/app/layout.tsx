@@ -1,6 +1,9 @@
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { Fraunces, Geist, Geist_Mono, JetBrains_Mono } from "next/font/google"
 import Script from "next/script"
+import { PostHogClientProvider } from "@/components/telemetry/posthog-provider"
+import { PostHogErrorBoundary } from "@/components/telemetry/posthog-error-boundary"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -59,7 +62,11 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
-        {children}
+        <Suspense fallback={null}>
+          <PostHogClientProvider>
+            <PostHogErrorBoundary>{children}</PostHogErrorBoundary>
+          </PostHogClientProvider>
+        </Suspense>
       </body>
     </html>
   )

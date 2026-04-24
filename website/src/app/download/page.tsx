@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { BrandWordmark } from "@/components/brand/brand-system"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { TrackCtaAnchor } from "@/components/telemetry/track-cta-anchor"
 
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
 const RELEASES_URL = "https://github.com/yagudaev/voiceclaw/releases"
@@ -113,13 +114,15 @@ function DownloadCard() {
             Universal DMG — Apple Silicon and Intel in a single file.
           </p>
         </div>
-        <a
+        <TrackCtaAnchor
+          ctaLocation="download_page"
+          ctaLabel="Download for Mac"
           href={MAC_DOWNLOAD_URL}
           className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
         >
           <Download className="size-4" />
           Download for Mac
-        </a>
+        </TrackCtaAnchor>
       </div>
       <p className="mt-5 text-xs text-[var(--brand-muted)]">
         Clicking the button redirects to the latest release on GitHub. Every

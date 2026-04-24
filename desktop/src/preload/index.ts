@@ -118,6 +118,18 @@ const electronAPI = {
   net: {
     healthCheck: (url: string) => ipcRenderer.invoke('net:healthCheck', url) as Promise<{ ok: boolean, error?: string }>,
   },
+  telemetry: {
+    getDistinctId: () => ipcRenderer.invoke('telemetry:getDistinctId') as Promise<string>,
+    getOptedOut: () => ipcRenderer.invoke('telemetry:getOptedOut') as Promise<boolean>,
+    setOptedOut: (optedOut: boolean) =>
+      ipcRenderer.invoke('telemetry:setOptedOut', optedOut) as Promise<boolean>,
+    capture: (event: string, props?: Record<string, unknown>) =>
+      ipcRenderer.invoke('telemetry:capture', event, props) as Promise<void>,
+    captureException: (
+      err: { message: string, stack?: string },
+      context?: Record<string, unknown>,
+    ) => ipcRenderer.invoke('telemetry:captureException', err, context) as Promise<void>,
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

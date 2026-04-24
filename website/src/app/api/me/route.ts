@@ -5,6 +5,7 @@ import {
   isSigningKeyConfigured,
   verifyDeviceToken,
 } from "@/lib/auth/tokens"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // GET /api/me
 //
@@ -14,7 +15,7 @@ import {
 //   401 when the token is missing or invalid
 //   410 when the device has been revoked
 
-export async function GET(request: NextRequest) {
+export const GET = withCapture(async (request: NextRequest) => {
   if (!isDatabaseConfigured() || !isSigningKeyConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 501 })
   }
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
     },
     mobileAccess: mapMobileAccess(device.user),
   })
-}
+}, "/api/me")
 
 function extractBearer(request: NextRequest): string | null {
   const header = request.headers.get("authorization")

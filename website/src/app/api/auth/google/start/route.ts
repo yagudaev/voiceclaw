@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { generateCodeVerifier, generateState } from "arctic"
 import { loadProviderConfig, isGoogleConfigured } from "@/lib/auth/providers"
 import { setOAuthCookies } from "@/lib/auth/cookies"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // GET /api/auth/google/start
 //
@@ -9,7 +10,7 @@ import { setOAuthCookies } from "@/lib/auth/cookies"
 // stores them as short-lived HttpOnly cookies, redirects to Google's
 // consent screen with our redirect URI baked in.
 
-export async function GET(request: Request) {
+export const GET = withCapture(async (request: Request) => {
   if (!isGoogleConfigured()) {
     return NextResponse.json(
       { error: "google_not_configured" },
@@ -41,4 +42,4 @@ export async function GET(request: Request) {
   const res = NextResponse.redirect(authorizationUrl)
   setOAuthCookies(res, statePayload, codeVerifier)
   return res
-}
+}, "/api/auth/google/start")

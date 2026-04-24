@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ExpoRealtimeAudioModule from '@/modules/expo-realtime-audio/src/ExpoRealtimeAudioModule'
+import { captureMobile } from '@/lib/telemetry'
 
 export interface RealtimeConfig {
   serverUrl: string
@@ -229,6 +230,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
     ws.onopen = () => {
       console.log('[useRealtime] WebSocket connected, sending session.config')
+      captureMobile('relay_connected', { model: config.model })
       const provider = getProviderForRealtimeModel(config.model)
       ws.send(JSON.stringify({
         type: 'session.config',

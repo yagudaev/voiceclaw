@@ -8,6 +8,11 @@ import { Toggle } from '../components/ui/Toggle'
 import { useTheme, type Theme } from '../lib/use-theme'
 import { enumerateAudioDevices, type AudioDevice } from '../lib/audio-engine'
 import { getSetting, setSetting } from '../lib/db'
+import {
+  captureRenderer,
+  isOptedOutRenderer,
+  setOptedOutRenderer,
+} from '../lib/telemetry'
 
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
@@ -58,6 +63,9 @@ export function SettingsPage() {
   const [showLatency, setShowLatency] = useState(false)
   const [tracingEnabled, setTracingEnabled] = useState(false)
 
+  // Privacy / telemetry
+  const [telemetryEnabled, setTelemetryEnabled] = useState(true)
+
   const loadedRef = useRef(false)
 
   // Load all settings on mount
@@ -88,6 +96,9 @@ export function SettingsPage() {
       const tr = await getSetting('tracing_enabled')
       if (tr === 'true') setTracingEnabled(true)
 
+      const optedOut = await isOptedOutRenderer()
+      setTelemetryEnabled(!optedOut)
+
       loadedRef.current = true
     })()
 
@@ -106,8 +117,16 @@ export function SettingsPage() {
 
   const updateApiKey = useCallback((v: string) => {
     setApiKey(v)
-    if (loadedRef.current) save('realtime_api_key', v)
-  }, [save])
+    if (loadedRef.current) {
+      save('realtime_api_key', v)
+      // Fire only when the user transitions from blank → set, so we
+      // don't spam an event on every keystroke. Provider name only —
+      // the key itself is never included.
+      if (v && !apiKey) {
+        captureRenderer('provider_key_saved', { provider: 'realtime', model })
+      }
+    }
+  }, [save, apiKey, model])
 
   const updateModel = useCallback((v: RealtimeModel) => {
     setModel(v)
@@ -161,6 +180,11 @@ export function SettingsPage() {
     setSetting('tracing_enabled', v ? 'true' : 'false')
   }, [])
 
+  const toggleTelemetry = useCallback(async (v: boolean) => {
+    setTelemetryEnabled(v)
+    await setOptedOutRenderer(!v)
+  }, [])
+
   const testConnection = useCallback(async () => {
     setTestStatus('testing')
     setTestError('')
@@ -169,13 +193,24 @@ export function SettingsPage() {
       const result = await window.electronAPI.net.healthCheck(serverUrl)
       if (result.ok) {
         setTestStatus('ok')
+        captureRenderer('test_call_completed', { success: true, surface: 'settings' })
       } else {
         setTestStatus('error')
         setTestError(result.error || 'Connection failed')
+        captureRenderer('test_call_completed', {
+          success: false,
+          surface: 'settings',
+          reason: result.error ?? 'unknown',
+        })
       }
     } catch (err) {
       setTestStatus('error')
       setTestError(err instanceof Error ? err.message : 'Connection failed')
+      captureRenderer('test_call_completed', {
+        success: false,
+        surface: 'settings',
+        reason: err instanceof Error ? err.message : 'unknown',
+      })
     }
   }, [serverUrl])
 
@@ -375,6 +410,20 @@ export function SettingsPage() {
               <p className="text-xs text-muted-foreground">Post per-turn latency to Langfuse via relay</p>
             </div>
             <Toggle checked={tracingEnabled} onChange={toggleTracing} />
+          </div>
+        </Card>
+
+        {/* Privacy */}
+        <Card className="p-4 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Privacy</h3>
+          <div className="flex items-center justify-between">
+            <div className="pr-4">
+              <p className="text-sm text-foreground">Share anonymous diagnostics</p>
+              <p className="text-xs text-muted-foreground">
+                PostHog telemetry: usage events + crash reports. Never sends voice, transcripts, or API keys.
+              </p>
+            </div>
+            <Toggle checked={telemetryEnabled} onChange={toggleTelemetry} />
           </div>
         </Card>
 

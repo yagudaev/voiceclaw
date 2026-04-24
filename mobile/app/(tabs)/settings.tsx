@@ -8,6 +8,7 @@ import { BRAND } from '@/lib/brand'
 import type { BrainConnectionMode } from '@/lib/chat'
 import { connectPlugin, disconnectPlugin, getPluginStatus, addPluginStatusListener, type PluginConnectionStatus } from '@/lib/plugin-completion'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
+import { isOptedOut as isMobileOptedOut, setMobileOptedOut } from '@/lib/telemetry'
 import { useAutoSave, type SaveStatus } from '@/lib/use-auto-save'
 import { validateApiKey, type Provider, type ValidationStatus } from '@/lib/validate-api-key'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
@@ -95,6 +96,9 @@ export default function SettingsScreen() {
 
   // Langfuse tracing — defaults on in dev builds, off in release
   const [tracingEnabled, setTracingEnabled] = useState<boolean>(__DEV__)
+
+  // PostHog telemetry — opted-in by default, user can turn off
+  const [telemetryEnabled, setTelemetryEnabled] = useState<boolean>(true)
 
   // Kokoro model download state
   const [kokoroStatus, setKokoroStatus] = useState<'checking' | 'ready' | 'not-downloaded' | 'downloading' | 'error' | 'unavailable'>('checking')
@@ -249,6 +253,9 @@ export default function SettingsScreen() {
       const tr = await getSetting('tracing_enabled')
       if (tr === 'true') setTracingEnabled(true)
       else if (tr === 'false') setTracingEnabled(false)
+
+      const optedOut = await isMobileOptedOut()
+      setTelemetryEnabled(!optedOut)
 
       loadedRef.current = true
     })()
@@ -459,6 +466,11 @@ export default function SettingsScreen() {
   const toggleTracing = useCallback((v: boolean) => {
     setTracingEnabled(v)
     setSetting('tracing_enabled', v ? 'true' : 'false')
+  }, [])
+
+  const toggleTelemetry = useCallback(async (v: boolean) => {
+    setTelemetryEnabled(v)
+    await setMobileOptedOut(!v)
   }, [])
 
   return (
@@ -677,6 +689,22 @@ export default function SettingsScreen() {
               testID="tracing-toggle"
               value={tracingEnabled}
               onValueChange={toggleTracing}
+            />
+          </View>
+        </Card>
+
+        <Card testID="telemetry-card" className="gap-2 p-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1">
+              <Text className="text-lg font-semibold text-foreground">Share Anonymous Diagnostics</Text>
+              <Text className="text-sm text-muted-foreground">
+                PostHog telemetry: usage events + crash reports. Never sends voice, transcripts, or API keys.
+              </Text>
+            </View>
+            <Switch
+              testID="telemetry-toggle"
+              value={telemetryEnabled}
+              onValueChange={toggleTelemetry}
             />
           </View>
         </Card>

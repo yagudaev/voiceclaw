@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
+import { captureException } from './telemetry'
 
 // Window lifecycle for menu-bar mode. Quitting the window hides it but
 // keeps the process alive (services stay running so mobile can reach
@@ -60,6 +61,17 @@ export function createMainWindow(options: { isDev: boolean; rendererUrl?: string
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Catch renderer crashes and report them to PostHog. The renderer's
+  // own posthog-js init handles uncaught errors at the JS level; this
+  // catches OS-level renderer process termination.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    captureException(new Error(`render-process-gone: ${details.reason}`), {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      source: 'render-process-gone',
+    })
   })
 
   if (options.isDev && options.rendererUrl) {

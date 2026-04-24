@@ -109,6 +109,12 @@ export default defineConfig({
             { slug: 'development/releasing', label: 'Releasing and versioning' },
           ],
         },
+        {
+          label: 'Operations',
+          items: [
+            { slug: 'operations/telemetry', label: 'Telemetry (PostHog)' },
+          ],
+        },
       ],
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,

@@ -16,6 +16,14 @@ import { ensureDefault as ensureLaunchAtLoginDefault } from './login-items'
 import { initAutoUpdater } from './updater'
 import { ensureOnboardingSchema, resetOnboarding } from './onboarding'
 import { registerAuthDeepLink } from './auth'
+import {
+  capture as telemetryCapture,
+  captureException,
+  flush as flushTelemetry,
+  identify as telemetryIdentify,
+  registerProcessHandlers as registerTelemetryHandlers,
+  shutdown as shutdownTelemetry,
+} from './telemetry'
 
 const isDev = !app.isPackaged
 
@@ -41,6 +49,9 @@ app.whenReady().then(async () => {
   registerAuthDeepLink()
   registerIpcHandlers()
   registerScreenCaptureHandlers()
+  registerTelemetryHandlers()
+  telemetryIdentify()
+  telemetryCapture('app_launched', { dev: isDev })
 
   const wasOpenedAsHidden = app.getLoginItemSettings().wasOpenedAsHidden
 
@@ -82,11 +93,13 @@ app.whenReady().then(async () => {
   // Best-effort spawn of bundled services. Missing binary is fine in dev.
   startBundledOpenClaw().catch((err) => {
     console.warn('[openclaw] failed to start', err)
+    captureException(err, { source: 'startBundledOpenClaw' })
   })
 
   // Check for app updates. No-op in dev or when disabled.
   initAutoUpdater().catch((err) => {
     console.warn('[updater] init failed', err)
+    captureException(err, { source: 'initAutoUpdater' })
   })
 
   app.on('activate', () => {
@@ -108,8 +121,20 @@ app.on('window-all-closed', () => {
   hideMainWindow()
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
   markQuitting()
+  // Flush queued telemetry before exit. Defer the actual quit one tick
+  // so posthog-node can drain its buffer over the wire.
+  if (!quittingFlushed) {
+    event.preventDefault()
+    quittingFlushed = true
+    try {
+      await flushTelemetry()
+      await shutdownTelemetry()
+    } finally {
+      app.quit()
+    }
+  }
 })
 
 app.on('will-quit', () => {
@@ -117,6 +142,16 @@ app.on('will-quit', () => {
   destroyTray()
   closeDb()
 })
+
+let quittingFlushed = false
+
+// Test hook — set VOICECLAW_TEST_ERROR=1 to throw early in main and
+// verify error reporting end-to-end. Off in normal builds.
+if (process.env.VOICECLAW_TEST_ERROR === '1') {
+  setTimeout(() => {
+    throw new Error('VOICECLAW_TEST_ERROR triggered (main)')
+  }, 1500)
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

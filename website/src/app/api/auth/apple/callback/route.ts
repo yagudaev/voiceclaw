@@ -5,6 +5,7 @@ import { clearOAuthCookies, readOAuthCookies } from "@/lib/auth/cookies"
 import { isDatabaseConfigured, prisma } from "@/lib/auth/db"
 import { mintAuthTicket } from "@/lib/auth/tokens"
 import { buildAuthCallbackDeepLink, buildCallbackPageHtml } from "@/lib/auth/deep-link"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // GET /api/auth/apple/callback?code=...&state=...
 //
@@ -17,7 +18,7 @@ import { buildAuthCallbackDeepLink, buildCallbackPageHtml } from "@/lib/auth/dee
 //  - Apple's `sub` is stable per-app. Don't try to link it to Google
 //    `sub` across providers unless the user explicitly requests it.
 
-export async function GET(request: NextRequest) {
+export const GET = withCapture(async (request: NextRequest) => {
   if (!isAppleConfigured() || !isDatabaseConfigured()) {
     return NextResponse.json({ error: "not_configured" }, { status: 501 })
   }
@@ -92,7 +93,7 @@ export async function GET(request: NextRequest) {
   )
   clearOAuthCookies(res)
   return res
-}
+}, "/api/auth/apple/callback")
 
 // ---------------------------------------------------------------------------
 // Helpers

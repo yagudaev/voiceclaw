@@ -21,6 +21,13 @@ import {
 import { detectBrains } from './brain-detect'
 import { startSignInFlow } from './auth'
 import { getMainWindow } from './window-lifecycle'
+import {
+  capture as telemetryCapture,
+  captureException as telemetryCaptureException,
+  getDistinctId,
+  isOptedOut as telemetryIsOptedOut,
+  setOptedOut as telemetrySetOptedOut,
+} from './telemetry'
 
 export function registerIpcHandlers() {
   // App lifecycle / system integration
@@ -31,6 +38,30 @@ export function registerIpcHandlers() {
   })
   ipcMain.handle('app:getServiceStatuses', () => serviceManager.getAllStatuses())
   ipcMain.handle('app:getServicePorts', () => getAllocatedPorts())
+
+  // Telemetry. The renderer initializes its own posthog-js client but
+  // shares the same distinct_id so a session ties events from main and
+  // renderer together.
+  ipcMain.handle('telemetry:getDistinctId', () => getDistinctId())
+  ipcMain.handle('telemetry:getOptedOut', () => telemetryIsOptedOut())
+  ipcMain.handle('telemetry:setOptedOut', (_e, optedOut: boolean) => {
+    telemetrySetOptedOut(optedOut)
+    return telemetryIsOptedOut()
+  })
+  ipcMain.handle(
+    'telemetry:capture',
+    (_e, event: string, props?: Record<string, unknown>) => {
+      telemetryCapture(event, props)
+    },
+  )
+  ipcMain.handle(
+    'telemetry:captureException',
+    (_e, err: { message: string, stack?: string }, context?: Record<string, unknown>) => {
+      const error = new Error(err?.message ?? 'unknown')
+      if (err?.stack) error.stack = err.stack
+      telemetryCaptureException(error, context)
+    },
+  )
 
   // Conversations
   ipcMain.handle('db:createConversation', (_e, title?: string) => {

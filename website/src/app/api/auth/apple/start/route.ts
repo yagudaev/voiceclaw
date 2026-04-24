@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { generateState } from "arctic"
 import { loadProviderConfig, isAppleConfigured } from "@/lib/auth/providers"
 import { setOAuthCookies } from "@/lib/auth/cookies"
+import { withCapture } from "@/lib/telemetry/posthog-server"
 
 // GET /api/auth/apple/start
 //
@@ -10,7 +11,7 @@ import { setOAuthCookies } from "@/lib/auth/cookies"
 // we still need a state param for CSRF protection and a placeholder
 // verifier to keep the cookie read/write symmetric across providers.
 
-export async function GET(request: Request) {
+export const GET = withCapture(async (request: Request) => {
   if (!isAppleConfigured()) {
     return NextResponse.json({ error: "apple_not_configured" }, { status: 501 })
   }
@@ -34,4 +35,4 @@ export async function GET(request: Request) {
   const res = NextResponse.redirect(authorizationUrl)
   setOAuthCookies(res, statePayload, "apple-no-pkce")
   return res
-}
+}, "/api/auth/apple/start")
