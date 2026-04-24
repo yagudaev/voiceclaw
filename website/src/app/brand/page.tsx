@@ -209,7 +209,7 @@ export default function BrandGuidelinesPage() {
       <GuidelineSection
         eyebrow="05"
         title="Dark mode direction"
-        description="The dark-mode PR should invert the system without turning the brand into blue-black SaaS chrome."
+        description="The website follows system preference with a warm dark palette, not blue-black SaaS chrome."
         icon={<Moon className="size-5" />}
       >
         <div className="grid gap-3 md:grid-cols-3">
@@ -280,7 +280,7 @@ export default function BrandGuidelinesPage() {
         <div className="grid gap-3 md:grid-cols-3">
           <ImplementationCard
             title="Website"
-            description="Use this page as the canonical light-mode reference."
+            description="Use this page as the canonical light and dark reference."
           />
           <ImplementationCard
             title="Desktop"

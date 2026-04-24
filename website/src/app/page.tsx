@@ -74,8 +74,8 @@ function HeroSection() {
         sizes="100vw"
         className="object-cover object-[70%_center]"
       />
-      <div className="absolute inset-0 bg-[rgba(241,232,218,0.78)] sm:hidden" />
-      <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(241,232,218,0.98)_0%,rgba(241,232,218,0.9)_38%,rgba(241,232,218,0.22)_70%,rgba(241,232,218,0.02)_100%)] sm:block" />
+      <div className="brand-hero-scrim-mobile absolute inset-0 sm:hidden" />
+      <div className="brand-hero-scrim-desktop absolute inset-0 hidden sm:block" />
       <div className="relative mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col justify-between px-5 py-10 sm:px-8 sm:py-14">
         <div className="max-w-4xl pt-12 sm:pt-20">
           <div className="mb-8 inline-flex items-center gap-3 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 font-mono text-xs text-[var(--brand-muted)] shadow-[var(--brand-shadow)]">
@@ -98,7 +98,7 @@ function HeroSection() {
               href="https://github.com/yagudaev/voiceclaw"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-white transition hover:bg-[var(--brand-accent-hover)]"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
             >
               <GitBranch className="size-4" />
               View on GitHub
@@ -233,16 +233,16 @@ function PlatformSection() {
 
 function GetStartedSection() {
   return (
-    <section className="bg-[var(--brand-ink)] px-5 py-20 text-white sm:px-8">
+    <section className="bg-[var(--brand-contrast-bg)] px-5 py-20 text-[var(--brand-contrast-fg)] sm:px-8">
       <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div>
-          <p className="font-mono text-xs uppercase text-[var(--brand-paper-strong)]">
+          <p className="font-mono text-xs uppercase text-[var(--brand-contrast-muted)]">
             Get started
           </p>
           <h2 className="mt-4 max-w-3xl font-serif text-5xl leading-none sm:text-6xl">
             Give your existing agent a voice front end.
           </h2>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70">
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--brand-contrast-muted)]">
             Clone the repo, run the relay, connect your endpoint, and start
             talking. No hosted brain required.
           </p>
@@ -252,7 +252,7 @@ function GetStartedSection() {
             href="https://github.com/yagudaev/voiceclaw"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-panel-strong)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:bg-[var(--brand-paper)]"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
           >
             <GitBranch className="size-4" />
             Open repository
@@ -261,7 +261,7 @@ function GetStartedSection() {
             href="https://github.com/yagudaev/voiceclaw#quick-start"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/20 px-5 text-sm font-semibold text-white transition hover:border-white/50"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-5 text-sm font-semibold text-[var(--brand-contrast-fg)] transition hover:border-[var(--brand-contrast-fg)]"
           >
             Quick start
             <ArrowRight className="size-4" />
