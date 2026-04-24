@@ -5,7 +5,7 @@ description: WebSocket protocol reference, configuration, brain agent, and suppo
 
 import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components'
 
-The relay server is a TypeScript / Node.js WebSocket server that sits between clients and AI providers. It translates the relay protocol into provider-specific formats (Gemini Live, OpenAI Realtime), handles server-side tool calls, manages session lifecycle, and provides observability via Langfuse.
+The relay server is a TypeScript / Node.js WebSocket server that sits between clients and AI providers. It translates the relay protocol into provider-specific formats (Gemini Live, Grok Voice, OpenAI Realtime), handles server-side tool calls, manages session lifecycle, and provides observability via Langfuse.
 
 ## Running
 
@@ -83,9 +83,9 @@ Must be the first message after connecting. Configures the session.
 ```
 
 Fields:
-- `provider` -- `"gemini"` or `"openai"`
-- `voice` -- voice name (Gemini: Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr; OpenAI: any supported voice, default "marin")
-- `model` -- model identifier (default: `gemini-3.1-flash-live-preview` for Gemini, `gpt-realtime-mini` for OpenAI)
+- `provider` -- `"gemini"`, `"xai"`, or `"openai"`
+- `voice` -- voice name (Gemini: Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr; xAI: eve, ara, rex, sal, leo; OpenAI: any supported voice, default "marin")
+- `model` -- model identifier (default: `gemini-3.1-flash-live-preview` for Gemini, `grok-voice-think-fast-1.0` for xAI, `gpt-realtime-mini` for OpenAI)
 - `brainAgent` -- `"enabled"` or `"none"`
 - `apiKey` -- must match `RELAY_API_KEY` if set on the server
 - `conversationHistory` -- prior messages to inject as context (for continuing conversations)
@@ -339,6 +339,15 @@ Common error codes:
 - Rotation: proactive on `goAway`, deferred if tool calls are in flight
 - Context window compression: enabled with sliding window (10k token trigger)
 - Voices: Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr
+
+### xAI Grok Voice
+
+- Model: `grok-voice-think-fast-1.0` (default)
+- Audio: 24kHz PCM16 (native)
+- VAD: server-side
+- Video: not supported
+- Rotation: timer-based (default 50 minutes), transcript summary injected into new session
+- Voices: eve, ara, rex, sal, leo
 
 ### OpenAI Realtime
 

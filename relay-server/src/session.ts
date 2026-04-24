@@ -334,7 +334,7 @@ export class RelaySession {
     this.config = config
     this.startedAt = Date.now()
     // Capture the assembled system prompt so every voice-turn span carries the
-    // full context Gemini / OpenAI Realtime was configured with. Uses the same
+    // full context Gemini / Grok Voice / OpenAI Realtime was configured with. Uses the same
     // buildInstructions the Gemini adapter feeds to the provider, so the trace
     // and the live session see the same string (minus anything the adapter
     // conditionally appends, e.g. tool schemas).

@@ -4,6 +4,7 @@ import type { ProviderAdapter } from "./types.js"
 import { EchoAdapter } from "./echo.js"
 import { OpenAIAdapter } from "./openai.js"
 import { GeminiAdapter } from "./gemini.js"
+import { XAIAdapter } from "./xai.js"
 
 export function createAdapter(provider: string): ProviderAdapter {
   switch (provider) {
@@ -13,6 +14,8 @@ export function createAdapter(provider: string): ProviderAdapter {
       return new OpenAIAdapter()
     case "gemini":
       return new GeminiAdapter()
+    case "xai":
+      return new XAIAdapter()
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

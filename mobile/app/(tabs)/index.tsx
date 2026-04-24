@@ -27,6 +27,10 @@ const MD_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g
 const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?\S*)?)/gi
 const THINKING_MESSAGE_ID = -2
 const LISTENING_MESSAGE_ID = -3
+const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
+const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
+const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
+const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \
@@ -138,6 +142,7 @@ export default function ChatScreen() {
 
   // Refs for pipeline callbacks that need fresh closure values
   const loadMessagesRef = useRef<() => Promise<void>>(async () => {})
+  const startRealtimeCallRef = useRef<() => Promise<boolean>>(async () => false)
 
   const resetPipelineDebugState = useCallback(() => {
     setPipelineDebugState(INITIAL_PIPELINE_DEBUG_STATE)
@@ -365,7 +370,7 @@ export default function ChatScreen() {
       console.log('[Chat] Reconnecting Realtime session')
       setIsConnecting(true)
       try {
-        const success = await startRealtimeCall()
+        const success = await startRealtimeCallRef.current()
         if (!success) throw new Error('Realtime reconnect failed')
       } catch (e) {
         setIsConnecting(false)
@@ -401,7 +406,7 @@ export default function ChatScreen() {
       }
       throw e
     }
-  }, [startRealtimeCall])
+  }, [])
 
   const { state: reconnectState, trigger: triggerReconnect, cancel: cancelReconnect, retry: manualRetry } = useAutoReconnect({
     onReconnect: reconnectCall,
@@ -920,8 +925,8 @@ export default function ChatScreen() {
     if (!conversationId) return false
 
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
-    const voice = (await getSetting('realtime_voice')) || 'Zephyr'
-    const model = (await getSetting('realtime_model')) || 'gemini-3.1-flash-live-preview'
+    const model = normalizeRealtimeModel(await getSetting('realtime_model'))
+    const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
     const apiKey = await getSetting('realtime_api_key')
     const volumeStr = await getSetting('realtime_volume')
     const volume = volumeStr ? parseFloat(volumeStr) : 2.0
@@ -944,10 +949,12 @@ export default function ChatScreen() {
     }
 
     const isGemini = model.startsWith('gemini-')
+    const isXAI = model.startsWith('grok-voice-')
+    const realtimeProvider = isGemini ? 'gemini-realtime' : isXAI ? 'xai-realtime' : 'openai-realtime'
     activeProvidersRef.current = {
-      sttProvider: isGemini ? 'gemini-realtime' : 'openai-realtime',
-      llmProvider: isGemini ? 'gemini-realtime' : 'gpt-4o-mini-realtime',
-      ttsProvider: isGemini ? 'gemini-realtime' : 'openai-realtime',
+      sttProvider: realtimeProvider,
+      llmProvider: realtimeProvider,
+      ttsProvider: realtimeProvider,
     }
 
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -983,6 +990,7 @@ export default function ChatScreen() {
 
     return true
   }, [conversationId, loadMessages, realtime])
+  startRealtimeCallRef.current = startRealtimeCall
 
   const stopRealtimeCall = useCallback(() => {
     cancelReconnect()
@@ -1440,6 +1448,20 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 // --- Helper Functions ---
+
+function normalizeRealtimeModel(model: string | null): typeof REALTIME_MODELS[number] {
+  return (REALTIME_MODELS as readonly string[]).includes(model ?? '')
+    ? model as typeof REALTIME_MODELS[number]
+    : DEFAULT_REALTIME_MODEL
+}
+
+function normalizeRealtimeVoice(model: typeof REALTIME_MODELS[number], voice: string | null): string {
+  if (model.startsWith('grok-voice-')) {
+    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+
+  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
+}
 
 function parseContent(content: string): ContentPart[] {
   const parts: ContentPart[] = []

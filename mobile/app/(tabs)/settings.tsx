@@ -20,18 +20,14 @@ type STTProviderValue = 'apple' | 'deepgram'
 type TTSProviderValue = 'apple' | 'elevenlabs' | 'openai' | 'kokoro'
 
 const OPENAI_TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
-const OPENAI_REALTIME_VOICES = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'marin', 'sage', 'shimmer', 'verse'] as const
-const OPENAI_REALTIME_VOICE_LABELS: Record<typeof OPENAI_REALTIME_VOICES[number], string> = {
-  alloy: 'Alloy (F)',
-  ash: 'Ash (M)',
-  ballad: 'Ballad (M)',
-  cedar: 'Cedar (M)',
-  coral: 'Coral (F)',
-  echo: 'Echo (M)',
-  marin: 'Marin (F)',
-  sage: 'Sage (F)',
-  shimmer: 'Shimmer (F)',
-  verse: 'Verse (M)',
+
+const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
+const XAI_VOICE_LABELS: Record<typeof XAI_VOICES[number], string> = {
+  eve: 'Eve (F)',
+  ara: 'Ara (F)',
+  rex: 'Rex (M)',
+  sal: 'Sal (N)',
+  leo: 'Leo (M)',
 }
 
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
@@ -46,7 +42,8 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Zephyr: 'Zephyr (F)',
 }
 
-type RealtimeModel = 'gpt-realtime-mini' | 'gpt-realtime-1.5' | 'gemini-3.1-flash-live-preview'
+type RealtimeModel = 'gemini-3.1-flash-live-preview' | 'grok-voice-think-fast-1.0'
+const DEFAULT_REALTIME_MODEL: RealtimeModel = 'gemini-3.1-flash-live-preview'
 
 const STAGE_COLORS = {
   stt: '#3b82f6',  // blue-500
@@ -215,15 +212,17 @@ export default function SettingsScreen() {
       const rtUrl = await getSetting('realtime_server_url')
       if (rtUrl) setRealtimeServerUrl(rtUrl)
       const rtVoice = await getSetting('realtime_voice')
-      if (rtVoice) {
-        setRealtimeVoice(rtVoice)
-      }
       const rtKey = await getSetting('realtime_api_key')
       if (rtKey) setRealtimeApiKey(rtKey)
       const rtVol = await getSetting('realtime_volume')
       if (rtVol) setRealtimeVolume(parseFloat(rtVol))
       const rtModel = await getSetting('realtime_model')
-      if (rtModel === 'gpt-realtime-mini' || rtModel === 'gpt-realtime-1.5' || rtModel === 'gemini-3.1-flash-live-preview') setRealtimeModel(rtModel as RealtimeModel)
+      const loadedRealtimeModel = normalizeRealtimeModel(rtModel)
+      setRealtimeModel(loadedRealtimeModel)
+      if (rtModel && rtModel !== loadedRealtimeModel) await setSetting('realtime_model', loadedRealtimeModel)
+      const loadedRealtimeVoice = normalizeRealtimeVoice(loadedRealtimeModel, rtVoice)
+      setRealtimeVoice(loadedRealtimeVoice)
+      if (rtVoice !== loadedRealtimeVoice) await setSetting('realtime_voice', loadedRealtimeVoice)
       const stt = await getSetting('stt_provider')
       if (stt === 'apple' || stt === 'deepgram') setSttProvider(stt)
       const tts = await getSetting('tts_provider')
@@ -320,10 +319,12 @@ export default function SettingsScreen() {
     // Reset voice to a sensible default when switching providers
     const isGemini = v.startsWith('gemini-')
     const currentIsGemini = realtimeVoice.charAt(0) === realtimeVoice.charAt(0).toUpperCase() && GEMINI_VOICES.includes(realtimeVoice as typeof GEMINI_VOICES[number])
+    const isXAI = v.startsWith('grok-voice-')
+    const currentIsXAI = XAI_VOICES.includes(realtimeVoice as typeof XAI_VOICES[number])
     if (isGemini && !currentIsGemini) {
       updateRealtimeVoice('Zephyr')
-    } else if (!isGemini && currentIsGemini) {
-      updateRealtimeVoice('marin')
+    } else if (isXAI && !currentIsXAI) {
+      updateRealtimeVoice('eve')
     }
   }, [saveImmediate, realtimeVoice, updateRealtimeVoice])
 
@@ -498,8 +499,7 @@ export default function SettingsScreen() {
                 <OptionGroup
                   options={[
                     { label: 'Gemini 3.1 Flash Live', value: 'gemini-3.1-flash-live-preview' as const },
-                    { label: 'GPT Realtime Mini', value: 'gpt-realtime-mini' as const, disabled: true, badge: 'Coming Soon' },
-                    { label: 'GPT Realtime 1.5', value: 'gpt-realtime-1.5' as const, disabled: true, badge: 'Coming Soon' },
+                    { label: 'Grok Voice Think Fast 1.0', value: 'grok-voice-think-fast-1.0' as const },
                   ]}
                   value={realtimeModel}
                   onChange={updateRealtimeModel}
@@ -516,7 +516,7 @@ export default function SettingsScreen() {
                   />
                 ) : (
                   <OptionGroup
-                    options={OPENAI_REALTIME_VOICES.map((v) => ({ label: OPENAI_REALTIME_VOICE_LABELS[v], value: v }))}
+                    options={XAI_VOICES.map((v) => ({ label: XAI_VOICE_LABELS[v], value: v }))}
                     value={realtimeVoice}
                     onChange={updateRealtimeVoice}
                   />
@@ -761,6 +761,22 @@ export default function SettingsScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   )
+}
+
+function isRealtimeModel(model: string | null): model is RealtimeModel {
+  return model === 'gemini-3.1-flash-live-preview' || model === 'grok-voice-think-fast-1.0'
+}
+
+function normalizeRealtimeModel(model: string | null): RealtimeModel {
+  return isRealtimeModel(model) ? model : DEFAULT_REALTIME_MODEL
+}
+
+function normalizeRealtimeVoice(model: RealtimeModel, voice: string | null): string {
+  if (model.startsWith('grok-voice-')) {
+    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+
+  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
 }
 
 // --- Helper Components ---

@@ -21,7 +21,17 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Zephyr: 'Zephyr (F)',
 }
 
-type RealtimeModel = 'gpt-realtime-mini' | 'gpt-realtime-1.5' | 'gemini-3.1-flash-live-preview'
+const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
+const XAI_VOICE_LABELS: Record<typeof XAI_VOICES[number], string> = {
+  eve: 'Eve (F)',
+  ara: 'Ara (F)',
+  rex: 'Rex (M)',
+  sal: 'Sal (N)',
+  leo: 'Leo (M)',
+}
+
+type RealtimeModel = 'gemini-3.1-flash-live-preview' | 'grok-voice-think-fast-1.0'
+const DEFAULT_REALTIME_MODEL: RealtimeModel = 'gemini-3.1-flash-live-preview'
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -58,9 +68,13 @@ export function SettingsPage() {
       const key = await getSetting('realtime_api_key')
       if (key) setApiKey(key)
       const m = await getSetting('realtime_model')
-      if (m === 'gpt-realtime-mini' || m === 'gpt-realtime-1.5' || m === 'gemini-3.1-flash-live-preview') setModel(m)
+      const loadedModel = normalizeRealtimeModel(m)
+      setModel(loadedModel)
+      if (m && m !== loadedModel) setSetting('realtime_model', loadedModel)
       const v = await getSetting('realtime_voice')
-      if (v) setVoice(v)
+      const loadedVoice = normalizeRealtimeVoice(loadedModel, v)
+      setVoice(loadedVoice)
+      if (v !== loadedVoice) setSetting('realtime_voice', loadedVoice)
       const vol = await getSetting('realtime_volume')
       if (vol) setVolume(parseFloat(vol))
       const inDev = await getSetting('input_device_id')
@@ -101,12 +115,14 @@ export function SettingsPage() {
     // Reset voice when switching providers
     const isGemini = v.startsWith('gemini-')
     const currentIsGemini = (GEMINI_VOICES as readonly string[]).includes(voice)
+    const isXAI = v.startsWith('grok-voice-')
+    const currentIsXAI = (XAI_VOICES as readonly string[]).includes(voice)
     if (isGemini && !currentIsGemini) {
       setVoice('Zephyr')
       save('realtime_voice', 'Zephyr')
-    } else if (!isGemini && currentIsGemini) {
-      setVoice('marin')
-      save('realtime_voice', 'marin')
+    } else if (isXAI && !currentIsXAI) {
+      setVoice('eve')
+      save('realtime_voice', 'eve')
     }
   }, [save, voice])
 
@@ -215,17 +231,14 @@ export function SettingsPage() {
         <Card className="p-4 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Model</h3>
           <div className="space-y-1.5">
-            {(['gemini-3.1-flash-live-preview', 'gpt-realtime-mini', 'gpt-realtime-1.5'] as const).map((m) => {
-              const isGemini = m.startsWith('gemini-')
-              const disabled = !isGemini
+            {(['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const).map((m) => {
               return (
                 <button
                   key={m}
-                  onClick={() => !disabled && updateModel(m)}
-                  disabled={disabled}
+                  onClick={() => updateModel(m)}
                   className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors
                     ${model === m ? 'border-primary bg-primary/10' : 'border-input'}
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent cursor-pointer'}
+                    hover:bg-accent cursor-pointer
                   `}
                 >
                   <div className={`h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center
@@ -234,13 +247,8 @@ export function SettingsPage() {
                     {model === m && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                   </div>
                   <span className={`text-sm ${model === m ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                    {m === 'gemini-3.1-flash-live-preview' ? 'Gemini 3.1 Flash Live' : m === 'gpt-realtime-mini' ? 'GPT Realtime Mini' : 'GPT Realtime 1.5'}
+                    {m === 'gemini-3.1-flash-live-preview' ? 'Gemini 3.1 Flash Live' : 'Grok Voice Think Fast 1.0'}
                   </span>
-                  {disabled && (
-                    <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      Coming Soon
-                    </span>
-                  )}
                 </button>
               )
             })}
@@ -251,7 +259,7 @@ export function SettingsPage() {
         <Card className="p-4 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Voice</h3>
           <div className="grid grid-cols-2 gap-1.5">
-            {GEMINI_VOICES.map((v) => (
+            {(model.startsWith('gemini-') ? GEMINI_VOICES : XAI_VOICES).map((v) => (
               <button
                 key={v}
                 onClick={() => updateVoice(v)}
@@ -259,7 +267,9 @@ export function SettingsPage() {
                   ${voice === v ? 'border-primary bg-primary/10 font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
                 `}
               >
-                {GEMINI_VOICE_LABELS[v]}
+                {model.startsWith('gemini-')
+                  ? GEMINI_VOICE_LABELS[v as typeof GEMINI_VOICES[number]]
+                  : XAI_VOICE_LABELS[v as typeof XAI_VOICES[number]]}
               </button>
             ))}
           </div>
@@ -382,6 +392,22 @@ export function SettingsPage() {
       </div>
     </div>
   )
+}
+
+function isRealtimeModel(model: string | null): model is RealtimeModel {
+  return model === 'gemini-3.1-flash-live-preview' || model === 'grok-voice-think-fast-1.0'
+}
+
+function normalizeRealtimeModel(model: string | null): RealtimeModel {
+  return isRealtimeModel(model) ? model : DEFAULT_REALTIME_MODEL
+}
+
+function normalizeRealtimeVoice(model: RealtimeModel, voice: string | null): string {
+  if (model.startsWith('grok-voice-')) {
+    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+
+  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
 }
 
 // --- Helper Components ---

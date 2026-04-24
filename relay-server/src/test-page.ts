@@ -51,33 +51,22 @@ export function getTestPageHTML(host: string): string {
     <label>Provider</label>
     <select id="provider">
       <option value="echo">Echo (loopback test)</option>
-      <option value="openai" selected>OpenAI Realtime</option>
       <option value="gemini">Gemini Live</option>
+      <option value="xai" selected>Grok Voice</option>
     </select>
   </div>
 
   <div class="section">
     <label>Model</label>
     <select id="model">
-      <option value="gpt-realtime-mini" data-provider="openai" selected>GPT Realtime Mini</option>
-      <option value="gpt-realtime-1.5" data-provider="openai">GPT Realtime 1.5</option>
       <option value="gemini-3.1-flash-live-preview" data-provider="gemini">Gemini 3.1 Flash Live</option>
+      <option value="grok-voice-think-fast-1.0" data-provider="xai" selected>Grok Voice Think Fast 1.0</option>
     </select>
   </div>
 
   <div class="section">
     <label>Voice</label>
     <select id="voice">
-      <option value="alloy" data-provider="openai">Alloy (N)</option>
-      <option value="ash" data-provider="openai">Ash (M)</option>
-      <option value="ballad" data-provider="openai">Ballad (M)</option>
-      <option value="coral" data-provider="openai">Coral (F)</option>
-      <option value="echo" data-provider="openai">Echo (M)</option>
-      <option value="sage" data-provider="openai">Sage (F)</option>
-      <option value="shimmer" data-provider="openai">Shimmer (F)</option>
-      <option value="verse" data-provider="openai">Verse (M)</option>
-      <option value="marin" data-provider="openai" selected>Marin (F)</option>
-      <option value="cedar" data-provider="openai">Cedar (M)</option>
       <option value="Puck" data-provider="gemini">Puck (M, upbeat)</option>
       <option value="Charon" data-provider="gemini">Charon (M, informative)</option>
       <option value="Fenrir" data-provider="gemini">Fenrir (M, excitable)</option>
@@ -86,6 +75,11 @@ export function getTestPageHTML(host: string): string {
       <option value="Aoede" data-provider="gemini">Aoede (F, breezy)</option>
       <option value="Leda" data-provider="gemini">Leda (F, youthful)</option>
       <option value="Zephyr" data-provider="gemini">Zephyr (F, bright)</option>
+      <option value="eve" data-provider="xai" selected>Eve (F, energetic)</option>
+      <option value="ara" data-provider="xai">Ara (F, warm)</option>
+      <option value="rex" data-provider="xai">Rex (M, confident)</option>
+      <option value="sal" data-provider="xai">Sal (N, smooth)</option>
+      <option value="leo" data-provider="xai">Leo (M, authoritative)</option>
     </select>
   </div>
 
@@ -117,13 +111,13 @@ export function getTestPageHTML(host: string): string {
     const modelSel = document.getElementById("model")
     const voiceSel = document.getElementById("voice")
 
-    const DEFAULT_MODEL = { openai: "gpt-realtime-mini", gemini: "gemini-3.1-flash-live-preview" }
-    const DEFAULT_VOICE = { openai: "marin", gemini: "Zephyr" }
+    const DEFAULT_MODEL = { gemini: "gemini-3.1-flash-live-preview", xai: "grok-voice-think-fast-1.0" }
+    const DEFAULT_VOICE = { gemini: "Zephyr", xai: "eve" }
 
     function syncForProvider() {
-      // Echo is a loopback with no upstream model/voice; treat it as openai for option visibility,
+      // Echo is a loopback with no upstream model/voice; treat it as xAI for option visibility,
       // since the echo adapter ignores both fields.
-      const provider = providerSel.value === "gemini" ? "gemini" : "openai"
+      const provider = providerSel.value === "gemini" ? "gemini" : "xai"
 
       let modelOk = false
       for (const opt of modelSel.options) {

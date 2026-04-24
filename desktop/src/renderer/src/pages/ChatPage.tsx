@@ -18,6 +18,11 @@ import {
   type Message,
 } from '../lib/db'
 
+const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
+const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
+const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
+const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
+
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
@@ -31,6 +36,7 @@ export function ChatPage() {
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
   const [connectionError, setConnectionError] = useState('')
+  const [activeRealtimeModel, setActiveRealtimeModel] = useState('')
   const [showScreenPicker, setShowScreenPicker] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [screenSourceName, setScreenSourceName] = useState('')
@@ -178,14 +184,15 @@ export function ChatPage() {
     setConnectionError('')
     setIsConnecting(true)
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
-    const voice = (await getSetting('realtime_voice')) || 'Zephyr'
-    const model = (await getSetting('realtime_model')) || 'gemini-3.1-flash-live-preview'
+    const model = normalizeRealtimeModel(await getSetting('realtime_model'))
+    const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
     const apiKey = (await getSetting('realtime_api_key')) || ''
     const volume = parseFloat((await getSetting('realtime_volume')) || '1.0')
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
 
+    setActiveRealtimeModel(model)
     realtime.start({
       serverUrl,
       voice,
@@ -211,6 +218,7 @@ export function ChatPage() {
     setIsThinking(false)
     setStreamingText('')
     setIsMuted(false)
+    setActiveRealtimeModel('')
   }, [realtime])
 
   const toggleMute = useCallback(() => {
@@ -228,6 +236,7 @@ export function ChatPage() {
   }, [isCallActive, endCall])
 
   const startScreenShare = useCallback(async (source: ScreenSource) => {
+    if (activeRealtimeModel.startsWith('grok-voice-')) return
     setShowScreenPicker(false)
     const capture = new ScreenCapture()
     capture.setSourceName(source.name)
@@ -242,7 +251,7 @@ export function ChatPage() {
       console.error('[ChatPage] Screen capture failed:', err)
       screenCaptureRef.current = null
     }
-  }, [realtime])
+  }, [activeRealtimeModel, realtime])
 
   const stopScreenShare = useCallback(() => {
     screenCaptureRef.current?.stop()
@@ -257,6 +266,13 @@ export function ChatPage() {
       stopScreenShare()
     }
   }, [isCallActive, isScreenSharing, stopScreenShare])
+
+  const screenShareDisabled = isConnecting || (!isScreenSharing && activeRealtimeModel.startsWith('grok-voice-'))
+  const screenShareTitle = isScreenSharing
+    ? 'Stop screen sharing'
+    : activeRealtimeModel.startsWith('grok-voice-')
+      ? 'Screen sharing is only available with Gemini Live. Grok Voice does not support video input.'
+      : 'Share screen'
 
   // Keyboard shortcuts: Cmd+N (new), Cmd+M (mute), Cmd+E (end call)
   useEffect(() => {
@@ -390,15 +406,17 @@ export function ChatPage() {
             >
               {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={isScreenSharing ? stopScreenShare : () => setShowScreenPicker(true)}
-              className={isScreenSharing ? 'text-green-500' : 'text-foreground'}
-              disabled={isConnecting}
-            >
-              {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
-            </Button>
+            <span title={screenShareTitle} className="inline-flex">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={isScreenSharing ? stopScreenShare : () => setShowScreenPicker(true)}
+                className={isScreenSharing ? 'text-green-500' : screenShareDisabled ? 'text-muted-foreground opacity-50' : 'text-foreground'}
+                disabled={screenShareDisabled}
+              >
+                {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
+              </Button>
+            </span>
             <Button
               variant="destructive"
               size="icon"
@@ -440,4 +458,18 @@ function generateTitle(text: string): string {
   const lastSpace = truncated.lastIndexOf(' ')
   const title = lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated
   return title.trim() + '...'
+}
+
+function normalizeRealtimeModel(model: string | null): typeof REALTIME_MODELS[number] {
+  return (REALTIME_MODELS as readonly string[]).includes(model ?? '')
+    ? model as typeof REALTIME_MODELS[number]
+    : DEFAULT_REALTIME_MODEL
+}
+
+function normalizeRealtimeVoice(model: typeof REALTIME_MODELS[number], voice: string | null): string {
+  if (model.startsWith('grok-voice-')) {
+    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+
+  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
 }
