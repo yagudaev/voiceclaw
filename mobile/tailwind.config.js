@@ -41,6 +41,9 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        brand: {
+          sage: 'hsl(var(--brand-sage))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

@@ -1,10 +1,12 @@
 import { LatencyBadge } from '@/components/latency-badge'
+import { VoiceClawMark } from '@/components/brand/voiceclaw-mark'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, type Message, type LatencyData, type ProviderInfo } from '@/db'
 import { getApiConfig, streamCompletion } from '@/lib/chat'
+import { BRAND } from '@/lib/brand'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
@@ -101,6 +103,7 @@ const INITIAL_PIPELINE_DEBUG_STATE = {
 
 export default function ChatScreen() {
   const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isCallActive, setIsCallActive] = useState(false)
@@ -1045,7 +1048,7 @@ export default function ChatScreen() {
           headerRight: () => (
             <View className="mr-2 flex-row items-center">
               <Pressable testID="new-conversation-button" onPress={startNewConversation} className="p-2">
-                <PlusIcon size={22} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+                <PlusIcon size={22} color={palette.ink} />
               </Pressable>
             </View>
           ),
@@ -1071,8 +1074,13 @@ export default function ChatScreen() {
         }}
         ListEmptyComponent={
           <View testID="empty-chat-placeholder" className="flex-1 items-center justify-center pt-40">
-            <Text className="text-lg text-muted-foreground">Start a conversation</Text>
-            <Text className="mt-1 text-sm text-muted-foreground">Type a message or tap the mic to speak</Text>
+            <View className="mb-5 size-16 items-center justify-center rounded-md border border-border bg-card">
+              <VoiceClawMark size={42} accent />
+            </View>
+            <Text className="text-xl font-semibold text-foreground">VoiceClaw</Text>
+            <Text className="mt-2 max-w-72 text-center text-sm leading-5 text-muted-foreground">
+              Type a message or tap the mic to speak with your agent.
+            </Text>
           </View>
         }
         ListFooterComponent={
@@ -1089,8 +1097,8 @@ export default function ChatScreen() {
       {reconnectState.status === 'reconnecting' && (
         <View className="items-center gap-2 border-t border-border bg-muted/50 px-4 py-3">
           <View className="flex-row items-center gap-2">
-            <ActivityIndicator size="small" color="#f59e0b" />
-            <Text className="text-sm font-medium text-yellow-500">
+            <ActivityIndicator size="small" color={palette.accent} />
+            <Text className="text-sm font-medium text-primary">
               Reconnecting... (attempt {reconnectState.attempt}/{reconnectState.maxAttempts})
             </Text>
           </View>
@@ -1207,7 +1215,7 @@ export default function ChatScreen() {
               <View
                 style={{
                   width: `${Math.min(rmsMetrics.rms * 500, 100)}%`,
-                  backgroundColor: rmsMetrics.gated ? '#ef4444' : rmsMetrics.playbackActive ? '#f59e0b' : '#22c55e',
+                  backgroundColor: rmsMetrics.gated ? palette.destructive : rmsMetrics.playbackActive ? palette.accent : palette.sage,
                 }}
                 className="h-full rounded"
               />
@@ -1218,7 +1226,7 @@ export default function ChatScreen() {
                   top: 0,
                   bottom: 0,
                   width: 2,
-                  backgroundColor: '#ffffff',
+                  backgroundColor: palette.ink,
                 }}
               />
             </View>
@@ -1243,11 +1251,18 @@ export default function ChatScreen() {
         </View>
       )}
 
-      <View testID="input-bar" className="flex-row items-center gap-2 border-t border-border px-4 py-3">
+      <View testID="input-bar" className="flex-row items-center gap-2 border-t border-border bg-card/80 px-4 py-3">
         {!isCallActive && (
-          <Button testID="call-button" variant="secondary" size="icon" className="rounded-full" onPress={toggleCall} disabled={isConnecting}>
+          <Button
+            testID="call-button"
+            variant={isConnecting ? 'default' : 'secondary'}
+            size="icon"
+            className="rounded-full"
+            onPress={toggleCall}
+            disabled={isConnecting}
+          >
             {isConnecting
-              ? <ActivityIndicator size="small" color="#888" />
+              ? <ActivityIndicator size="small" color={colorScheme === 'dark' ? palette.paper : '#FFFAF2'} />
               : <Icon as={MicIcon} size={20} className="text-foreground" />}
           </Button>
         )}
@@ -1275,8 +1290,8 @@ function PartialBubble({ role, text }: { role: 'user' | 'assistant', text: strin
   return (
     <View className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-          isUser ? 'rounded-br-sm bg-primary/60' : 'rounded-bl-sm bg-muted/60'
+        className={`max-w-[80%] rounded-md px-4 py-3 ${
+          isUser ? 'bg-primary/70' : 'border border-border bg-card'
         }`}>
         <Text
           className={`text-sm italic ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
@@ -1288,6 +1303,8 @@ function PartialBubble({ role, text }: { role: 'user' | 'assistant', text: strin
 }
 
 function ThinkingDots() {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
   const dot1 = useRef(new Animated.Value(0.3)).current
   const dot2 = useRef(new Animated.Value(0.3)).current
   const dot3 = useRef(new Animated.Value(0.3)).current
@@ -1320,7 +1337,7 @@ function ThinkingDots() {
             width: 8,
             height: 8,
             borderRadius: 4,
-            backgroundColor: '#aaa',
+            backgroundColor: palette.muted,
             opacity: dot,
           }}
         />
@@ -1330,6 +1347,9 @@ function ThinkingDots() {
 }
 
 function ListeningDots() {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
+  const dotColor = colorScheme === 'dark' ? palette.paper : '#FFFAF2'
   const scale1 = useRef(new Animated.Value(0.4)).current
   const scale2 = useRef(new Animated.Value(0.4)).current
   const scale3 = useRef(new Animated.Value(0.4)).current
@@ -1357,7 +1377,7 @@ function ListeningDots() {
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: '#333',
+            backgroundColor: dotColor,
             opacity: s,
             transform: [{ scale: s }],
           }}
@@ -1368,12 +1388,14 @@ function ListeningDots() {
 }
 
 function ChatImage({ url }: { url: string }) {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   if (error) {
     return (
-      <View className="my-2 items-center justify-center rounded-lg bg-muted/50 p-4">
+      <View className="my-2 items-center justify-center rounded-md bg-muted/50 p-4">
         <Text className="text-xs text-muted-foreground">Image failed to load</Text>
       </View>
     )
@@ -1383,12 +1405,12 @@ function ChatImage({ url }: { url: string }) {
     <View className="my-2">
       {loading && (
         <View className="absolute inset-0 z-10 items-center justify-center">
-          <ActivityIndicator size="small" color="#888" />
+          <ActivityIndicator size="small" color={palette.muted} />
         </View>
       )}
       <Image
         source={{ uri: url }}
-        className="w-full rounded-lg"
+        className="w-full rounded-md"
         style={{ aspectRatio: 1 }}
         resizeMode="cover"
         onLoad={() => setLoading(false)}
@@ -1405,7 +1427,7 @@ function MessageBubble({ message }: { message: Message }) {
   if (message.id === LISTENING_MESSAGE_ID) {
     return (
       <View testID="listening-indicator" className="mb-3 px-4 items-end">
-        <View className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-3">
+        <View className="max-w-[80%] rounded-md bg-primary px-4 py-3">
           <ListeningDots />
         </View>
       </View>
@@ -1415,7 +1437,7 @@ function MessageBubble({ message }: { message: Message }) {
   if (isThinkingPlaceholder) {
     return (
       <View testID="thinking-indicator" className="mb-3 px-4 items-start">
-        <View className="max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+        <View className="max-w-[80%] rounded-md border border-border bg-card px-4 py-3">
           <ThinkingDots />
         </View>
       </View>
@@ -1427,8 +1449,8 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <View testID={`message-bubble-${isUser ? 'user' : 'assistant'}`} className={`mb-3 px-4 ${isUser ? 'items-end' : 'items-start'}`}>
       <View
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-          isUser ? 'rounded-br-sm bg-primary' : 'rounded-bl-sm bg-muted'
+        className={`max-w-[80%] rounded-md px-4 py-3 ${
+          isUser ? 'bg-primary' : 'border border-border bg-card'
         }`}>
         {parts.map((part, i) =>
           part.type === 'image' ? (

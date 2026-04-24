@@ -55,7 +55,7 @@ const SURFACE_NOTES = [
   },
   {
     title: "Mobile",
-    description: "Keep iOS controls native, touch targets generous, and live state impossible to miss.",
+    description: "Keep iOS controls native, touch targets generous, use solid rust for mic/send/live state, and sage for healthy connection state.",
   },
 ] as const
 
@@ -288,7 +288,7 @@ export default function BrandGuidelinesPage() {
           />
           <ImplementationCard
             title="Mobile"
-            description="Keep iOS ergonomics native while preserving the same signal language."
+            description="Use system color scheme, native tab chrome, the shared mark, and regenerated Editorial Quiet app assets."
           />
         </div>
       </GuidelineSection>

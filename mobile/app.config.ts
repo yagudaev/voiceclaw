@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   splash: {
     image: './assets/images/splash.png',
     resizeMode: 'contain',
-    backgroundColor: '#0F0B1E',
+    backgroundColor: '#171310',
   },
   assetBundlePatterns: ['**/*'],
   ios: {
@@ -57,7 +57,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
-      backgroundColor: '#0F0B1E',
+      backgroundColor: '#171310',
     },
     package: bundleId,
   },
