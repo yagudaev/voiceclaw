@@ -4,6 +4,17 @@ export type ElectronAPI = typeof electronAPI
 
 const electronAPI = {
   platform: process.platform,
+  app: {
+    getLaunchAtLogin: () => ipcRenderer.invoke('app:getLaunchAtLogin') as Promise<boolean>,
+    setLaunchAtLogin: (enabled: boolean) =>
+      ipcRenderer.invoke('app:setLaunchAtLogin', enabled) as Promise<boolean>,
+    getServiceStatuses: () =>
+      ipcRenderer.invoke('app:getServiceStatuses') as Promise<
+        Record<string, { state: string; port?: number }>
+      >,
+    getServicePorts: () =>
+      ipcRenderer.invoke('app:getServicePorts') as Promise<Record<string, number>>,
+  },
   db: {
     createConversation: (title?: string) => ipcRenderer.invoke('db:createConversation', title),
     getLatestConversation: () => ipcRenderer.invoke('db:getLatestConversation'),
