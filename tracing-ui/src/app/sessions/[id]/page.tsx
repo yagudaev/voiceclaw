@@ -15,6 +15,8 @@ import { LogsTab, type LogRow } from "@/components/LogsTab"
 import { CostTab } from "@/components/CostTab"
 import { LatencyTab } from "@/components/LatencyTab"
 import { ContextTab } from "@/components/ContextTab"
+import { loadPricingCatalog } from "@/lib/pricing"
+import { computeSessionTotalCost } from "@/lib/session-cost"
 
 export const dynamic = "force-dynamic"
 
@@ -71,7 +73,11 @@ export default async function SessionDetailPage({
     (acc, o) => acc + (o.tokens_input ?? 0) + (o.tokens_output ?? 0),
     0,
   )
-  const totalCost = observations.reduce((acc, o) => acc + (o.cost_usd ?? 0), 0)
+  // Match CostTab's derivation — otherwise the sidebar reads "—" for realtime
+  // voice sessions (the collector rarely fills cost_usd for those spans, but
+  // gen_ai.usage.* + pricing catalog lets us estimate).
+  const pricingCatalog = await loadPricingCatalog()
+  const totalCost = computeSessionTotalCost(observations, pricingCatalog)
   const userId = traces.find((t) => t.user_id)?.user_id ?? null
 
   return (

@@ -1,5 +1,6 @@
 import type { ObservationRow } from "@/lib/db"
-import { computeCost, loadPricingCatalog } from "@/lib/pricing"
+import { loadPricingCatalog } from "@/lib/pricing"
+import { categorizeObservation, costForObservation } from "@/lib/session-cost"
 import { CostDonut } from "./CostDonut"
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -29,20 +30,11 @@ export async function CostTab({
 
   let realtimeTurnCount = 0
   for (const o of observations) {
-    const tokensIn = o.tokens_input ?? 0
-    const tokensOut = o.tokens_output ?? 0
-    const cached = o.tokens_cached ?? 0
-    const reported = o.cost_usd ?? 0
-    const bucketName = categorize(o)
-    if (!bucketName) continue
-    if (bucketName === "Realtime") realtimeTurnCount += 1
-    if (tokensIn + tokensOut === 0 && reported === 0) continue
-    const cost =
-      reported > 0
-        ? reported
-        : computeCost(catalog, o.model, { input: tokensIn, output: tokensOut, cached }).total_usd
-    buckets[bucketName].cost_usd += cost
-    buckets[bucketName].tokens += tokensIn + tokensOut
+    if (categorizeObservation(o) === "Realtime") realtimeTurnCount += 1
+    const row = costForObservation(o, catalog)
+    if (!row) continue
+    buckets[row.category].cost_usd += row.cost_usd
+    buckets[row.category].tokens += row.tokens
   }
   const realtimeMissing = realtimeTurnCount > 0 && buckets.Realtime.tokens === 0
 
@@ -134,18 +126,6 @@ function KpiCard({ label, value }: { label: string; value: string }) {
       <div className="text-lg tabular-nums mt-0.5">{value}</div>
     </div>
   )
-}
-
-function categorize(o: ObservationRow): "Realtime" | "Brain" | null {
-  const name = o.name ?? ""
-  if (name === "openclaw.llm") return "Brain"
-  if (name === "voice-turn") return "Realtime"
-  if (name.startsWith("gemini.") || name.startsWith("openai.") || name.startsWith("realtime.")) {
-    return "Realtime"
-  }
-  const model = (o.model ?? "").toLowerCase()
-  if (model.includes("realtime") || model.includes("live-preview")) return "Realtime"
-  return null
 }
 
 function formatDuration(ms: number): string {

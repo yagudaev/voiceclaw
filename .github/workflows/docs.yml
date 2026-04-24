@@ -23,12 +23,17 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+      # The repo root lists `docs` in the yarn workspaces array, so a plain
+      # `npm install` inside `docs/` walks up, discovers the other workspaces
+      # (notably `desktop` with vite@8), and fails on electron-vite's vite
+      # peer-dep conflict. Install via yarn at the repo root so each workspace
+      # uses its own hoistingLimits and the conflict doesn't surface.
+      - name: Enable corepack
+        run: corepack enable
       - name: Install dependencies
-        working-directory: docs
-        run: npm install
+        run: yarn install --immutable
       - name: Build docs
-        working-directory: docs
-        run: npm run build
+        run: yarn build:docs
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/dist
