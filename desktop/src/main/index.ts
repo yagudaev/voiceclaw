@@ -14,6 +14,8 @@ import { serviceManager } from './services/service-manager'
 import { startBundledOpenClaw } from './services/openclaw-gateway'
 import { ensureDefault as ensureLaunchAtLoginDefault } from './login-items'
 import { initAutoUpdater } from './updater'
+import { ensureOnboardingSchema, resetOnboarding } from './onboarding'
+import { registerAuthDeepLink } from './auth'
 
 const isDev = !app.isPackaged
 
@@ -28,6 +30,15 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
+  ensureOnboardingSchema()
+  // Dev escape hatch: VOICECLAW_RESET_ONBOARDING=1 yarn dev wipes the
+  // wizard cursor before window creation so the wizard reappears at
+  // step 1. Saved keys/devices stay intact.
+  if (isDev && process.env.VOICECLAW_RESET_ONBOARDING === '1') {
+    resetOnboarding()
+  }
+
+  registerAuthDeepLink()
   registerIpcHandlers()
   registerScreenCaptureHandlers()
 

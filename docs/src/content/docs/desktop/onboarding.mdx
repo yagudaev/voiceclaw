@@ -1,0 +1,97 @@
+---
+title: Desktop onboarding wizard
+description: How VoiceClaw's first-run wizard guides users through sign-in, permissions, provider keys, and brain selection — and how it persists progress so users can resume mid-flow.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+The first time you open VoiceClaw on a Mac, a six-step wizard runs before the main app appears. It captures the bare minimum the app needs to make a real call: a working API key, the right macOS permissions, and a chosen brain. Each step writes its result to SQLite as it advances, so quitting mid-flow drops you back exactly where you left off the next time you launch.
+
+## The six steps
+
+<Steps>
+
+1. **Welcome.** A short pitch and a "let's set up" button. No data captured.
+
+2. **Sign in (optional).** Click *Continue with Google* and we open `https://getvoiceclaw.com/api/auth/google/start?target=desktop` in your browser. Google sends you back to a `voiceclaw://auth/callback?ticket=…` deep link. The desktop app POSTs that ticket to `/api/auth/ticket/redeem`, gets a device token back, and stores it encrypted (see *What gets saved* below). Sign-in is fully skippable for v0.1 — keys still work without an account.
+
+3. **Permissions.** Three rows: microphone, screen recording, accessibility. The wizard reads current state via `systemPreferences.getMediaAccessStatus()` and `systemPreferences.isTrustedAccessibilityClient(false)`. Microphone can be requested in-app; the other two open the matching pane in System Settings (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`, etc.). The wizard polls every second while you're on this step, so granting a permission in System Settings flips the row to a green check without you having to click anything else.
+
+4. **Provider key.** Pick Gemini, OpenAI, or Grok. Paste the key, tab out, and the main process fires a cheap read-only call (`GET /v1beta/models?key=…` for Gemini) to confirm it's alive. On 200, the key is encrypted with [`safeStorage.encryptString`](https://www.electronjs.org/docs/latest/api/safe-storage) (Keychain-backed on macOS) and stored in `provider_keys.key_enc`. On 401/403 we surface "That key doesn't look right." and block continuation.
+
+5. **Brain.** Four options: bundled OpenClaw, detected Claude CLI, detected Codex CLI, and a custom HTTP endpoint. Detection happens via `which claude` / `which codex` with homebrew paths injected into `PATH` so login-item launches still resolve.
+
+6. **Smoke test.** Auto-runs a single `generateContent` round trip against your saved Gemini key with the prompt `"Say 'Hi, I'm VoiceClaw' in five words."`. The reply renders in the transcript bubble; latency lands in the route footer. This step is intentionally text-only for v0.1 — full bidirectional Live audio ships in a follow-up.
+
+</Steps>
+
+<Aside type="note" title="Future: real voice on step 6">
+The text-only smoke call is a deliberate descope. The implementation lives in `desktop/src/main/provider-keys.ts:geminiSmokeCall` with a `TODO(voice-test-call)` marker pointing at the follow-up Linear ticket where the bidirectional audio path will land.
+</Aside>
+
+## What gets saved and where
+
+All wizard state lives in the same SQLite file as the rest of the app, at `~/Library/Application Support/VoiceClaw/voiceclaw.db`:
+
+```sql
+CREATE TABLE onboarding_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1), -- single-row table
+  current_step TEXT NOT NULL DEFAULT 'welcome',
+  payload TEXT NOT NULL DEFAULT '{}', -- JSON blob of step results
+  completed_at TEXT -- ISO timestamp set by markOnboardingComplete()
+);
+
+CREATE TABLE provider_keys (
+  provider TEXT PRIMARY KEY, -- 'gemini' | 'openai' | 'xai'
+  key_enc BLOB NOT NULL, -- safeStorage.encryptString output (Keychain-backed)
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE devices (
+  id TEXT PRIMARY KEY, -- device id from /api/auth/ticket/redeem
+  user_id TEXT,
+  user_email TEXT,
+  user_name TEXT,
+  token_enc BLOB NOT NULL, -- safeStorage-encrypted device token
+  platform TEXT,
+  created_at INTEGER NOT NULL
+);
+```
+
+Plaintext API keys and device tokens **never** touch disk. Electron's `safeStorage` wraps them with the macOS Keychain before they reach SQLite, so a stolen `voiceclaw.db` file alone can't recover them.
+
+## Resetting onboarding for testing
+
+Three options, in increasing destructiveness:
+
+- **Top-bar button.** "Start over" in the wizard's top bar pops a confirmation, then resets `current_step` to `welcome` and clears the payload. **Saved keys and devices stay intact** — only the wizard cursor resets.
+- **Env var.** `VOICECLAW_RESET_ONBOARDING=1 yarn dev` does the same reset on launch, before the window paints. Useful for dev iteration.
+- **Nuke the DB.** `rm ~/Library/Application\ Support/VoiceClaw/voiceclaw.db` resets everything: onboarding cursor, saved keys, device tokens, conversation history. Equivalent to a fresh install.
+
+## Deep link scheme
+
+The desktop app registers `voiceclaw://` as a URL handler at startup via `app.setAsDefaultProtocolClient('voiceclaw')`. macOS routes URLs of that scheme to the running instance via the `open-url` event. We accept exactly one shape:
+
+```
+voiceclaw://auth/callback?ticket=<opaque>
+```
+
+The `ticket` query parameter is exchanged for a device token at `https://getvoiceclaw.com/api/auth/ticket/redeem`. If the redeem fails, the wizard surfaces the error inline on the sign-in step instead of silently advancing.
+
+To override the auth host (useful for testing against a Vercel preview deploy), set `VOICECLAW_AUTH_BASE_URL=https://my-preview.vercel.app` before launching. The default is `https://getvoiceclaw.com`.
+
+## IPC surface
+
+The wizard's renderer talks to the main process exclusively through `window.electronAPI.onboarding`, defined in `desktop/src/preload/index.ts`:
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `getState()` | `{ currentStep, payload, completedAt }` | Read on App mount; null `completedAt` means "show wizard." |
+| `updateStep(step, patch)` | merged state | Called on every step transition. Patch merges into existing payload JSON. |
+| `complete()` | merged state | Sets `completed_at = now()`. Called once on the final "Take me in" click. |
+| `reset()` | `{ ok, state? }` | Pops a `dialog.showMessageBox` confirmation; only resets if user confirms. |
+| `startSignIn()` | `{ ok }` | Opens the OAuth URL in the user's browser via `shell.openExternal`. |
+| `onAuthCallback(handler)` | unsubscribe fn | Subscribes to the deep-link event from main. |
+
+Each method is registered via `ipcMain.handle` in `desktop/src/main/ipc-handlers.ts`. The schema is created lazily in `ensureOnboardingSchema()` at app startup, so existing installs upgrade without manual migration.

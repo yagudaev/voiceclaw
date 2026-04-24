@@ -1,6 +1,35 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 export type ElectronAPI = typeof electronAPI
+
+type WizardStepId =
+  | 'welcome'
+  | 'signin'
+  | 'permissions'
+  | 'provider'
+  | 'brain'
+  | 'testcall'
+
+type OnboardingPayload = {
+  signedIn?: boolean
+  permissions?: {
+    mic?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
+    screen?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
+    accessibility?: 'granted' | 'denied' | 'unknown'
+  }
+  provider?: 'gemini' | 'openai' | 'xai'
+  providerKeyValidated?: boolean
+  brain?: 'openclaw' | 'claude' | 'codex' | { url: string }
+  user?: { id?: string; email?: string | null; name?: string | null }
+}
+
+type OnboardingState = {
+  currentStep: WizardStepId
+  payload: OnboardingPayload
+  completedAt: string | null
+}
+
+type AuthCallback = { ok: true; user: { id?: string; email?: string | null; name?: string | null } | null } | { ok: false; error: string }
 
 const electronAPI = {
   platform: process.platform,
@@ -36,6 +65,52 @@ const electronAPI = {
     getSetting: (key: string) => ipcRenderer.invoke('db:getSetting', key),
     setSetting: (key: string, value: string) => ipcRenderer.invoke('db:setSetting', key, value),
     getAllSettings: () => ipcRenderer.invoke('db:getAllSettings'),
+  },
+  onboarding: {
+    getState: () => ipcRenderer.invoke('onboarding:getState') as Promise<OnboardingState>,
+    updateStep: (step: WizardStepId, patch?: OnboardingPayload) =>
+      ipcRenderer.invoke('onboarding:updateStep', step, patch ?? {}) as Promise<OnboardingState>,
+    complete: () => ipcRenderer.invoke('onboarding:complete') as Promise<OnboardingState>,
+    reset: () =>
+      ipcRenderer.invoke('onboarding:reset') as Promise<
+        { ok: false } | { ok: true; state: OnboardingState }
+      >,
+    startSignIn: () => ipcRenderer.invoke('onboarding:startSignIn') as Promise<{ ok: boolean }>,
+    onAuthCallback: (handler: (payload: AuthCallback) => void) => {
+      const wrapped = (_event: IpcRendererEvent, payload: AuthCallback) => handler(payload)
+      ipcRenderer.on('onboarding:auth-callback', wrapped)
+      return () => ipcRenderer.removeListener('onboarding:auth-callback', wrapped)
+    },
+  },
+  permissions: {
+    getMediaStatus: (kind: 'microphone' | 'screen') =>
+      ipcRenderer.invoke('perm:getMediaStatus', kind) as Promise<
+        'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
+      >,
+    requestMic: () => ipcRenderer.invoke('perm:requestMic') as Promise<boolean>,
+    getAccessibility: () => ipcRenderer.invoke('perm:getAccessibility') as Promise<boolean>,
+    openSettings: (pane: 'mic' | 'screen' | 'accessibility') =>
+      ipcRenderer.invoke('perm:openSettings', pane) as Promise<void>,
+  },
+  provider: {
+    listConfigured: () =>
+      ipcRenderer.invoke('provider:listConfigured') as Promise<('gemini' | 'openai' | 'xai')[]>,
+    validateAndSave: (provider: 'gemini' | 'openai' | 'xai', key: string) =>
+      ipcRenderer.invoke('provider:validateAndSave', provider, key) as Promise<
+        { ok: true } | { ok: false; error: string; status?: number }
+      >,
+    geminiSmoke: (prompt: string) =>
+      ipcRenderer.invoke('provider:geminiSmoke', prompt) as Promise<
+        { ok: true; text: string } | { ok: false; error: string }
+      >,
+  },
+  brain: {
+    detect: () =>
+      ipcRenderer.invoke('brain:detect') as Promise<{
+        openclaw: { available: true }
+        claude: { available: boolean; path?: string }
+        codex: { available: boolean; path?: string }
+      }>,
   },
   screen: {
     getSources: () => ipcRenderer.invoke('screen:getSources'),

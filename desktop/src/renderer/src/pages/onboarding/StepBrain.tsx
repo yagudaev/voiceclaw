@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactElement, SVGProps } from 'react'
 import { StepFrame } from './StepFrame'
+import { brainApi, type BrainDetection, type OnboardingPayload } from '../../lib/onboarding-api'
 
 type BrainId = 'openclaw' | 'claude' | 'codex' | 'custom'
 
@@ -14,53 +15,76 @@ type Brain = {
   recommended?: boolean
 }
 
-const BRAINS: Brain[] = [
-  {
-    id: 'openclaw',
-    name: 'OpenClaw (bundled)',
-    character: 'A calm, generalist agent. Does the right thing most of the time.',
-    detail: 'Ships inside VoiceClaw. No separate install, no signing in, no extra ports to worry about.',
-    status: 'bundled',
-    icon: IconBracket,
-    recommended: true,
-  },
-  {
-    id: 'claude',
-    name: 'Claude Code',
-    character: 'The careful one. Great at actual work — code, docs, research.',
-    detail: 'Detected at /usr/local/bin/claude. Already signed in as your account.',
-    status: 'detected',
-    icon: IconC,
-  },
-  {
-    id: 'codex',
-    name: 'Codex CLI',
-    character: 'Fast, terse, no small talk. OpenAI-flavored thinker.',
-    detail: 'Detected at /opt/homebrew/bin/codex.',
-    status: 'detected',
-    icon: IconSlash,
-  },
-  {
-    id: 'custom',
-    name: 'Custom endpoint',
-    character: 'Anything that speaks OpenAI-compatible chat completions.',
-    detail: 'Bring your own agent. Paste the URL and an auth header if you need one.',
-    status: 'custom',
-    icon: IconLink,
-  },
-]
+const PREVIEW_DETECTION: BrainDetection = {
+  openclaw: { available: true },
+  claude: { available: true, path: '/usr/local/bin/claude' },
+  codex: { available: true, path: '/opt/homebrew/bin/codex' },
+}
 
 type Props = {
-  onContinue?: () => void
+  onContinue?: (patch: OnboardingPayload) => void
   onBack?: () => void
   onStartOver?: () => void
   initialBrain?: BrainId
+  initialCustomUrl?: string
+  previewMode?: boolean
 }
 
-export function StepBrain({ onContinue, onBack, onStartOver, initialBrain = 'openclaw' }: Props) {
+export function StepBrain({
+  onContinue,
+  onBack,
+  onStartOver,
+  initialBrain = 'openclaw',
+  initialCustomUrl = '',
+  previewMode = false,
+}: Props) {
   const [selected, setSelected] = useState<BrainId>(initialBrain)
-  const [customUrl, setCustomUrl] = useState('')
-  const canContinue = selected !== 'custom' || customUrl.length > 10
+  const [customUrl, setCustomUrl] = useState(initialCustomUrl)
+  const [detection, setDetection] = useState<BrainDetection>(
+    previewMode
+      ? PREVIEW_DETECTION
+      : {
+          openclaw: { available: true },
+          claude: { available: false },
+          codex: { available: false },
+        },
+  )
+
+  useEffect(() => {
+    if (previewMode) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = await brainApi.detect()
+        if (!cancelled) setDetection(result)
+      } catch (err) {
+        console.warn('[onboarding] brain detect failed', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [previewMode])
+
+  const customUrlValid = isValidHttpUrl(customUrl)
+  const canContinue = selected !== 'custom' || customUrlValid
+
+  const brains: Brain[] = buildBrains(detection)
+  const visibleBrains = brains.filter((brain) => {
+    if (brain.id === 'claude') return detection.claude.available
+    if (brain.id === 'codex') return detection.codex.available
+    return true
+  })
+
+  const handleContinue = () => {
+    if (!canContinue) return
+    let brainPayload: OnboardingPayload['brain']
+    if (selected === 'custom') brainPayload = { url: customUrl.trim() }
+    else if (selected === 'openclaw') brainPayload = 'openclaw'
+    else if (selected === 'claude') brainPayload = 'claude'
+    else brainPayload = 'codex'
+    onContinue?.({ brain: brainPayload })
+  }
 
   return (
     <StepFrame
@@ -69,12 +93,12 @@ export function StepBrain({ onContinue, onBack, onStartOver, initialBrain = 'ope
       eyebrow="05 / Brain"
       title="Who's actually doing the thinking?"
       description="The voice you picked last step handles conversation. The brain does the work — answering questions, running tools, remembering context. Pick one. You can switch later."
-      primaryAction={{ label: 'Continue', onClick: onContinue, disabled: !canContinue }}
+      primaryAction={{ label: 'Continue', onClick: handleContinue, disabled: !canContinue }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       onStartOver={onStartOver}
     >
       <div className="flex flex-col gap-3">
-        {BRAINS.map((brain) => (
+        {visibleBrains.map((brain) => (
           <BrainRow
             key={brain.id}
             brain={brain}
@@ -118,10 +142,75 @@ export function StepBrain({ onContinue, onBack, onStartOver, initialBrain = 'ope
           <p className="mt-3 text-[12px]" style={{ color: 'var(--muted)' }}>
             Must speak the OpenAI chat completions protocol. Streaming responses preferred.
           </p>
+          {customUrl.length > 0 && !customUrlValid ? (
+            <p
+              className="mt-2 text-[12px]"
+              style={{ color: 'var(--accent)' }}
+            >
+              That doesn't look like an http(s):// URL.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </StepFrame>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildBrains(detection: BrainDetection): Brain[] {
+  return [
+    {
+      id: 'openclaw',
+      name: 'OpenClaw (bundled)',
+      character: 'A calm, generalist agent. Does the right thing most of the time.',
+      detail:
+        'Ships inside VoiceClaw. No separate install, no signing in, no extra ports to worry about.',
+      status: 'bundled',
+      icon: IconBracket,
+      recommended: true,
+    },
+    {
+      id: 'claude',
+      name: 'Claude Code',
+      character: 'The careful one. Great at actual work — code, docs, research.',
+      detail: detection.claude.available
+        ? `Detected at ${detection.claude.path ?? 'your PATH'}. Already signed in as your account.`
+        : 'Not detected on this Mac.',
+      status: detection.claude.available ? 'detected' : 'not-detected',
+      icon: IconC,
+    },
+    {
+      id: 'codex',
+      name: 'Codex CLI',
+      character: 'Fast, terse, no small talk. OpenAI-flavored thinker.',
+      detail: detection.codex.available
+        ? `Detected at ${detection.codex.path ?? 'your PATH'}.`
+        : 'Not detected on this Mac.',
+      status: detection.codex.available ? 'detected' : 'not-detected',
+      icon: IconSlash,
+    },
+    {
+      id: 'custom',
+      name: 'Custom endpoint',
+      character: 'Anything that speaks OpenAI-compatible chat completions.',
+      detail: 'Bring your own agent. Paste the URL and an auth header if you need one.',
+      status: 'custom',
+      icon: IconLink,
+    },
+  ]
+}
+
+function isValidHttpUrl(raw: string): boolean {
+  if (!raw) return false
+  try {
+    const parsed = new URL(raw.trim())
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 function BrainRow({

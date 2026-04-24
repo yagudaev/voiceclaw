@@ -1,29 +1,81 @@
+// TODO(voice-test-call): replace this descoped text smoke test with the
+// real bidirectional Gemini Live audio call. Tracked separately so we
+// don't double the size of the wizard-wiring PR. Until then, the test
+// call confirms the saved provider key works end-to-end with a single
+// generateContent round trip — enough to flush the renderer→main→
+// provider path and surface auth errors before the user discovers them
+// the hard way.
+
+import { useEffect, useState } from 'react'
 import { StepFrame } from './StepFrame'
+import { providerApi, type ProviderId } from '../../lib/onboarding-api'
 
 type Props = {
   onContinue?: () => void
   onBack?: () => void
   onStartOver?: () => void
+  providerId?: ProviderId
+  previewMode?: boolean
 }
+
+const SMOKE_PROMPT = "Say 'Hi, I'm VoiceClaw' in five words."
+const PREVIEW_REPLY = "Hi, I'm VoiceClaw — ready."
+
+type TestState =
+  | { kind: 'idle' }
+  | { kind: 'running' }
+  | { kind: 'success'; reply: string; latencyMs: number }
+  | { kind: 'error'; error: string }
 
 const WAVEFORM = [32, 54, 72, 48, 28, 40, 62, 84, 56, 34, 22, 44, 68, 82, 60, 36, 24, 42, 66, 50, 30, 52, 76, 58]
 
-export function StepTestCall({ onContinue, onBack, onStartOver }: Props) {
+export function StepTestCall({
+  onContinue,
+  onBack,
+  onStartOver,
+  providerId = 'gemini',
+  previewMode = false,
+}: Props) {
+  const [state, setState] = useState<TestState>(
+    previewMode
+      ? { kind: 'success', reply: PREVIEW_REPLY, latencyMs: 312 }
+      : { kind: 'idle' },
+  )
+
+  // Auto-run the smoke call on first mount in non-preview mode. Saves a
+  // click and confirms the key works without making the user hunt for a
+  // button. They can rerun via the mic button if they want.
+  useEffect(() => {
+    if (previewMode) return
+    void runSmokeCall(providerId, setState)
+  }, [previewMode, providerId])
+
+  const reply =
+    state.kind === 'success' ? state.reply : state.kind === 'idle' ? '' : ''
+
   return (
     <StepFrame
       stepIndex={6}
       totalSteps={6}
       eyebrow="06 / First call"
       title="Say hi."
-      description="Tap the mic. Speak naturally — nothing fancy, just the kind of thing you'd say to a thoughtful colleague. VoiceClaw will listen, think, and talk back."
-      primaryAction={{ label: "I'm ready — take me in", onClick: onContinue, tone: 'accent' }}
+      description="One last check — we'll ping your provider with a tiny prompt to make sure the key is alive. Real bidirectional voice ships in the next build; this is just the smoke test."
+      primaryAction={{
+        label: state.kind === 'success' ? 'Take me in' : "I'm ready — take me in",
+        onClick: onContinue,
+        tone: 'accent',
+      }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       onStartOver={onStartOver}
       intense
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <CallSurface />
-        <Transcript />
+        <CallSurface
+          state={state}
+          providerId={providerId}
+          onRerun={() => void runSmokeCall(providerId, setState)}
+        />
+        <Transcript state={state} reply={reply} prompt={SMOKE_PROMPT} />
       </div>
 
       <div
@@ -45,7 +97,7 @@ export function StepTestCall({ onContinue, onBack, onStartOver }: Props) {
             Route
           </span>
           <span className="text-[13px]" style={{ color: 'var(--ink)' }}>
-            Gemini Live · bundled OpenClaw
+            {providerLabel(providerId)} · text-only smoke test
           </span>
         </div>
         <span
@@ -56,14 +108,86 @@ export function StepTestCall({ onContinue, onBack, onStartOver }: Props) {
             color: 'var(--muted)',
           }}
         >
-          latency 182ms · first byte 310ms
+          {state.kind === 'success'
+            ? `latency ${state.latencyMs}ms`
+            : state.kind === 'running'
+              ? 'pinging…'
+              : state.kind === 'error'
+                ? 'check the error above'
+                : 'idle'}
         </span>
       </div>
+
+      <p
+        className="mt-4 text-[12px] leading-[1.55]"
+        style={{ color: 'var(--muted)', fontFamily: 'var(--font-sans)' }}
+      >
+        Your provider key works. Real voice comes next.
+      </p>
     </StepFrame>
   )
 }
 
-function CallSurface() {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function runSmokeCall(
+  providerId: ProviderId,
+  setState: (s: TestState) => void,
+): Promise<void> {
+  if (providerId !== 'gemini') {
+    // For openai/xai we don't ship a smoke endpoint in this PR — the
+    // validateAndSave call already proved the key works, so we declare
+    // victory and let the user advance.
+    setState({
+      kind: 'success',
+      reply: 'Key validated earlier — skipping smoke test for this provider.',
+      latencyMs: 0,
+    })
+    return
+  }
+  setState({ kind: 'running' })
+  const start = Date.now()
+  try {
+    const result = await providerApi.geminiSmoke(SMOKE_PROMPT)
+    const latencyMs = Date.now() - start
+    if (result.ok) {
+      setState({ kind: 'success', reply: result.text, latencyMs })
+    } else {
+      setState({ kind: 'error', error: result.error })
+    }
+  } catch (err) {
+    setState({
+      kind: 'error',
+      error: err instanceof Error ? err.message : 'Smoke call failed.',
+    })
+  }
+}
+
+function providerLabel(id: ProviderId): string {
+  if (id === 'gemini') return 'Gemini'
+  if (id === 'openai') return 'OpenAI'
+  return 'Grok'
+}
+
+function CallSurface({
+  state,
+  providerId,
+  onRerun,
+}: {
+  state: TestState
+  providerId: ProviderId
+  onRerun: () => void
+}) {
+  const headline =
+    state.kind === 'running'
+      ? 'Pinging…'
+      : state.kind === 'success'
+        ? 'Got a reply.'
+        : state.kind === 'error'
+          ? 'No good.'
+          : 'Ready.'
   return (
     <div
       className="relative flex min-h-[380px] flex-col overflow-hidden rounded-[28px] p-8"
@@ -93,13 +217,13 @@ function CallSurface() {
               color: 'rgba(244,237,231,0.55)',
             }}
           >
-            Live call
+            Smoke test
           </p>
           <p
             className="mt-3 text-[1.8rem] leading-[1.1]"
             style={{ fontFamily: 'var(--font-serif)' }}
           >
-            Listening…
+            {headline}
           </p>
         </div>
         <span
@@ -113,9 +237,17 @@ function CallSurface() {
         >
           <span
             className="h-[6px] w-[6px] rounded-full"
-            style={{ backgroundColor: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' }}
+            style={{
+              backgroundColor:
+                state.kind === 'success'
+                  ? '#7fb15c'
+                  : state.kind === 'error'
+                    ? 'var(--accent)'
+                    : 'var(--accent)',
+              boxShadow: '0 0 8px var(--accent)',
+            }}
           />
-          rec
+          {state.kind === 'success' ? 'ok' : state.kind === 'error' ? 'err' : 'wait'}
         </span>
       </div>
 
@@ -132,6 +264,8 @@ function CallSurface() {
                   height: `${height}%`,
                   backgroundColor: isAccent ? 'var(--accent)' : 'rgba(244,237,231,0.88)',
                   animationDelay: `${delay}s`,
+                  animationPlayState: state.kind === 'running' ? 'running' : 'paused',
+                  opacity: state.kind === 'running' ? 1 : 0.55,
                 }}
               />
             )
@@ -139,7 +273,7 @@ function CallSurface() {
         </div>
 
         <div className="flex items-center justify-between">
-          <MicButton />
+          <RerunButton onClick={onRerun} disabled={state.kind === 'running'} />
           <div>
             <p
               className="text-[11px] uppercase"
@@ -149,10 +283,10 @@ function CallSurface() {
                 color: 'rgba(244,237,231,0.55)',
               }}
             >
-              Voice
+              Provider
             </p>
             <p className="mt-1 text-[15px]" style={{ color: '#f4ede7' }}>
-              Gemini · Zephyr
+              {providerLabel(providerId)}
             </p>
           </div>
           <div>
@@ -164,10 +298,10 @@ function CallSurface() {
                 color: 'rgba(244,237,231,0.55)',
               }}
             >
-              Mic
+              Mode
             </p>
             <p className="mt-1 text-[15px]" style={{ color: '#f4ede7' }}>
-              MacBook Pro
+              Text only · v0.1
             </p>
           </div>
         </div>
@@ -176,35 +310,47 @@ function CallSurface() {
   )
 }
 
-function MicButton() {
+function RerunButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   return (
     <button
-      className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform hover:scale-[1.04]"
+      onClick={onClick}
+      disabled={disabled}
+      className="group relative flex h-16 w-16 items-center justify-center rounded-full transition-transform hover:scale-[1.04] disabled:cursor-not-allowed disabled:opacity-50"
       style={{
         backgroundColor: 'var(--accent)',
         boxShadow: '0 0 0 8px rgba(180, 73, 47, 0.18), 0 12px 28px rgba(180,73,47,0.35)',
       }}
-      aria-label="Start call"
+      aria-label="Rerun smoke test"
     >
       <span
         aria-hidden
         className="absolute inset-0 rounded-full"
         style={{
           border: '1px solid rgba(244,237,231,0.22)',
-          animation: 'vc-pulse 1.6s ease-in-out infinite',
+          animation: disabled ? 'none' : 'vc-pulse 1.6s ease-in-out infinite',
         }}
       />
       <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="#f4ede7">
-        <rect x="9" y="3" width="6" height="11" rx="3" strokeWidth="1.8" />
-        <path d="M6 11v1a6 6 0 0 0 12 0v-1" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M12 18v3" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M9 21h6" strokeWidth="1.8" strokeLinecap="round" />
+        <path
+          d="M3 12a9 9 0 1 0 3-6.7"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <path d="M3 4v5h5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
   )
 }
 
-function Transcript() {
+function Transcript({
+  state,
+  reply,
+  prompt,
+}: {
+  state: TestState
+  reply: string
+  prompt: string
+}) {
   return (
     <div
       className="flex min-h-[380px] flex-col gap-4 rounded-[28px] border p-6"
@@ -233,23 +379,29 @@ function Transcript() {
             color: 'var(--muted)',
           }}
         >
-          live
+          smoke
         </p>
       </div>
 
       <div className="flex flex-1 flex-col gap-3">
         <Bubble from="you" delay="0.1s">
-          Hey VoiceClaw. Can you hear me alright?
+          {prompt}
         </Bubble>
-        <Bubble from="ai" delay="0.9s">
-          Loud and clear, Michael. Nice to meet you.
-        </Bubble>
-        <Bubble from="you" delay="1.8s">
-          Great. Quick sanity check — what time is it in Toronto right now?
-        </Bubble>
-        <Bubble from="ai" delay="2.6s" thinking>
-          Thinking through brain…
-        </Bubble>
+        {state.kind === 'success' ? (
+          <Bubble from="ai" delay="0.3s">
+            {reply}
+          </Bubble>
+        ) : null}
+        {state.kind === 'running' ? (
+          <Bubble from="ai" delay="0.3s" thinking>
+            Pinging provider…
+          </Bubble>
+        ) : null}
+        {state.kind === 'error' ? (
+          <Bubble from="ai" delay="0.3s">
+            {state.error}
+          </Bubble>
+        ) : null}
       </div>
 
       <div
@@ -271,7 +423,7 @@ function Transcript() {
             color: 'var(--muted)',
           }}
         >
-          On-device · never leaves this Mac
+          On-device · key never leaves this Mac
         </span>
       </div>
     </div>

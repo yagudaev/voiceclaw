@@ -1,14 +1,20 @@
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactElement, SVGProps } from 'react'
 import { StepFrame } from './StepFrame'
+import {
+  permissions,
+  type OnboardingPayload,
+  type PermissionStatus,
+} from '../../lib/onboarding-api'
 
-type PermissionStatus = 'pending' | 'granted' | 'denied'
+type PermissionId = 'mic' | 'screen' | 'accessibility'
 
 type Permission = {
-  id: 'mic' | 'screen' | 'accessibility'
+  id: PermissionId
   name: string
   purpose: string
   detail: string
-  status: PermissionStatus
+  optional: boolean
   icon: (props: SVGProps<SVGSVGElement>) => ReactElement
 }
 
@@ -18,7 +24,7 @@ const PERMISSIONS: Permission[] = [
     name: 'Microphone',
     purpose: 'So your words can reach the AI.',
     detail: 'Audio streams directly to the provider you pick. Nothing lingers on our side.',
-    status: 'granted',
+    optional: false,
     icon: IconMic,
   },
   {
@@ -26,28 +32,99 @@ const PERMISSIONS: Permission[] = [
     name: 'Screen Recording',
     purpose: "So the AI can see what you're looking at, when you ask.",
     detail: 'Off until you start a share. The green dot in the menu bar will tell you.',
-    status: 'pending',
+    optional: true,
     icon: IconScreen,
   },
   {
     id: 'accessibility',
     name: 'Accessibility',
     purpose: 'So push-to-talk works from anywhere.',
-    detail: 'Lets VoiceClaw listen for your hotkey even when another app is focused.',
-    status: 'denied',
+    detail:
+      "Lets VoiceClaw listen for your hotkey even when another app is focused. Skippable, but recommended.",
+    optional: true,
     icon: IconAccessibility,
   },
 ]
 
 type Props = {
-  onContinue?: () => void
+  onContinue?: (patch: OnboardingPayload) => void
   onBack?: () => void
   onSkip?: () => void
   onStartOver?: () => void
+  previewMode?: boolean
 }
 
-export function StepPermissions({ onContinue, onBack, onSkip, onStartOver }: Props) {
-  const allHandled = PERMISSIONS.every((p) => p.status !== 'pending')
+type StatusMap = Record<PermissionId, PermissionStatus | 'granted' | 'denied' | 'unknown'>
+
+const PREVIEW_STATUS: StatusMap = {
+  mic: 'granted',
+  screen: 'not-determined',
+  accessibility: 'denied',
+}
+
+export function StepPermissions({
+  onContinue,
+  onBack,
+  onSkip,
+  onStartOver,
+  previewMode = false,
+}: Props) {
+  const [statuses, setStatuses] = useState<StatusMap>(
+    previewMode
+      ? PREVIEW_STATUS
+      : { mic: 'unknown', screen: 'unknown', accessibility: 'unknown' },
+  )
+
+  const refresh = useCallback(async () => {
+    if (previewMode) return
+    try {
+      const [mic, screen, accessibility] = await Promise.all([
+        permissions.getMediaStatus('microphone'),
+        permissions.getMediaStatus('screen'),
+        permissions.getAccessibility(),
+      ])
+      setStatuses({
+        mic,
+        screen,
+        accessibility: accessibility ? 'granted' : 'denied',
+      })
+    } catch (err) {
+      console.warn('[onboarding] perm refresh failed', err)
+    }
+  }, [previewMode])
+
+  // Initial fetch + 1s poll while on this step. Captures permission
+  // grants the user makes in System Settings without us having to listen
+  // for app focus events explicitly.
+  useEffect(() => {
+    void refresh()
+    if (previewMode) return
+    const id = window.setInterval(() => void refresh(), 1000)
+    return () => window.clearInterval(id)
+  }, [previewMode, refresh])
+
+  const handleAction = async (id: PermissionId, current: PermissionStatus | 'unknown') => {
+    if (previewMode) return
+    if (id === 'mic' && current === 'not-determined') {
+      try {
+        await permissions.requestMic()
+      } catch (err) {
+        console.warn('[onboarding] requestMic failed', err)
+      }
+      void refresh()
+      return
+    }
+    // For screen / accessibility, and for any denied state, jump straight
+    // to the matching pane in System Settings.
+    void permissions.openSettings(id)
+  }
+
+  // We treat the mic as the only required permission. Screen + a11y can
+  // be added later. Allow continue if mic is granted OR not-determined
+  // (user can grant mid-flow), and let the user explicitly skip too.
+  const micUsable = statuses.mic === 'granted' || statuses.mic === 'not-determined'
+  const allHandled = micUsable
+
   return (
     <StepFrame
       stepIndex={3}
@@ -55,14 +132,35 @@ export function StepPermissions({ onContinue, onBack, onSkip, onStartOver }: Pro
       eyebrow="03 / Permissions"
       title="A few things the Mac needs from you."
       description="macOS asks once per permission. If you click the wrong thing, we'll send you to the right pane in System Settings — no terminal gymnastics."
-      primaryAction={{ label: 'Continue', onClick: onContinue, disabled: !allHandled }}
+      primaryAction={{
+        label: 'Continue',
+        onClick: () =>
+          onContinue?.({
+            permissions: {
+              mic: normalizeStatus(statuses.mic),
+              screen: normalizeStatus(statuses.screen),
+              accessibility:
+                statuses.accessibility === 'granted'
+                  ? 'granted'
+                  : statuses.accessibility === 'denied'
+                    ? 'denied'
+                    : 'unknown',
+            },
+          }),
+        disabled: !allHandled,
+      }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       skipAction={{ label: 'Handle this later', onClick: onSkip }}
       onStartOver={onStartOver}
     >
       <div className="flex flex-col gap-4">
         {PERMISSIONS.map((permission) => (
-          <PermissionRow key={permission.id} permission={permission} />
+          <PermissionRow
+            key={permission.id}
+            permission={permission}
+            status={statuses[permission.id] ?? 'unknown'}
+            onAction={() => handleAction(permission.id, statuses[permission.id] ?? 'unknown')}
+          />
         ))}
       </div>
 
@@ -93,8 +191,23 @@ export function StepPermissions({ onContinue, onBack, onSkip, onStartOver }: Pro
   )
 }
 
-function PermissionRow({ permission }: { permission: Permission }) {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type DisplayStatus = 'granted' | 'pending' | 'denied'
+
+function PermissionRow({
+  permission,
+  status,
+  onAction,
+}: {
+  permission: Permission
+  status: PermissionStatus | 'unknown'
+  onAction: () => void
+}) {
   const Icon = permission.icon
+  const display = toDisplayStatus(status)
   return (
     <div
       className="flex items-center gap-5 rounded-[18px] border px-5 py-4"
@@ -128,14 +241,19 @@ function PermissionRow({ permission }: { permission: Permission }) {
         </p>
       </div>
 
-      <StatusPill status={permission.status} />
-      <ActionButton status={permission.status} />
+      <StatusPill status={display} />
+      <ActionButton
+        permissionId={permission.id}
+        status={status}
+        display={display}
+        onAction={onAction}
+      />
     </div>
   )
 }
 
-function StatusPill({ status }: { status: PermissionStatus }) {
-  const styles: Record<PermissionStatus, { bg: string; text: string; label: string }> = {
+function StatusPill({ status }: { status: DisplayStatus }) {
+  const styles: Record<DisplayStatus, { bg: string; text: string; label: string }> = {
     granted: {
       bg: 'rgba(97, 145, 79, 0.14)',
       text: '#3f6230',
@@ -168,17 +286,31 @@ function StatusPill({ status }: { status: PermissionStatus }) {
   )
 }
 
-function ActionButton({ status }: { status: PermissionStatus }) {
-  if (status === 'granted') {
+function ActionButton({
+  permissionId,
+  status,
+  display,
+  onAction,
+}: {
+  permissionId: PermissionId
+  status: PermissionStatus | 'unknown'
+  display: DisplayStatus
+  onAction: () => void
+}) {
+  if (display === 'granted') {
     return (
       <span className="w-[170px] text-right text-[13px]" style={{ color: 'var(--muted)' }}>
         ✓ All set
       </span>
     )
   }
-  const label = status === 'denied' ? 'Open System Settings' : 'Allow'
+  // mic + not-determined → "Allow" (in-app prompt). Everything else
+  // (screen, accessibility, anything denied) → System Settings shortcut.
+  const inAppRequest = permissionId === 'mic' && status === 'not-determined'
+  const label = inAppRequest ? 'Allow' : 'Open System Settings'
   return (
     <button
+      onClick={onAction}
       className="rounded-full border px-5 py-[8px] text-[13px] font-medium transition-colors hover:bg-white/70"
       style={{
         borderColor: 'var(--line-strong)',
@@ -190,6 +322,17 @@ function ActionButton({ status }: { status: PermissionStatus }) {
       {label}
     </button>
   )
+}
+
+function toDisplayStatus(status: PermissionStatus | 'unknown'): DisplayStatus {
+  if (status === 'granted') return 'granted'
+  if (status === 'denied' || status === 'restricted') return 'denied'
+  return 'pending'
+}
+
+function normalizeStatus(raw: PermissionStatus | 'unknown'): PermissionStatus {
+  if (raw === 'unknown') return 'unknown'
+  return raw
 }
 
 function IconMic(props: SVGProps<SVGSVGElement>) {
