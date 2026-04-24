@@ -10,7 +10,7 @@
 
 import { promises as fs } from "node:fs"
 import { homedir } from "node:os"
-import { join, resolve, extname } from "node:path"
+import { join, resolve, extname, basename } from "node:path"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -20,6 +20,16 @@ const MEDIA_ROOT = process.env.VOICECLAW_MEDIA_DIR
 
 // PCM sidecar sample rate keys we accept, in order of preference.
 const SAMPLE_RATE_KEYS = ["sampleRate", "sample_rate_hz", "sample_rate"]
+
+// User audio is captured post-AEC on the iOS client and echo-gated to match
+// what Gemini received (silence frames when the speaker is playing back).
+// Result: the raw user PCM is ~30 dB quieter on average than the assistant.
+// We auto-normalize user-* files at WAV wrap time so browser playback is
+// audible. The on-disk PCM is never mutated — only the streamed copy.
+// Proper fix (capture a separate un-gated mic tap in the iOS native module)
+// tracked as a follow-up; this is the zero-risk viewer-side patch.
+const USER_AUDIO_TARGET_PEAK_I16 = 29000 // ~-1 dB from int16 max (32767)
+const USER_AUDIO_MAX_GAIN = 8 // cap amplification — silent files stay silent
 
 export async function GET(
   _req: Request,
@@ -47,7 +57,9 @@ export async function GET(
 
   if (ext === ".pcm") {
     const sampleRate = await readSampleRate(target)
-    const wav = pcmToWav(bytes, sampleRate, 1)
+    const isUserAudio = basename(target).startsWith("user-")
+    const pcmForWav = isUserAudio ? normalizePcmGain(bytes) : bytes
+    const wav = pcmToWav(pcmForWav, sampleRate, 1)
     return new NextResponse(wav as unknown as BodyInit, {
       status: 200,
       headers: {
@@ -109,6 +121,32 @@ function pcmToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
   buf.writeUInt32LE(dataSize, off); off += 4
   pcm.copy(buf, off)
   return buf
+}
+
+// Scan once for peak absolute sample, compute the gain that would bring the
+// peak to TARGET_PEAK_I16, cap it at MAX_GAIN, and apply in a second pass with
+// clamping to ±32767. Returns a fresh Buffer; input is untouched.
+function normalizePcmGain(pcm: Buffer): Buffer {
+  if (pcm.length < 2) return pcm
+  const sampleCount = Math.floor(pcm.length / 2)
+  let peak = 0
+  for (let i = 0; i < sampleCount; i++) {
+    const s = pcm.readInt16LE(i * 2)
+    const a = Math.abs(s)
+    if (a > peak) peak = a
+  }
+  if (peak === 0) return pcm
+  const gain = Math.min(USER_AUDIO_MAX_GAIN, USER_AUDIO_TARGET_PEAK_I16 / peak)
+  if (gain <= 1.0001) return pcm
+  const out = Buffer.alloc(pcm.length)
+  for (let i = 0; i < sampleCount; i++) {
+    const s = pcm.readInt16LE(i * 2)
+    let scaled = Math.round(s * gain)
+    if (scaled > 32767) scaled = 32767
+    else if (scaled < -32768) scaled = -32768
+    out.writeInt16LE(scaled, i * 2)
+  }
+  return out
 }
 
 function guessContentType(ext: string): string {

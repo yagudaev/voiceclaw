@@ -227,11 +227,20 @@ function numberAttr(attrs: Record<string, unknown>, key: string): number | null 
   return typeof v === "number" ? v : null
 }
 
-// Media rows are emitted by the relay on the voice-turn span using the
-// vendor-neutral `media.<role>.*` attribute family. `<role>` is one of
-// `user_audio`, `assistant_audio`, `user_video` (relay-owned; extend here
-// when new modalities ship). A missing `path` + missing `url` means there's
-// nothing to serve, so we skip the row.
+// Media rows are emitted by the relay on voice-turn spans using the vendor-
+// neutral `media.<role>.*` attribute family.
+//
+// Per-turn (role is one of user_audio / assistant_audio / user_video):
+//   `media.<role>.path`, `media.<role>.duration_ms`, ...
+//
+// Session-scoped (stamped on the final voice-turn span at session finalize):
+//   `media.session_audio.user.path`, `media.session_audio.assistant.path`,
+//   `media.session_audio.peaks_path`, `media.session_video.thumbnails_path`,
+//   plus *.duration_ms and sample_rate. These become separate media rows so
+//   the UI can find them via `kind` without reading raw attributes.
+//
+// A missing `path` + `url` + `langfuse_id` means there's nothing to serve,
+// so we skip the row.
 function extractMediaRows(
   attrs: Record<string, unknown>,
   traceId: string,
@@ -266,6 +275,74 @@ function extractMediaRows(
       start_offset_ms: startOffset,
       file_path: path ?? null,
       langfuse_media_id: langfuseId ?? null,
+    })
+  }
+
+  // Session-scoped rows. Kinds are namespaced as `session_*` so the UI can
+  // distinguish these from per-turn rows without attribute-sniffing.
+  const sessionSampleRate = numberAttr(attrs, "media.session_audio.sample_rate")
+  const sessionUser = stringAttr(attrs, "media.session_audio.user.path")
+  if (sessionUser) {
+    rows.push({
+      trace_id: traceId,
+      span_id: spanId,
+      session_id: sessionId,
+      kind: "session_user_audio",
+      codec: "wav_pcm_s16le",
+      sample_rate_hz: sessionSampleRate,
+      bytes: null,
+      duration_ms: numberAttr(attrs, "media.session_audio.user.duration_ms"),
+      start_offset_ms: 0,
+      file_path: sessionUser,
+      langfuse_media_id: null,
+    })
+  }
+  const sessionAssistant = stringAttr(attrs, "media.session_audio.assistant.path")
+  if (sessionAssistant) {
+    rows.push({
+      trace_id: traceId,
+      span_id: spanId,
+      session_id: sessionId,
+      kind: "session_assistant_audio",
+      codec: "wav_pcm_s16le",
+      sample_rate_hz: sessionSampleRate,
+      bytes: null,
+      duration_ms: numberAttr(attrs, "media.session_audio.assistant.duration_ms"),
+      start_offset_ms: 0,
+      file_path: sessionAssistant,
+      langfuse_media_id: null,
+    })
+  }
+  const peaksPath = stringAttr(attrs, "media.session_audio.peaks_path")
+  if (peaksPath) {
+    rows.push({
+      trace_id: traceId,
+      span_id: spanId,
+      session_id: sessionId,
+      kind: "session_peaks",
+      codec: "json",
+      sample_rate_hz: sessionSampleRate,
+      bytes: null,
+      duration_ms: null,
+      start_offset_ms: 0,
+      file_path: peaksPath,
+      langfuse_media_id: null,
+    })
+  }
+  const thumbsPath = stringAttr(attrs, "media.session_video.thumbnails_path")
+  if (thumbsPath) {
+    rows.push({
+      trace_id: traceId,
+      span_id: spanId,
+      session_id: sessionId,
+      kind: "session_thumbnails",
+      codec: "json",
+      sample_rate_hz: null,
+      bytes: null,
+      duration_ms: null,
+      start_offset_ms: 0,
+      file_path: thumbsPath,
+      langfuse_media_id: null,
     })
   }
   return rows

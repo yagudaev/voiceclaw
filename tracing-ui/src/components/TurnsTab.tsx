@@ -33,18 +33,14 @@ export function TurnsTab({ sessionId, traces, media, sessionStartNs }: TurnsTabP
     [traces, activeTraceId],
   )
 
-  const activeStepSpanId = stepParam ?? activeTrace?.trace_id ?? null
+  // Default to the first real observation (typically the voice-turn root) so
+  // the detail panel opens on actual attrs — not a synthesized empty row.
+  const activeStepSpanId = stepParam ?? activeTrace?.observations[0]?.span_id ?? null
   const activeStep = useMemo(() => {
     if (!activeTrace) return null
-    // The root (voice-turn) span may not appear in observations if only children
-    // were emitted. Match against observations first, then synthesize a root
-    // pseudo-span from the trace header so clicking "#1" always yields a panel.
-    const match = activeTrace.observations.find((o) => o.span_id === activeStepSpanId)
-    if (match) return match
-    if (activeStepSpanId === activeTrace.trace_id) {
-      return syntheticRootObservation(activeTrace)
-    }
-    return activeTrace.observations[0] ?? null
+    return activeTrace.observations.find((o) => o.span_id === activeStepSpanId)
+      ?? activeTrace.observations[0]
+      ?? null
   }, [activeTrace, activeStepSpanId])
 
   const setSelection = useCallback(
@@ -186,23 +182,10 @@ function TimelinePanel({
         <div className="flex items-center justify-between text-xs text-zinc-500">
           <span>
             Timeline ·{" "}
-            <span className="text-zinc-300">{tree.length + 1} spans</span>
+            <span className="text-zinc-300">{tree.length} spans</span>
           </span>
           <span className="tabular-nums">{turnTotalMs.toLocaleString()}ms</span>
         </div>
-
-        <TimelineRow
-          label={trace.name ?? "(unnamed turn)"}
-          spanId={trace.trace_id}
-          isRoot
-          serviceName={trace.observations[0]?.service_name ?? null}
-          startMs={0}
-          durationMs={turnTotalMs}
-          turnTotalMs={turnTotalMs}
-          depth={0}
-          isActive={activeStepSpanId === trace.trace_id}
-          onClick={() => onSelectStep(trace.trace_id)}
-        />
 
         {tree.map((node) => (
           <TimelineRow
@@ -476,6 +459,9 @@ function VideoPlayer({ row, sessionId }: { row: MediaRow; sessionId: string }) {
   )
   const [playing, setPlaying] = useState(false)
   const [frameIdx, setFrameIdx] = useState(0)
+  // Intrinsic aspect of the first loaded frame — used to size the canvas so
+  // wide screens/portraits don't get stretched to fill the container.
+  const [aspect, setAspect] = useState<number | null>(null)
   const mediaPrefix = mediaDirUrlFromFilePath(row.file_path ?? "")
 
   useEffect(() => {
@@ -513,6 +499,9 @@ function VideoPlayer({ row, sessionId }: { row: MediaRow; sessionId: string }) {
       canvas.height = img.naturalHeight
       const ctx = canvas.getContext("2d")
       ctx?.drawImage(img, 0, 0)
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setAspect(img.naturalWidth / img.naturalHeight)
+      }
     }
     img.src = url
   }, [timings, frameIdx, mediaPrefix])
@@ -537,7 +526,11 @@ function VideoPlayer({ row, sessionId }: { row: MediaRow; sessionId: string }) {
           {row.duration_ms != null && ` · ${row.duration_ms}ms`}
         </span>
       </div>
-      <canvas ref={canvasRef} className="w-full max-h-64 rounded bg-black" />
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded bg-black"
+        style={aspect ? { aspectRatio: aspect, height: "auto" } : { maxHeight: "16rem" }}
+      />
       <div className="flex items-center gap-2 text-[11px]">
         <button
           type="button"
@@ -595,34 +588,6 @@ function buildSpanTree(trace: TraceWithObservations): SpanNode[] {
   }
   for (const r of roots) walk(r)
   return flat
-}
-
-function syntheticRootObservation(trace: TraceWithObservations): ObservationRow {
-  // Build a pseudo-span so clicking the "#N" header produces a detail panel
-  // that matches the trace row — this is just for UX, we don't persist it.
-  return {
-    span_id: trace.trace_id,
-    trace_id: trace.trace_id,
-    parent_span_id: null,
-    name: trace.name,
-    observation_type: null,
-    service_name: null,
-    start_time_ns: Number(trace.start_time_ns),
-    end_time_ns: trace.end_time_ns != null ? Number(trace.end_time_ns) : null,
-    duration_ms:
-      trace.end_time_ns != null
-        ? Math.round((Number(trace.end_time_ns) - Number(trace.start_time_ns)) / 1e6)
-        : null,
-    status_code: trace.status,
-    status_message: null,
-    attributes_json: null,
-    events_json: null,
-    model: null,
-    tokens_input: null,
-    tokens_output: null,
-    tokens_cached: null,
-    cost_usd: null,
-  }
 }
 
 function extractBasename(path: string): string | null {

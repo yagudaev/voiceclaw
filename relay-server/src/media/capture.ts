@@ -29,6 +29,18 @@ import { promises as fs } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { log } from "../log.js"
+import {
+  SESSION_DIR_NAME,
+  PEAKS_TARGET_COUNT,
+  THUMBNAIL_MAX_COUNT,
+  buildSessionMediaAttrs,
+  computePeaks,
+  selectThumbnails,
+  writeJsonFile,
+  writeSessionWav,
+  type SessionMediaAttrs,
+  type TurnVideoEntry,
+} from "./session-media.js"
 
 export type MediaCaptureAttrs = {
   // Stamped on the voice-turn span. Vendor-neutral `media.*` prefix.
@@ -47,7 +59,13 @@ export class MediaCapture {
   private config: Required<Omit<MediaCaptureConfig, "enabled">> & { enabled: boolean }
   private sessionDir: string | null = null
   private sessionKey: string | null = null
+  private sessionStartMs: number = 0
   private currentTurn: TurnState | null = null
+  // Per-turn finalize results accumulated so finalizeSession() can stitch
+  // them into session.wav / peaks.json / thumbnails.json without re-reading
+  // every file off disk (paths are enough; contents are streamed at finalize
+  // time for the WAV stitcher and peaks downsampler).
+  private completedTurns: CompletedTurn[] = []
 
   constructor(config: MediaCaptureConfig = {}) {
     const enabled = config.enabled ?? (process.env.VOICECLAW_MEDIA_CAPTURE === "enabled")
@@ -71,6 +89,8 @@ export class MediaCapture {
     const safe = isSafeSegment(sessionKey) ? sessionKey : hashShort(sessionKey)
     this.sessionKey = safe
     this.sessionDir = join(this.config.rootDir, safe)
+    this.sessionStartMs = Date.now()
+    this.completedTurns = []
     try {
       mkdirSync(this.sessionDir, { recursive: true })
     } catch {
@@ -194,7 +214,119 @@ export class MediaCapture {
       attrs["media.user_video.provider"] = "local"
     }
 
+    // Record this turn's summary for later session-level stitching. We keep
+    // paths, not bytes — the session finalize path re-reads files off disk so
+    // in-memory footprint stays O(1) regardless of session length.
+    this.completedTurns.push({
+      turnId: t.turnId,
+      userPcmPath: t.userStream ? t.userPcmPath : null,
+      userBytes: t.userBytes,
+      assistantPcmPath: t.assistantStream ? t.assistantPcmPath : null,
+      assistantBytes: t.assistantBytes,
+      videoDir: t.videoDir && t.videoFrames.length > 0 ? t.videoDir : null,
+      videoFrames: t.videoFrames.slice(),
+      turnStartRelMs: Math.max(0, t.startedAt - this.sessionStartMs),
+    })
+
     return attrs
+  }
+
+  // Finalize the session: stitch per-turn PCMs into session/{user,assistant}.wav,
+  // downsample to peaks.json, and pick representative thumbnails. Returns the
+  // vendor-neutral `media.session_*` attrs the relay should stamp on the final
+  // voice-turn (or a sibling session-level span) so the collector indexes them.
+  //
+  // Idempotent: safe to call multiple times. A second call re-does the writes
+  // with the current turn list, which is what we want if endSession() runs
+  // twice due to an awkward disconnect/cleanup interleaving.
+  async finalizeSession(): Promise<SessionMediaAttrs> {
+    if (!this.config.enabled || !this.sessionDir) return {}
+    if (this.completedTurns.length === 0) return {}
+
+    const sessionMediaDir = join(this.sessionDir, SESSION_DIR_NAME)
+    try {
+      mkdirSync(sessionMediaDir, { recursive: true })
+    } catch {
+      return {}
+    }
+
+    const userPcmPaths = this.completedTurns
+      .filter((t) => t.userPcmPath && t.userBytes > 0)
+      .map((t) => t.userPcmPath as string)
+    const assistantPcmPaths = this.completedTurns
+      .filter((t) => t.assistantPcmPath && t.assistantBytes > 0)
+      .map((t) => t.assistantPcmPath as string)
+
+    const userWavPath = userPcmPaths.length > 0 ? join(sessionMediaDir, "user.wav") : null
+    const assistantWavPath =
+      assistantPcmPaths.length > 0 ? join(sessionMediaDir, "assistant.wav") : null
+    let userBytes = 0
+    let assistantBytes = 0
+    if (userWavPath) {
+      userBytes = await writeSessionWav({
+        pcmPaths: userPcmPaths,
+        outPath: userWavPath,
+        sampleRate: this.config.userSampleRate,
+      }).catch(() => 0)
+    }
+    if (assistantWavPath) {
+      assistantBytes = await writeSessionWav({
+        pcmPaths: assistantPcmPaths,
+        outPath: assistantWavPath,
+        sampleRate: this.config.assistantSampleRate,
+      }).catch(() => 0)
+    }
+
+    // peaks.json — read back whichever WAVs we wrote and downsample their PCM
+    // sections. We strip the 44-byte header since computePeaks operates on
+    // raw PCM16-LE.
+    const userPeaks = await loadWavPcm(userWavPath).then((pcm) => (pcm ? computePeaks(pcm, PEAKS_TARGET_COUNT) : []))
+    const assistantPeaks = await loadWavPcm(assistantWavPath).then((pcm) => (pcm ? computePeaks(pcm, PEAKS_TARGET_COUNT) : []))
+    const peaksPath = userWavPath || assistantWavPath ? join(sessionMediaDir, "peaks.json") : null
+    if (peaksPath) {
+      await writeJsonFile(peaksPath, {
+        user: userPeaks,
+        assistant: assistantPeaks,
+        userDurationMs: estimatePcmDurationMs(userBytes, this.config.userSampleRate, 1),
+        assistantDurationMs: estimatePcmDurationMs(
+          assistantBytes,
+          this.config.assistantSampleRate,
+          1,
+        ),
+        sampleRate: this.config.userSampleRate,
+      })
+    }
+
+    // thumbnails.json — uniformly sample frames across the session.
+    const videoEntries: TurnVideoEntry[] = this.completedTurns
+      .filter((t) => t.videoDir && t.videoFrames.length > 0)
+      .map((t) => ({
+        turnId: t.turnId,
+        videoDir: t.videoDir,
+        frames: t.videoFrames,
+        turnStartMs: t.turnStartRelMs,
+      }))
+    const thumbnailsJson = selectThumbnails(videoEntries, this.sessionDir, THUMBNAIL_MAX_COUNT)
+    const thumbnailsPath =
+      thumbnailsJson.frames.length > 0 ? join(sessionMediaDir, "thumbnails.json") : null
+    if (thumbnailsPath) {
+      await writeJsonFile(thumbnailsPath, thumbnailsJson)
+    }
+
+    return buildSessionMediaAttrs({
+      userWavPath,
+      userDurationMs: estimatePcmDurationMs(userBytes, this.config.userSampleRate, 1),
+      assistantWavPath,
+      assistantDurationMs: estimatePcmDurationMs(
+        assistantBytes,
+        this.config.assistantSampleRate,
+        1,
+      ),
+      sampleRate: this.config.userSampleRate,
+      peaksPath,
+      thumbnailsPath,
+      thumbnailCount: thumbnailsJson.frames.length,
+    })
   }
 
   async endSession(): Promise<void> {
@@ -204,6 +336,7 @@ export class MediaCapture {
     await this.finalizeTurn().catch(() => undefined)
     this.sessionDir = null
     this.sessionKey = null
+    this.completedTurns = []
   }
 
   isEnabled(): boolean {
@@ -226,6 +359,17 @@ type TurnState = {
   videoDirReady: boolean
   videoFrames: { offset_ms: number; file: string }[]
   frameWrites: Promise<void | undefined>[]
+}
+
+type CompletedTurn = {
+  turnId: string
+  userPcmPath: string | null
+  userBytes: number
+  assistantPcmPath: string | null
+  assistantBytes: number
+  videoDir: string | null
+  videoFrames: { offset_ms: number; file: string }[]
+  turnStartRelMs: number
 }
 
 function openTurn(
@@ -320,4 +464,19 @@ export function defaultMediaRoot(): string {
 export function resolveSessionDir(sessionKey: string, rootDir = defaultMediaRoot()): string {
   const safe = isSafeSegment(sessionKey) ? sessionKey : hashShort(sessionKey)
   return resolve(rootDir, safe)
+}
+
+// Read a WAV file written by writeSessionWav and return just its PCM data
+// section (everything past the 44-byte canonical header). Returns null if
+// the path is null or the file can't be read — callers treat null as "no
+// peaks for this track".
+async function loadWavPcm(path: string | null): Promise<Buffer | null> {
+  if (!path) return null
+  try {
+    const buf = await fs.readFile(path)
+    if (buf.length <= 44) return null
+    return buf.subarray(44)
+  } catch {
+    return null
+  }
 }

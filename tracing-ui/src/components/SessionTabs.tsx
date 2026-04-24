@@ -7,7 +7,6 @@ export type TabKey =
   | "cost"
   | "latency"
   | "context"
-  | "raw"
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: "transcript", label: "Transcript" },
@@ -16,7 +15,6 @@ export const TABS: { key: TabKey; label: string }[] = [
   { key: "cost", label: "Cost" },
   { key: "latency", label: "Latency" },
   { key: "context", label: "Context" },
-  { key: "raw", label: "Raw" },
 ]
 
 export function SessionTabs({ sessionId, active }: { sessionId: string; active: TabKey }) {
