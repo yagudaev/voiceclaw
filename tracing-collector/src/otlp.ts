@@ -71,9 +71,15 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
         const spanId = toHex(span.spanId)
         const parentSpanId = span.parentSpanId ? toHex(span.parentSpanId) : null
         const startNs = toNs(span.startTimeUnixNano)
-        const endNs = toNs(span.endTimeUnixNano) ?? null
+        const endNs = toNs(span.endTimeUnixNano)
+        // OTel ns timestamps are ~1.8e18 — past Number.MAX_SAFE_INTEGER (2^53 − 1
+        // ≈ 9e15). Subtract at bigint precision, THEN divide to ms, THEN cast to
+        // Number. Casting ns-scale bigints to Number first (`Number(endNs-startNs)`)
+        // would silently truncate the low digits and distort durations.
         const durationMs =
-          startNs != null && endNs != null ? Math.max(0, Math.round((Number(endNs - startNs)) / 1_000_000)) : null
+          startNs != null && endNs != null
+            ? Math.max(0, Number((endNs - startNs) / 1_000_000n))
+            : null
 
         // Promote usage/cost attrs into columns for fast aggregation.
         const tokensInput =
@@ -97,7 +103,7 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
           kind: span.kind != null ? String(span.kind) : null,
           observation_type: stringAttr(attrs, "langfuse.observation.type"),
           service_name: serviceName,
-          start_time_ns: startNs ?? 0,
+          start_time_ns: startNs ?? 0n,
           end_time_ns: endNs,
           duration_ms: durationMs,
           status_code: span.status?.code != null ? String(span.status.code) : null,
@@ -144,11 +150,8 @@ export async function ingest(buf: Buffer, contentType: string | undefined) {
             (prev?.session_id ?? sessionIdFromResource ?? stringAttr(attrs, "session.id")) ?? null,
           user_id: (prev?.user_id ?? userIdFromResource ?? stringAttr(attrs, "user.id")) ?? null,
           name: prev?.name ?? (isRoot ? span.name ?? null : null),
-          start_time_ns: Math.min(prev?.start_time_ns ?? startNs ?? 0, startNs ?? Number.MAX_SAFE_INTEGER),
-          end_time_ns:
-            prev?.end_time_ns != null && endNs != null
-              ? Math.max(prev.end_time_ns, endNs)
-              : (endNs ?? prev?.end_time_ns ?? null),
+          start_time_ns: minBigInt(prev?.start_time_ns, startNs) ?? 0n,
+          end_time_ns: maxBigInt(prev?.end_time_ns, endNs),
           input_json:
             prev?.input_json ??
             (isRoot ? stringAttr(attrs, "langfuse.observation.input") ?? null : null),
@@ -209,12 +212,40 @@ function toHex(val: string | Uint8Array | undefined): string {
   return Buffer.from(val).toString("hex")
 }
 
-function toNs(val: string | number | bigint | undefined): number | null {
+// OTel wire format delivers ns timestamps as bigint (protobuf uint64 via
+// otlp-transformer), decimal strings (JSON OTLP), or number (when the sender
+// rounded). We normalize to bigint so the downstream pipeline never touches
+// a lossy Number representation. Why bigint: ns values in 2026 are ~1.75e18,
+// far past Number.MAX_SAFE_INTEGER (2^53 − 1 ≈ 9.007e15). `Number(bigint)`
+// silently truncates low bits — it does not throw, it does not warn, it just
+// rounds to the nearest representable double. Two spans 500ns apart become
+// indistinguishable, and that data loss is permanent at ingest.
+function toNs(val: string | number | bigint | undefined): bigint | null {
   if (val == null) return null
-  if (typeof val === "number") return val
-  if (typeof val === "bigint") return Number(val)
-  const n = Number(val)
-  return Number.isFinite(n) ? n : null
+  if (typeof val === "bigint") return val
+  if (typeof val === "number") {
+    if (!Number.isFinite(val)) return null
+    // A sender that delivers ns as a Number has already lost precision on its
+    // side; we preserve what we got rather than inventing digits.
+    return BigInt(Math.trunc(val))
+  }
+  try {
+    return BigInt(val)
+  } catch {
+    return null
+  }
+}
+
+function minBigInt(a: bigint | null | undefined, b: bigint | null | undefined): bigint | null {
+  if (a == null) return b ?? null
+  if (b == null) return a
+  return a < b ? a : b
+}
+
+function maxBigInt(a: bigint | null | undefined, b: bigint | null | undefined): bigint | null {
+  if (a == null) return b ?? null
+  if (b == null) return a
+  return a > b ? a : b
 }
 
 function stringAttr(attrs: Record<string, unknown>, key: string): string | null {
