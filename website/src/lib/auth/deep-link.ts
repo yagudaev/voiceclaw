@@ -5,8 +5,11 @@
 // scheme handler catches it, extracts the ticket, and calls the ticket
 // redeem endpoint to exchange it for a long-lived device token.
 //
-// Desktop uses `voiceclaw://`, mobile variants use `voiceclaw-dev://`
-// / `voiceclaw-staging://` / `voiceclaw://` (prod).
+// Desktop and mobile prod both register `voiceclaw://`. Dev / staging
+// variants of mobile register their own schemes (`voiceclaw-dev://`,
+// `voiceclaw-staging://`), but that's resolved at the app side — the
+// web callback always emits `voiceclaw://` and the ticket's stored
+// `targetPlatform` tells the redeem endpoint which variant to trust.
 
 export type DeepLinkTarget = "desktop" | "mobile"
 
@@ -14,11 +17,12 @@ export function buildAuthCallbackDeepLink(params: {
   target: DeepLinkTarget
   ticket: string
 }): string {
-  const scheme = params.target === "mobile" ? "voiceclaw" : "voiceclaw"
-  // Desktop + mobile prod both use `voiceclaw://`. Dev / staging variants
-  // of mobile register their own schemes; the ticket carries the platform
-  // hint in its DB row so the redeem endpoint knows which to respect.
-  const url = new URL(`${scheme}://auth/callback`)
+  // `target` is kept in the signature (and the DB ticket row) so the
+  // redeem endpoint can enforce desktop-vs-mobile, but the scheme is the
+  // same either way — dev/staging mobile variants register their own
+  // scheme and are routed by the app, not the URL.
+  void params.target
+  const url = new URL("voiceclaw://auth/callback")
   url.searchParams.set("ticket", params.ticket)
   return url.toString()
 }

@@ -22,6 +22,10 @@ export type DeviceTokenClaims = JWTPayload & {
   platform?: string
 }
 
+export function isSigningKeyConfigured(): boolean {
+  return Boolean(process.env.AUTH_JWT_SECRET)
+}
+
 // ---------------------------------------------------------------------------
 // Auth tickets (short-lived, opaque, hashed server-side)
 // ---------------------------------------------------------------------------
@@ -97,8 +101,4 @@ function getSigningKey(): Uint8Array {
     )
   }
   return new TextEncoder().encode(secret)
-}
-
-export function isSigningKeyConfigured(): boolean {
-  return Boolean(process.env.AUTH_JWT_SECRET)
 }

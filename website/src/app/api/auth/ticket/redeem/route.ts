@@ -61,23 +61,27 @@ export async function POST(request: NextRequest) {
     platform: platform ?? undefined,
   })
 
-  // Single transaction: consume ticket + create device. Prevents a race
-  // where a ticket is consumed but the device creation fails.
-  const [, device] = await prisma.$transaction([
-    prisma.authTicket.update({
-      where: { id: row.id },
-      data: { consumedAt: new Date() },
-    }),
-    prisma.device.create({
-      data: {
-        id: deviceId,
-        userId: row.userId,
-        label,
-        platform,
-        tokenHash: token.hash,
-      },
-    }),
-  ])
+  // Atomic consume-or-fail: `updateMany` with `consumedAt: null` returns
+  // the count of rows actually updated. Two concurrent redeems race here
+  // — exactly one wins (count=1), the other sees count=0 and aborts
+  // before we create a duplicate device.
+  const consumed = await prisma.authTicket.updateMany({
+    where: { id: row.id, consumedAt: null },
+    data: { consumedAt: new Date() },
+  })
+  if (consumed.count === 0) {
+    return NextResponse.json({ error: "ticket_already_used" }, { status: 410 })
+  }
+
+  const device = await prisma.device.create({
+    data: {
+      id: deviceId,
+      userId: row.userId,
+      label,
+      platform,
+      tokenHash: token.hash,
+    },
+  })
 
   const user = await prisma.user.findUnique({
     where: { id: row.userId },

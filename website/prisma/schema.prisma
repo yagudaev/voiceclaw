@@ -39,8 +39,6 @@ model User {
 
   devices      Device[]
   authTickets  AuthTicket[]
-
-  @@index([email])
 }
 
 model Device {
