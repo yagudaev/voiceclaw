@@ -311,6 +311,7 @@ export class RelaySession {
       // closes. Otherwise finalize resolves against a dead tracer and the
       // media.* attrs never reach the span.
       await this.finalizeMediaTurn(this.tracer.getActiveTurnId()).catch(() => undefined)
+      await this.finalizeSessionMedia().catch(() => undefined)
       await this.media.endSession().catch(() => undefined)
       this.tracer.endSession()
     }
@@ -366,6 +367,10 @@ export class RelaySession {
     // Order matters: flush turn capture + close media BEFORE the tracer ends
     // so media.* attrs can attach to the still-open voice-turn span.
     await this.finalizeMediaTurn(this.tracer.getActiveTurnId()).catch(() => undefined)
+    // Session-level stitch (user.wav, assistant.wav, peaks.json, thumbnails.json)
+    // lands on whichever turn is still attachable — typically the just-ended
+    // final turn sitting in pendingEnds for PENDING_FLUSH_MS.
+    await this.finalizeSessionMedia().catch(() => undefined)
     await this.media.endSession().catch(() => undefined)
     this.tracer.endSession()
     this.syncTranscriptToBrain()
@@ -391,6 +396,24 @@ export class RelaySession {
       }
     } catch (err) {
       logError(`[session:${this.id}] media finalize failed:`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  // Stitch per-turn captures into session-level files (user.wav, assistant.wav,
+  // peaks.json, thumbnails.json) and stamp the resulting `media.session_*`
+  // attrs on the most-recent-attachable voice-turn span. Called from cleanup()
+  // and handleSessionConfig() (session-replace path).
+  private async finalizeSessionMedia() {
+    if (!this.media.isEnabled()) return
+    const turnId = this.tracer.getRecentTurnIdForAttrs()
+    if (!turnId) return
+    try {
+      const attrs = await this.media.finalizeSession()
+      if (attrs && Object.keys(attrs).length > 0) {
+        this.tracer.attachMediaAttrs(attrs, turnId)
+      }
+    } catch (err) {
+      logError(`[session:${this.id}] session media finalize failed:`, err instanceof Error ? err.message : err)
     }
   }
 

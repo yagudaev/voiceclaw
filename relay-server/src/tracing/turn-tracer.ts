@@ -66,6 +66,18 @@ export class TurnTracer {
     return this.activeTurnId
   }
 
+  // Resolve the most recent turn that can still accept late attribute updates —
+  // the live turn if there is one, otherwise the latest pending-end (whose
+  // generation hasn't been flushed to the exporter yet). Used by the session
+  // finalize path to attach session-scoped media attrs without requiring a
+  // still-active turn: a session that ends cleanly has no activeTurnId but
+  // its final turn is still in pendingEnds for PENDING_FLUSH_MS.
+  getRecentTurnIdForAttrs(): string | null {
+    if (this.activeTurnId) return this.activeTurnId
+    const keys = Array.from(this.pendingEnds.keys())
+    return keys.length > 0 ? keys[keys.length - 1] : null
+  }
+
   startSession(
     sessionId: string,
     userId: string | null,
