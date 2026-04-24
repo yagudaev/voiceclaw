@@ -35,7 +35,7 @@ export function registerIpcHandlers() {
           (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at ASC LIMIT 1) as preview,
           (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
         FROM conversations c
-        ORDER BY c.updated_at DESC`,
+        ORDER BY c.updated_at DESC`
       )
       .all()
   })
@@ -57,7 +57,7 @@ export function registerIpcHandlers() {
     db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(
       title,
       Date.now(),
-      id,
+      id
     )
   })
 
@@ -76,14 +76,14 @@ export function registerIpcHandlers() {
       conversationId: number,
       role: string,
       content: string,
-      latency?: { sttLatencyMs?: number, llmLatencyMs?: number, ttsLatencyMs?: number },
-      providers?: { sttProvider?: string, llmProvider?: string, ttsProvider?: string },
+      latency?: { sttLatencyMs?: number; llmLatencyMs?: number; ttsLatencyMs?: number },
+      providers?: { sttProvider?: string; llmProvider?: string; ttsProvider?: string }
     ) => {
       const db = getDb()
       const now = Date.now()
       const result = db
         .prepare(
-          'INSERT INTO messages (conversation_id, role, content, created_at, stt_latency_ms, llm_latency_ms, tts_latency_ms, stt_provider, llm_provider, tts_provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO messages (conversation_id, role, content, created_at, stt_latency_ms, llm_latency_ms, tts_latency_ms, stt_provider, llm_provider, tts_provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )
         .run(
           conversationId,
@@ -95,7 +95,7 @@ export function registerIpcHandlers() {
           latency?.ttsLatencyMs ?? null,
           providers?.sttProvider ?? null,
           providers?.llmProvider ?? null,
-          providers?.ttsProvider ?? null,
+          providers?.ttsProvider ?? null
         )
       db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conversationId)
       return {
@@ -111,7 +111,7 @@ export function registerIpcHandlers() {
         llm_provider: providers?.llmProvider ?? null,
         tts_provider: providers?.ttsProvider ?? null,
       }
-    },
+    }
   )
 
   ipcMain.handle('db:getMessages', (_e, conversationId: number) => {
@@ -133,13 +133,13 @@ export function registerIpcHandlers() {
   ipcMain.handle('db:setSetting', (_e, key: string, value: string) => {
     const db = getDb()
     db.prepare(
-      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?',
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?'
     ).run(key, value, value)
   })
 
   ipcMain.handle('db:getAllSettings', () => {
     const db = getDb()
-    const rows = db.prepare('SELECT * FROM settings').all() as { key: string, value: string }[]
+    const rows = db.prepare('SELECT * FROM settings').all() as { key: string; value: string }[]
     return Object.fromEntries(rows.map((r) => [r.key, r.value]))
   })
 
@@ -172,8 +172,7 @@ function toHealthUrl(url: string): string | null {
     if (parsed.protocol === 'ws:') parsed.protocol = 'http:'
     else if (parsed.protocol === 'wss:') parsed.protocol = 'https:'
     else return null
-    // Strip /ws path and append /health
-    parsed.pathname = parsed.pathname.replace(/\/ws\/?$/, '')
+    parsed.pathname = parsed.pathname.replace(/\/(?:ws|voiceclaw\/realtime)\/?$/, '')
     parsed.pathname = parsed.pathname.replace(/\/$/, '') + '/health'
     return parsed.toString()
   } catch {

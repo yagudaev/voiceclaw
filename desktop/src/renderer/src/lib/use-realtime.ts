@@ -3,13 +3,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from './audio-engine'
+import type { RealtimeConnectionMode } from './realtime-settings'
 
 export interface RealtimeConfig {
+  connectionMode?: RealtimeConnectionMode
   serverUrl: string
   voice: string
   model?: string
   brainAgent: 'enabled' | 'none'
-  apiKey: string
+  apiKey?: string
   sessionKey?: string
   volume?: number
   inputDeviceId?: string
@@ -20,7 +22,7 @@ export interface RealtimeConfig {
     deviceModel?: string
   }
   instructionsOverride?: string
-  conversationHistory?: { role: 'user' | 'assistant', text: string }[]
+  conversationHistory?: { role: 'user' | 'assistant'; text: string }[]
   tracingEnabled?: boolean
 }
 
@@ -72,7 +74,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     if (!configRef.current?.tracingEnabled) return
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     wsRef.current.send(
-      JSON.stringify({ type: 'client.timing', phase, ms, turnId: turnId ?? undefined }),
+      JSON.stringify({ type: 'client.timing', phase, ms, turnId: turnId ?? undefined })
     )
   }, [])
 
@@ -160,7 +162,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
           break
       }
     },
-    [sendTiming],
+    [sendTiming]
   )
 
   const start = useCallback(
@@ -208,12 +210,12 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             voice: config.voice,
             model: config.model,
             brainAgent: config.brainAgent,
-            apiKey: config.apiKey,
+            apiKey: config.apiKey ?? '',
             sessionKey: config.sessionKey,
             deviceContext: config.deviceContext,
             instructionsOverride: config.instructionsOverride,
             conversationHistory: config.conversationHistory,
-          }),
+          })
         )
 
         // Start mic capture — audio data flows to WebSocket
@@ -243,7 +245,9 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         // Only surface the error on the initial connection attempt.
         // During reconnect, onclose handles retry logic.
         if (!hasConnectedRef.current && reconnectAttemptsRef.current === 0) {
-          callbacksRef.current.onError?.('Could not connect to relay server. Is it running?', 0)
+          const label =
+            config.connectionMode === 'realtime-brain' ? 'OpenClaw real-time brain' : 'relay server'
+          callbacksRef.current.onError?.(`Could not connect to ${label}. Is it running?`, 0)
         }
       }
 
@@ -263,7 +267,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             reconnectAttemptsRef.current += 1
             setIsReconnecting(true)
             console.log(
-              `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`,
+              `[useRealtime] Unexpected disconnect — reconnect attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`
             )
             reconnectTimerRef.current = setTimeout(() => {
               reconnectTimerRef.current = null
@@ -279,7 +283,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         }
       }
     },
-    [handleMessage],
+    [handleMessage]
   )
 
   const stop = useCallback(() => {
