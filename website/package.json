@@ -4,16 +4,23 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
+    "@prisma/client": "^6",
+    "arctic": "^3.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jose": "^6.2.2",
     "lucide-react": "^1.6.0",
     "next": "16.2.4",
+    "prisma": "^6",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "shadcn": "^4.3.0",
