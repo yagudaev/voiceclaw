@@ -4,6 +4,7 @@
 export type ClientEvent =
   | SessionConfigEvent
   | AudioAppendEvent
+  | AudioAppendCaptureOnlyEvent
   | AudioCommitEvent
   | FrameAppendEvent
   | ResponseCreateEvent
@@ -36,6 +37,11 @@ export interface SessionConfigEvent {
 export interface AudioAppendEvent {
   type: "audio.append"
   data: string // base64 PCM16
+}
+
+export interface AudioAppendCaptureOnlyEvent {
+  type: "audio.append_capture_only"
+  data: string // base64 PCM16, local recording only; never forwarded upstream
 }
 
 export interface AudioCommitEvent {

@@ -31,6 +31,7 @@ class RealtimeAudioManager {
     private var softwareGain: Float = 1.0
 
     private let onAudioCaptured: (String) -> Void
+    private let onAudioCapturedRaw: (String) -> Void
     private let onError: (String) -> Void
     private let onLog: (String) -> Void
     private let onRmsMetrics: (Float, Bool, Bool, Float, String) -> Void
@@ -40,11 +41,13 @@ class RealtimeAudioManager {
 
     init(
         onAudioCaptured: @escaping (String) -> Void,
+        onAudioCapturedRaw: @escaping (String) -> Void,
         onError: @escaping (String) -> Void,
         onLog: @escaping (String) -> Void,
         onRmsMetrics: @escaping (Float, Bool, Bool, Float, String) -> Void
     ) {
         self.onAudioCaptured = onAudioCaptured
+        self.onAudioCapturedRaw = onAudioCapturedRaw
         self.onError = onError
         self.onLog = onLog
         self.onRmsMetrics = onRmsMetrics
@@ -102,6 +105,8 @@ class RealtimeAudioManager {
         // Buffer for accumulating downsampled audio
         var accumulatedSamples: [Int16] = []
         accumulatedSamples.reserveCapacity(samplesPerChunk * 2)
+        var rawCaptureSamples: [Int16] = []
+        rawCaptureSamples.reserveCapacity(samplesPerChunk * 2)
 
         var tapCallCount = 0
         var gatedCount = 0
@@ -140,29 +145,34 @@ class RealtimeAudioManager {
                 }
                 // Send silence to keep the audio stream alive
                 self.onAudioCaptured(silenceBase64)
+                appendDownsampledPcm16(
+                    channelData: channelData,
+                    frameCount: frameCount,
+                    downsampleRatio: downsampleRatio,
+                    samplesPerChunk: samplesPerChunk,
+                    into: &rawCaptureSamples,
+                    onChunk: self.onAudioCapturedRaw
+                )
                 return
             }
 
             // Downsample to 24kHz and convert to Int16
-            var i: Double = 0
-            while Int(i) < frameCount {
-                let idx = Int(i)
-                let sample = channelData[idx]
-                let clamped = max(-1.0, min(1.0, sample))
-                let int16Val = Int16(clamped * 32767.0)
-                accumulatedSamples.append(int16Val)
-
-                if accumulatedSamples.count >= samplesPerChunk {
-                    let data = accumulatedSamples.withUnsafeBufferPointer { ptr in
-                        Data(buffer: ptr)
-                    }
-                    let base64 = data.base64EncodedString()
-                    self.onAudioCaptured(base64)
-                    accumulatedSamples.removeAll(keepingCapacity: true)
-                }
-
-                i += downsampleRatio
-            }
+            appendDownsampledPcm16(
+                channelData: channelData,
+                frameCount: frameCount,
+                downsampleRatio: downsampleRatio,
+                samplesPerChunk: samplesPerChunk,
+                into: &accumulatedSamples,
+                onChunk: self.onAudioCaptured
+            )
+            appendDownsampledPcm16(
+                channelData: channelData,
+                frameCount: frameCount,
+                downsampleRatio: downsampleRatio,
+                samplesPerChunk: samplesPerChunk,
+                into: &rawCaptureSamples,
+                onChunk: self.onAudioCapturedRaw
+            )
         }
 
         // Handle audio session interruptions
@@ -275,5 +285,33 @@ class RealtimeAudioManager {
 
     func setDebugMetricsEnabled(_ enabled: Bool) {
         debugMetricsEnabled = enabled
+    }
+}
+
+private func appendDownsampledPcm16(
+    channelData: UnsafePointer<Float>,
+    frameCount: Int,
+    downsampleRatio: Double,
+    samplesPerChunk: Int,
+    into accumulatedSamples: inout [Int16],
+    onChunk: (String) -> Void
+) {
+    var i: Double = 0
+    while Int(i) < frameCount {
+        let idx = Int(i)
+        let sample = channelData[idx]
+        let clamped = max(-1.0, min(1.0, sample))
+        let int16Val = Int16(clamped * 32767.0)
+        accumulatedSamples.append(int16Val)
+
+        if accumulatedSamples.count >= samplesPerChunk {
+            let data = accumulatedSamples.withUnsafeBufferPointer { ptr in
+                Data(buffer: ptr)
+            }
+            onChunk(data.base64EncodedString())
+            accumulatedSamples.removeAll(keepingCapacity: true)
+        }
+
+        i += downsampleRatio
     }
 }

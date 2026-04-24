@@ -6,6 +6,8 @@
 //
 //   user-<turnId>.pcm            mono PCM16 little-endian
 //   user-<turnId>.pcm.json       { "sampleRate": 24000, "channels": 1 }
+//   user-capture-<turnId>.pcm    ungated user mic recording, when client supports it
+//   user-capture-<turnId>.pcm.json
 //   assistant-<turnId>.pcm
 //   assistant-<turnId>.pcm.json
 //   video-<turnId>/0000.jpeg     (one JPEG per frame)
@@ -118,6 +120,14 @@ export class MediaCapture {
     t.userBytes += buf.byteLength
   }
 
+  onUserAudioChunkCaptureOnly(base64Pcm: string): void {
+    const t = this.currentTurn
+    if (!t || !t.userCaptureStream) return
+    const buf = Buffer.from(base64Pcm, "base64")
+    t.userCaptureStream.write(buf)
+    t.userCaptureBytes += buf.byteLength
+  }
+
   onAssistantAudioChunk(base64Pcm: string): void {
     const t = this.currentTurn
     if (!t || !t.assistantStream) return
@@ -166,19 +176,39 @@ export class MediaCapture {
       "media.turn_id": t.turnId,
     }
 
-    if (t.userStream) {
-      await closeStream(t.userStream)
-      const durationMs = estimatePcmDurationMs(t.userBytes, this.config.userSampleRate, 1)
+    if (t.userStream) await closeStream(t.userStream)
+    if (t.userCaptureStream) await closeStream(t.userCaptureStream)
+
+    const preferredUserPath = t.userCaptureBytes > 0 ? t.userCapturePcmPath : t.userPcmPath
+    const preferredUserBytes = t.userCaptureBytes > 0 ? t.userCaptureBytes : t.userBytes
+
+    if (preferredUserBytes > 0) {
+      const durationMs = estimatePcmDurationMs(preferredUserBytes, this.config.userSampleRate, 1)
+      await writeSidecar(preferredUserPath + ".json", {
+        sampleRate: this.config.userSampleRate,
+        channels: 1,
+      })
+      attrs["media.user_audio.path"] = preferredUserPath
+      attrs["media.user_audio.duration_ms"] = durationMs
+      attrs["media.user_audio.sample_rate"] = this.config.userSampleRate
+      attrs["media.user_audio.codec"] = "pcm_s16le"
+      attrs["media.user_audio.bytes"] = preferredUserBytes
+      attrs["media.user_audio.provider"] = "local"
+      if (t.userCaptureBytes > 0) {
+        attrs["media.user_audio.capture_path"] = t.userCapturePcmPath
+        attrs["media.user_audio.capture_bytes"] = t.userCaptureBytes
+        if (t.userBytes > 0) {
+          attrs["media.user_audio.gated_path"] = t.userPcmPath
+          attrs["media.user_audio.gated_bytes"] = t.userBytes
+        }
+      }
+    }
+
+    if (t.userBytes > 0 && preferredUserPath !== t.userPcmPath) {
       await writeSidecar(t.userPcmPath + ".json", {
         sampleRate: this.config.userSampleRate,
         channels: 1,
       })
-      attrs["media.user_audio.path"] = t.userPcmPath
-      attrs["media.user_audio.duration_ms"] = durationMs
-      attrs["media.user_audio.sample_rate"] = this.config.userSampleRate
-      attrs["media.user_audio.codec"] = "pcm_s16le"
-      attrs["media.user_audio.bytes"] = t.userBytes
-      attrs["media.user_audio.provider"] = "local"
     }
 
     if (t.assistantStream) {
@@ -219,8 +249,8 @@ export class MediaCapture {
     // in-memory footprint stays O(1) regardless of session length.
     this.completedTurns.push({
       turnId: t.turnId,
-      userPcmPath: t.userStream ? t.userPcmPath : null,
-      userBytes: t.userBytes,
+      userPcmPath: preferredUserBytes > 0 ? preferredUserPath : null,
+      userBytes: preferredUserBytes,
       assistantPcmPath: t.assistantStream ? t.assistantPcmPath : null,
       assistantBytes: t.assistantBytes,
       videoDir: t.videoDir && t.videoFrames.length > 0 ? t.videoDir : null,
@@ -352,6 +382,9 @@ type TurnState = {
   userPcmPath: string
   userStream: WriteStream | null
   userBytes: number
+  userCapturePcmPath: string
+  userCaptureStream: WriteStream | null
+  userCaptureBytes: number
   assistantPcmPath: string
   assistantStream: WriteStream | null
   assistantBytes: number
@@ -378,9 +411,11 @@ function openTurn(
   _cfg: Required<Omit<MediaCaptureConfig, "enabled">> & { enabled: boolean },
 ): TurnState {
   const userPath = join(sessionDir, `user-${turnId}.pcm`)
+  const userCapturePath = join(sessionDir, `user-capture-${turnId}.pcm`)
   const assistantPath = join(sessionDir, `assistant-${turnId}.pcm`)
   const videoDir = join(sessionDir, `video-${turnId}`)
   const userStream = openStreamOrNull(userPath, "user")
+  const userCaptureStream = openStreamOrNull(userCapturePath, "user-capture")
   const assistantStream = openStreamOrNull(assistantPath, "assistant")
   // Video dir is created lazily on first frame to avoid scattering empty
   // `video-<turnId>/` dirs for audio-only turns.
@@ -391,6 +426,9 @@ function openTurn(
     userPcmPath: userPath,
     userStream,
     userBytes: 0,
+    userCapturePcmPath: userCapturePath,
+    userCaptureStream,
+    userCaptureBytes: 0,
     assistantPcmPath: assistantPath,
     assistantStream,
     assistantBytes: 0,
