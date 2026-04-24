@@ -9,6 +9,13 @@ import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
 import { useConversationContext } from '../lib/conversation-context'
 import {
+  isRealtimeConnectionMode,
+  LEGACY_REALTIME_SERVER_URL_SETTING,
+  REALTIME_CONNECTION_MODE_SETTING,
+  resolveServerUrlForMode,
+  serverUrlSettingKeyForMode,
+} from '../lib/realtime-settings'
+import {
   addMessage,
   createConversation,
   getLatestConversation,
@@ -20,7 +27,16 @@ import {
 
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
 const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
-const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
+const GEMINI_VOICES = [
+  'Puck',
+  'Charon',
+  'Kore',
+  'Fenrir',
+  'Aoede',
+  'Leda',
+  'Orus',
+  'Zephyr',
+] as const
 const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
 export function ChatPage() {
@@ -168,7 +184,7 @@ export function ChatPage() {
       setStreamingText('')
     },
     onError: (message) => {
-      console.error('[ChatPage] Relay error:', message)
+      console.error('[ChatPage] Realtime error:', message)
       setConnectionError(message)
       setIsConnecting(false)
       setIsCallActive(false)
@@ -183,7 +199,12 @@ export function ChatPage() {
   const startCall = useCallback(async () => {
     setConnectionError('')
     setIsConnecting(true)
-    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const savedMode = await getSetting(REALTIME_CONNECTION_MODE_SETTING)
+    const connectionMode = isRealtimeConnectionMode(savedMode) ? savedMode : 'relay'
+    const savedUrl = await getSetting(serverUrlSettingKeyForMode(connectionMode))
+    const legacyUrl =
+      connectionMode === 'relay' ? await getSetting(LEGACY_REALTIME_SERVER_URL_SETTING) : null
+    const serverUrl = resolveServerUrlForMode(connectionMode, savedUrl || legacyUrl)
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
     const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
     const apiKey = (await getSetting('realtime_api_key')) || ''
@@ -194,6 +215,7 @@ export function ChatPage() {
 
     setActiveRealtimeModel(model)
     realtime.start({
+      connectionMode,
       serverUrl,
       voice,
       model,
@@ -235,23 +257,26 @@ export function ChatPage() {
     titleGeneratedRef.current = false
   }, [isCallActive, endCall])
 
-  const startScreenShare = useCallback(async (source: ScreenSource) => {
-    if (activeRealtimeModel.startsWith('grok-voice-')) return
-    setShowScreenPicker(false)
-    const capture = new ScreenCapture()
-    capture.setSourceName(source.name)
-    screenCaptureRef.current = capture
-    try {
-      await capture.start(source.id, (base64Jpeg) => {
-        realtime.sendFrame(base64Jpeg)
-      })
-      setIsScreenSharing(true)
-      setScreenSourceName(source.name)
-    } catch (err) {
-      console.error('[ChatPage] Screen capture failed:', err)
-      screenCaptureRef.current = null
-    }
-  }, [activeRealtimeModel, realtime])
+  const startScreenShare = useCallback(
+    async (source: ScreenSource) => {
+      if (activeRealtimeModel.startsWith('grok-voice-')) return
+      setShowScreenPicker(false)
+      const capture = new ScreenCapture()
+      capture.setSourceName(source.name)
+      screenCaptureRef.current = capture
+      try {
+        await capture.start(source.id, (base64Jpeg) => {
+          realtime.sendFrame(base64Jpeg)
+        })
+        setIsScreenSharing(true)
+        setScreenSourceName(source.name)
+      } catch (err) {
+        console.error('[ChatPage] Screen capture failed:', err)
+        screenCaptureRef.current = null
+      }
+    },
+    [activeRealtimeModel, realtime]
+  )
 
   const stopScreenShare = useCallback(() => {
     screenCaptureRef.current?.stop()
@@ -267,7 +292,8 @@ export function ChatPage() {
     }
   }, [isCallActive, isScreenSharing, stopScreenShare])
 
-  const screenShareDisabled = isConnecting || (!isScreenSharing && activeRealtimeModel.startsWith('grok-voice-'))
+  const screenShareDisabled =
+    isConnecting || (!isScreenSharing && activeRealtimeModel.startsWith('grok-voice-'))
   const screenShareTitle = isScreenSharing
     ? 'Stop screen sharing'
     : activeRealtimeModel.startsWith('grok-voice-')
@@ -304,13 +330,11 @@ export function ChatPage() {
   }, [isCallActive, newConversation, toggleMute, endCall])
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="text-sm text-muted-foreground">
-          {messages.length > 0
-            ? `${messages.length} messages`
-            : 'Start a conversation'}
+          {messages.length > 0 ? `${messages.length} messages` : 'Start a conversation'}
         </div>
         <Button variant="ghost" size="sm" onClick={newConversation}>
           <Plus size={16} className="mr-1" />
@@ -321,10 +345,10 @@ export function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !isCallActive && (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <div className="text-4xl mb-4">🎙</div>
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <div className="mb-4 text-4xl">🎙</div>
             <p className="text-lg font-medium">VoiceClaw Desktop</p>
-            <p className="text-sm mt-1">Press the call button to start a voice conversation</p>
+            <p className="mt-1 text-sm">Press the call button to start a voice conversation</p>
           </div>
         )}
         {messages.map((msg) => (
@@ -332,25 +356,23 @@ export function ChatPage() {
         ))}
         {/* Streaming text */}
         {streamingText && (
-          <div className={`flex ${streamingRole === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
+          <div
+            className={`flex ${streamingRole === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
             <div
-              className={`
-                max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
-                ${streamingRole === 'user'
-                  ? 'bg-primary text-primary-foreground rounded-br-md'
-                  : 'bg-muted text-foreground rounded-bl-md'
-                }
-              `}
-            >
+              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                streamingRole === 'user'
+                  ? 'rounded-br-md bg-primary text-primary-foreground'
+                  : 'rounded-bl-md bg-muted text-foreground'
+              } `}>
               <span className="whitespace-pre-wrap">{streamingText}</span>
-              <span className="inline-block w-0.5 h-4 bg-current animate-pulse ml-0.5 align-middle" />
+              <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current align-middle" />
             </div>
           </div>
         )}
         {/* Thinking indicator */}
         {isThinking && !streamingText && (
-          <div className="flex justify-start mb-3">
-            <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
+          <div className="mb-3 flex justify-start">
+            <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-2.5">
               <ThinkingDots />
             </div>
           </div>
@@ -360,13 +382,12 @@ export function ChatPage() {
 
       {/* Screen sharing indicator */}
       {isScreenSharing && (
-        <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-green-500">
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-green-500">
           <Monitor size={14} />
           <span className="truncate">Sharing: {screenSourceName}</span>
           <button
             onClick={stopScreenShare}
-            className="ml-auto text-muted-foreground hover:text-destructive transition-colors"
-          >
+            className="ml-auto text-muted-foreground transition-colors hover:text-destructive">
             Stop
           </button>
         </div>
@@ -381,18 +402,15 @@ export function ChatPage() {
 
       {/* Connection error */}
       {connectionError && (
-        <div className="mx-4 mt-2 px-3 py-2 rounded-md bg-destructive/10 text-destructive text-sm text-center">
+        <div className="bg-destructive/10 mx-4 mt-2 rounded-md px-3 py-2 text-center text-sm text-destructive">
           {connectionError}
         </div>
       )}
 
       {/* Call controls */}
-      <div className="px-4 py-3 border-t border-border flex items-center justify-center gap-3">
+      <div className="flex items-center justify-center gap-3 border-t border-border px-4 py-3">
         {!isCallActive && !isConnecting ? (
-          <Button
-            onClick={startCall}
-            className="bg-green-500 hover:bg-green-600 text-white px-6"
-          >
+          <Button onClick={startCall} className="bg-green-500 px-6 text-white hover:bg-green-600">
             <Phone size={18} className="mr-2" />
             Start Call
           </Button>
@@ -402,8 +420,7 @@ export function ChatPage() {
               variant="ghost"
               size="icon"
               onClick={toggleMute}
-              className={isMuted ? 'text-destructive' : 'text-foreground'}
-            >
+              className={isMuted ? 'text-destructive' : 'text-foreground'}>
               {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
             </Button>
             <span title={screenShareTitle} className="inline-flex">
@@ -411,25 +428,25 @@ export function ChatPage() {
                 variant="ghost"
                 size="icon"
                 onClick={isScreenSharing ? stopScreenShare : () => setShowScreenPicker(true)}
-                className={isScreenSharing ? 'text-green-500' : screenShareDisabled ? 'text-muted-foreground opacity-50' : 'text-foreground'}
-                disabled={screenShareDisabled}
-              >
+                className={
+                  isScreenSharing
+                    ? 'text-green-500'
+                    : screenShareDisabled
+                      ? 'text-muted-foreground opacity-50'
+                      : 'text-foreground'
+                }
+                disabled={screenShareDisabled}>
                 {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
               </Button>
             </span>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={endCall}
-              disabled={isConnecting}
-            >
+            <Button variant="destructive" size="icon" onClick={endCall} disabled={isConnecting}>
               <PhoneOff size={20} />
             </Button>
             {isConnecting && (
-              <span className="text-sm text-muted-foreground animate-pulse">Connecting...</span>
+              <span className="animate-pulse text-sm text-muted-foreground">Connecting...</span>
             )}
             {realtime.isReconnecting && (
-              <span className="text-sm text-yellow-500 animate-pulse">Reconnecting...</span>
+              <span className="animate-pulse text-sm text-yellow-500">Reconnecting...</span>
             )}
           </>
         )}
@@ -460,13 +477,16 @@ function generateTitle(text: string): string {
   return title.trim() + '...'
 }
 
-function normalizeRealtimeModel(model: string | null): typeof REALTIME_MODELS[number] {
+function normalizeRealtimeModel(model: string | null): (typeof REALTIME_MODELS)[number] {
   return (REALTIME_MODELS as readonly string[]).includes(model ?? '')
-    ? model as typeof REALTIME_MODELS[number]
+    ? (model as (typeof REALTIME_MODELS)[number])
     : DEFAULT_REALTIME_MODEL
 }
 
-function normalizeRealtimeVoice(model: typeof REALTIME_MODELS[number], voice: string | null): string {
+function normalizeRealtimeVoice(
+  model: (typeof REALTIME_MODELS)[number],
+  voice: string | null
+): string {
   if (model.startsWith('grok-voice-')) {
     return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
   }
