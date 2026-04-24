@@ -1,0 +1,41 @@
+# Auto-generate a "release PR" each time conventional-commit changes land on
+# main. Merging the release PR bumps version files + CHANGELOG.md and pushes
+# the matching tag. The desktop tag (`v*.*.*`) then triggers
+# `release-desktop.yml` which builds + publishes the signed DMG.
+#
+# Docs: https://github.com/googleapis/release-please-action
+#
+# Config:
+#   - release-please-config.json    — per-package release-type + tag scheme
+#   - .release-please-manifest.json — source of truth for current versions
+#
+# Tag scheme (from release-please-config.json):
+#   desktop → v0.1.0, v0.1.1, …   (triggers release-desktop.yml)
+#   mobile  → mobile-v0.1.0, …
+#   website → website-v0.1.0, …
+#   docs    → docs-v0.1.0, …
+
+name: Release please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # Let the action discover config + manifest at the repo root.
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Default GITHUB_TOKEN is sufficient for opening PRs + pushing tags
+          # in the same repo.
+          token: ${{ secrets.GITHUB_TOKEN }}

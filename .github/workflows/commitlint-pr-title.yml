@@ -1,0 +1,52 @@
+# Validate that pull-request titles follow Conventional Commits
+# (https://www.conventionalcommits.org/). Because we squash-merge every PR,
+# the PR title becomes the single commit that release-please reads — so this
+# check is what keeps the changelog clean. We intentionally do NOT lint
+# individual commits on feature branches.
+
+name: Commitlint PR title
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Allowed Conventional-Commit types. Keep in sync with
+          # release-please-config.json → changelog-sections.
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            revert
+            docs
+            build
+            ci
+            test
+            style
+            chore
+          # Subjects must start lowercase (e.g. "feat: add download page",
+          # not "feat: Add download page") so the generated changelog stays
+          # uniform.
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The PR title subject ("${subject}") must start with a lowercase letter.
+            Example: "feat: add download page" (not "feat: Add download page").
+          # Breaking changes can be signalled with `!` in the header
+          # (e.g. `feat!: drop node 18 support`) or a `BREAKING CHANGE:`
+          # footer in the body.
+          requireScope: false

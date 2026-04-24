@@ -101,6 +101,12 @@ export default defineConfig({
             { slug: 'tracing/session-media', label: 'Session media timeline' },
           ],
         },
+        {
+          label: 'Development',
+          items: [
+            { slug: 'development/releasing', label: 'Releasing and versioning' },
+          ],
+        },
       ],
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
