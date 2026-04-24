@@ -15,7 +15,6 @@ import { LogsTab, type LogRow } from "@/components/LogsTab"
 import { CostTab } from "@/components/CostTab"
 import { LatencyTab } from "@/components/LatencyTab"
 import { ContextTab } from "@/components/ContextTab"
-import { RawTab } from "@/components/RawTab"
 
 export const dynamic = "force-dynamic"
 
@@ -189,8 +188,6 @@ function TabContent({
       return <LatencyTab traces={traces} />
     case "context":
       return <ContextTab observations={observations} />
-    case "raw":
-      return <RawTab observations={observations} sessionStartNs={startNs} />
   }
 }
 
