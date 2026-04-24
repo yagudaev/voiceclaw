@@ -55,7 +55,7 @@ const SURFACE_NOTES = [
   },
   {
     title: "Mobile",
-    description: "Keep iOS controls native, touch targets generous, and live state impossible to miss.",
+    description: "Keep iOS controls native, touch targets generous, use solid rust for mic/send/live state, and sage for healthy connection state.",
   },
 ] as const
 
@@ -102,7 +102,8 @@ export default function BrandGuidelinesPage() {
             </div>
             <p className="mt-5 text-sm leading-7 text-[var(--brand-muted)]">
               The mark is an abstract grip around a measured signal. It should
-              read as a tool, not a literal claw.
+              read as a tool, not a literal claw. The rust signal stroke is the
+              default brand mark accent.
             </p>
           </div>
         </div>
@@ -288,7 +289,7 @@ export default function BrandGuidelinesPage() {
           />
           <ImplementationCard
             title="Mobile"
-            description="Keep iOS ergonomics native while preserving the same signal language."
+            description="Use system color scheme, native tab chrome, the shared mark, and regenerated Editorial Quiet app assets."
           />
         </div>
       </GuidelineSection>

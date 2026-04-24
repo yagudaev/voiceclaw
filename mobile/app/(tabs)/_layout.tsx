@@ -1,3 +1,4 @@
+import { BRAND } from '@/lib/brand'
 import { Tabs } from 'expo-router'
 import { HistoryIcon, MessageCircleIcon, SettingsIcon } from 'lucide-react-native'
 import { useColorScheme } from 'nativewind'
@@ -5,20 +6,21 @@ import { useColorScheme } from 'nativewind'
 export default function TabLayout() {
   const { colorScheme } = useColorScheme()
   const isDark = colorScheme === 'dark'
+  const palette = isDark ? BRAND.colors.dark : BRAND.colors.light
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: isDark ? '#fff' : '#000',
-        tabBarInactiveTintColor: isDark ? '#666' : '#999',
+        tabBarActiveTintColor: palette.accent,
+        tabBarInactiveTintColor: palette.muted,
         tabBarStyle: {
-          backgroundColor: isDark ? '#000' : '#fff',
-          borderTopColor: isDark ? '#222' : '#eee',
+          backgroundColor: palette.panel,
+          borderTopColor: palette.lineStrong,
         },
         headerStyle: {
-          backgroundColor: isDark ? '#000' : '#fff',
+          backgroundColor: palette.panel,
         },
-        headerTintColor: isDark ? '#fff' : '#000',
+        headerTintColor: palette.ink,
       }}>
       <Tabs.Screen
         name="index"

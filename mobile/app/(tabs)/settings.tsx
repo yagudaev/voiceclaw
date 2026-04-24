@@ -4,6 +4,7 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
+import { BRAND } from '@/lib/brand'
 import type { BrainConnectionMode } from '@/lib/chat'
 import { connectPlugin, disconnectPlugin, getPluginStatus, addPluginStatusListener, type PluginConnectionStatus } from '@/lib/plugin-completion'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
@@ -14,6 +15,7 @@ import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, PlayIcon, RefreshCwIco
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, TextInput, View } from 'react-native'
 import Slider from '@react-native-community/slider'
+import { useColorScheme } from 'nativewind'
 
 type VoiceMode = 'vapi' | 'custom' | 'realtime'
 type STTProviderValue = 'apple' | 'deepgram'
@@ -45,13 +47,10 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
 type RealtimeModel = 'gemini-3.1-flash-live-preview' | 'grok-voice-think-fast-1.0'
 const DEFAULT_REALTIME_MODEL: RealtimeModel = 'gemini-3.1-flash-live-preview'
 
-const STAGE_COLORS = {
-  stt: '#3b82f6',  // blue-500
-  llm: '#a855f7',  // purple-500
-  tts: '#22c55e',  // green-500
-} as const
-
 export default function SettingsScreen() {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
+  const stageColors = getStageColors(colorScheme)
   const [vapiPublicKey, setVapiPublicKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [defaultModel, setDefaultModel] = useState('openclaw:voice')
@@ -531,8 +530,8 @@ export default function SettingsScreen() {
                   step={0.1}
                   value={realtimeVolume}
                   onSlidingComplete={(v) => updateRealtimeVolume(Math.round(v * 10) / 10)}
-                  minimumTrackTintColor="#3b82f6"
-                  maximumTrackTintColor="#4b5563"
+                  minimumTrackTintColor={palette.accent}
+                  maximumTrackTintColor={palette.lineStrong}
                 />
                 <View className="flex-row justify-between">
                   <Text className="text-xs text-muted-foreground">Quiet</Text>
@@ -550,18 +549,18 @@ export default function SettingsScreen() {
               </View>
 
               <View className={`flex-row items-center gap-2 rounded-lg border px-3 py-2 ${
-                realtimeTestStatus === 'ok' ? 'border-green-500/30 bg-green-500/5'
+                realtimeTestStatus === 'ok' ? 'border-brand-sage/30 bg-brand-sage/10'
                 : realtimeTestStatus === 'error' ? 'border-destructive/50 bg-destructive/5'
                 : 'border-input'
               }`}>
                 {realtimeTestStatus === 'testing' ? (
-                  <ActivityIndicator size="small" color="#888" />
+                  <ActivityIndicator size="small" color={palette.muted} />
                 ) : (
                   <Icon
                     as={realtimeTestStatus === 'ok' ? WifiIcon : WifiOffIcon}
                     size={16}
                     className={
-                      realtimeTestStatus === 'ok' ? 'text-green-500'
+                      realtimeTestStatus === 'ok' ? 'text-brand-sage'
                       : realtimeTestStatus === 'error' ? 'text-destructive'
                       : 'text-muted-foreground'
                     }
@@ -569,7 +568,7 @@ export default function SettingsScreen() {
                 )}
                 <Text
                   className={`flex-1 text-sm ${
-                    realtimeTestStatus === 'ok' ? 'text-green-500'
+                    realtimeTestStatus === 'ok' ? 'text-brand-sage'
                     : realtimeTestStatus === 'error' ? 'text-destructive'
                     : 'text-muted-foreground'
                   }`}
@@ -636,8 +635,8 @@ export default function SettingsScreen() {
                     step={0.005}
                     value={echoGateThreshold}
                     onSlidingComplete={updateEchoGateThreshold}
-                    minimumTrackTintColor="#3b82f6"
-                    maximumTrackTintColor="#6b7280"
+                    minimumTrackTintColor={palette.accent}
+                    maximumTrackTintColor={palette.lineStrong}
                   />
                   <Text className="text-xs text-muted-foreground">
                     Lower = more sensitive to voice during playback. Default: 0.060
@@ -704,7 +703,7 @@ export default function SettingsScreen() {
             }}
           >
             {testRunning
-              ? <ActivityIndicator size="small" color="#888" />
+              ? <ActivityIndicator size="small" color={palette.muted} />
               : <Icon as={PlayIcon} size={16} className="text-foreground" />}
             <Text className="ml-2 text-foreground">{testRunning ? 'Running...' : 'Run Pipeline Tests'}</Text>
           </Button>
@@ -713,7 +712,7 @@ export default function SettingsScreen() {
           ) : null}
           {testResults.map((r, i) => (
             <View key={i} className="flex-row items-center gap-2">
-              <Text className={r.passed ? 'text-green-500' : 'text-red-500'}>
+              <Text className={r.passed ? 'text-brand-sage' : 'text-destructive'}>
                 {r.passed ? 'PASS' : 'FAIL'}
               </Text>
               <Text className="flex-1 text-sm text-foreground">{r.name}</Text>
@@ -731,18 +730,19 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
           {loadingStats ? (
-            <ActivityIndicator size="small" color="#888" />
+            <ActivityIndicator size="small" color={palette.muted} />
           ) : latencyStats && latencyStats.turnCount > 0 ? (
             <View className="gap-4">
               <LatencyBreakdownBar
                 avgStt={latencyStats.avgStt}
                 avgLlm={latencyStats.avgLlm}
                 avgTts={latencyStats.avgTts}
+                colors={stageColors}
               />
               <View className="gap-3">
-                <LatencyStageSection label="STT" color={STAGE_COLORS.stt} avg={latencyStats.avgStt} min={latencyStats.minStt} max={latencyStats.maxStt} />
-                <LatencyStageSection label="LLM" color={STAGE_COLORS.llm} avg={latencyStats.avgLlm} min={latencyStats.minLlm} max={latencyStats.maxLlm} />
-                <LatencyStageSection label="TTS" color={STAGE_COLORS.tts} avg={latencyStats.avgTts} min={latencyStats.minTts} max={latencyStats.maxTts} />
+                <LatencyStageSection label="STT" color={stageColors.stt} avg={latencyStats.avgStt} min={latencyStats.minStt} max={latencyStats.maxStt} />
+                <LatencyStageSection label="LLM" color={stageColors.llm} avg={latencyStats.avgLlm} min={latencyStats.minLlm} max={latencyStats.maxLlm} />
+                <LatencyStageSection label="TTS" color={stageColors.tts} avg={latencyStats.avgTts} min={latencyStats.minTts} max={latencyStats.maxTts} />
                 <View className="my-1 border-t border-input" />
                 <LatencyStageSection label="Total" avg={latencyStats.avgTotal} min={latencyStats.minTotal} max={latencyStats.maxTotal} />
               </View>
@@ -797,6 +797,8 @@ function SecretInput({
   onTest?: () => void
 }) {
   const [visible, setVisible] = useState(false)
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
 
   return (
     <View className="gap-1">
@@ -805,7 +807,7 @@ function SecretInput({
           <TextInput
             className="h-10 min-w-0 flex-1 px-3 py-2 text-base text-foreground"
             placeholder={placeholder}
-            placeholderTextColor="#888"
+            placeholderTextColor={palette.muted}
             value={value}
             onChangeText={onChangeText}
             secureTextEntry={!visible}
@@ -832,16 +834,16 @@ function SecretInput({
             disabled={validationStatus === 'testing' || !value.trim()}
             className={`h-10 shrink-0 flex-row items-center justify-center rounded-md px-3 ${
               validationStatus === 'valid'
-                ? 'bg-green-500/10'
+                ? 'bg-brand-sage/10'
                 : validationStatus === 'invalid'
                   ? 'bg-destructive/10'
                   : 'bg-secondary'
             } ${(!value.trim() || validationStatus === 'testing') ? 'opacity-50' : ''}`}
           >
             {validationStatus === 'testing' ? (
-              <ActivityIndicator size="small" color="#888" />
+              <ActivityIndicator size="small" color={palette.muted} />
             ) : validationStatus === 'valid' ? (
-              <Icon as={CheckIcon} size={18} className="text-green-500" />
+              <Icon as={CheckIcon} size={18} className="text-brand-sage" />
             ) : validationStatus === 'invalid' ? (
               <Icon as={AlertCircleIcon} size={18} className="text-destructive" />
             ) : (
@@ -949,6 +951,9 @@ function KokoroModelStatus({
   onDownload: () => void
   onRetry: () => void
 }) {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
+
   if (status === 'unavailable') {
     return (
       <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
@@ -960,7 +965,7 @@ function KokoroModelStatus({
   if (status === 'checking') {
     return (
       <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
-        <ActivityIndicator size="small" color="#888" />
+        <ActivityIndicator size="small" color={palette.muted} />
         <Text className="text-sm text-muted-foreground">Checking model...</Text>
       </View>
     )
@@ -978,7 +983,7 @@ function KokoroModelStatus({
   if (status === 'downloading') {
     return (
       <View className="flex-row items-center gap-2 rounded-lg border border-input px-3 py-2">
-        <ActivityIndicator size="small" color="#888" />
+        <ActivityIndicator size="small" color={palette.muted} />
         <Text className="text-sm text-muted-foreground">Downloading model (~327 MB)...</Text>
       </View>
     )
@@ -1016,11 +1021,13 @@ function PluginConnectionStatusBar({
   onConnect: () => void
   onDisconnect: () => void
 }) {
+  const { colorScheme } = useColorScheme()
+  const palette = colorScheme === 'dark' ? BRAND.colors.dark : BRAND.colors.light
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
 
   const statusColor = isConnected
-    ? 'border-green-500/30 bg-green-500/5'
+    ? 'border-brand-sage/30 bg-brand-sage/10'
     : status === 'error'
       ? 'border-destructive/50 bg-destructive/5'
       : 'border-input'
@@ -1034,7 +1041,7 @@ function PluginConnectionStatusBar({
         : 'Disconnected'
 
   const statusTextColor = isConnected
-    ? 'text-green-500'
+    ? 'text-brand-sage'
     : status === 'error'
       ? 'text-destructive'
       : 'text-muted-foreground'
@@ -1043,7 +1050,7 @@ function PluginConnectionStatusBar({
     <View className={`flex-row items-center justify-between rounded-lg border px-3 py-2 ${statusColor}`}>
       <View className="flex-row items-center gap-2">
         {isConnecting ? (
-          <ActivityIndicator size="small" color="#888" />
+          <ActivityIndicator size="small" color={palette.muted} />
         ) : (
           <Icon
             as={isConnected ? WifiIcon : WifiOffIcon}
@@ -1096,10 +1103,11 @@ function SavedIndicator({ status }: { status: SaveStatus }) {
   )
 }
 
-function LatencyBreakdownBar({ avgStt, avgLlm, avgTts }: {
+function LatencyBreakdownBar({ avgStt, avgLlm, avgTts, colors }: {
   avgStt: number | null
   avgLlm: number | null
   avgTts: number | null
+  colors: ReturnType<typeof getStageColors>
 }) {
   const stt = avgStt ?? 0
   const llm = avgLlm ?? 0
@@ -1116,25 +1124,19 @@ function LatencyBreakdownBar({ avgStt, avgLlm, avgTts }: {
     <View className="gap-2">
       <View className="h-8 flex-row overflow-hidden rounded-full">
         {stt > 0 && (
-          <View style={{ flex: stt, backgroundColor: STAGE_COLORS.stt }} className="items-center justify-center">
-            {sttPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(sttPct)}%</Text>}
-          </View>
+          <View style={{ flex: stt, backgroundColor: colors.stt }} />
         )}
         {llm > 0 && (
-          <View style={{ flex: llm, backgroundColor: STAGE_COLORS.llm }} className="items-center justify-center">
-            {llmPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(llmPct)}%</Text>}
-          </View>
+          <View style={{ flex: llm, backgroundColor: colors.llm }} />
         )}
         {tts > 0 && (
-          <View style={{ flex: tts, backgroundColor: STAGE_COLORS.tts }} className="items-center justify-center">
-            {ttsPct >= 15 && <Text className="text-xs font-semibold text-white">{Math.round(ttsPct)}%</Text>}
-          </View>
+          <View style={{ flex: tts, backgroundColor: colors.tts }} />
         )}
       </View>
       <View className="flex-row justify-center gap-4">
-        {stt > 0 && <BarLegendItem color={STAGE_COLORS.stt} label="STT" pct={sttPct} />}
-        {llm > 0 && <BarLegendItem color={STAGE_COLORS.llm} label="LLM" pct={llmPct} />}
-        {tts > 0 && <BarLegendItem color={STAGE_COLORS.tts} label="TTS" pct={ttsPct} />}
+        {stt > 0 && <BarLegendItem color={colors.stt} label="STT" pct={sttPct} />}
+        {llm > 0 && <BarLegendItem color={colors.llm} label="LLM" pct={llmPct} />}
+        {tts > 0 && <BarLegendItem color={colors.tts} label="TTS" pct={ttsPct} />}
       </View>
     </View>
   )
@@ -1184,4 +1186,20 @@ function LatencyStageSection({ label, color, avg, min, max }: {
 function formatLatencyMs(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
   return `${Math.round(ms)}ms`
+}
+
+function getStageColors(colorScheme: 'light' | 'dark' | undefined) {
+  if (colorScheme === 'dark') {
+    return {
+      stt: BRAND.colors.dark.sage,
+      llm: BRAND.colors.dark.muted,
+      tts: '#7C6A5A',
+    }
+  }
+
+  return {
+    stt: BRAND.colors.light.sage,
+    llm: BRAND.colors.light.muted,
+    tts: BRAND.colors.light.ink,
+  }
 }
