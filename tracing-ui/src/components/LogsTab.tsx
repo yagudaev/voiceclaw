@@ -1,6 +1,7 @@
 "use client"
 
 import { Fragment, useMemo, useState } from "react"
+import { AttributesTabs } from "./AttributesTabs"
 
 export type LogRow = {
   span_id: string
@@ -124,9 +125,7 @@ export function LogsTab({ rows }: { rows: LogRow[] }) {
                   <tr className="border-t border-zinc-900 bg-zinc-950">
                     <td></td>
                     <td colSpan={7} className="px-3 py-3">
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-zinc-900/50 border border-zinc-800 p-3 font-mono text-[11px] text-zinc-300">
-                        {prettyJson(r.attributes_json)}
-                      </pre>
+                      <AttributesTabs raw={r.attributes_json} maxHeightClass="max-h-96" />
                     </td>
                   </tr>
                 )}
@@ -206,13 +205,4 @@ function SortHeader({
 
 function uniqueSorted(arr: string[]): string[] {
   return Array.from(new Set(arr.filter(Boolean))).sort()
-}
-
-function prettyJson(raw: string | null): string {
-  if (!raw) return "(no attributes)"
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
 }

@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import type { MediaRow, ObservationRow, TraceWithObservations } from "@/lib/db"
+import { AttributesTabs } from "./AttributesTabs"
 
 export type TurnsTabProps = {
   sessionId: string
@@ -333,9 +334,7 @@ function DetailPanel({ step }: { step: ObservationRow | null }) {
 
         <div className="space-y-1">
           <div className="text-[10px] uppercase tracking-wide text-zinc-500">All attributes</div>
-          <pre className="rounded border border-zinc-800 bg-zinc-900/50 p-2 font-mono text-[10px] text-zinc-300 max-h-80 overflow-auto whitespace-pre-wrap break-words">
-            {JSON.stringify(attrs, null, 2)}
-          </pre>
+          <AttributesTabs attributes={attrs} />
         </div>
       </div>
     </aside>
