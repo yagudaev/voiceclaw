@@ -1,7 +1,19 @@
 import { ipcMain, net } from 'electron'
 import { getDb } from './db'
+import { isLaunchAtLoginEnabled, setLaunchAtLogin } from './login-items'
+import { serviceManager } from './services/service-manager'
+import { getAllocatedPorts } from './ports'
 
 export function registerIpcHandlers() {
+  // App lifecycle / system integration
+  ipcMain.handle('app:getLaunchAtLogin', () => isLaunchAtLoginEnabled())
+  ipcMain.handle('app:setLaunchAtLogin', (_e, enabled: boolean) => {
+    setLaunchAtLogin(enabled)
+    return isLaunchAtLoginEnabled()
+  })
+  ipcMain.handle('app:getServiceStatuses', () => serviceManager.getAllStatuses())
+  ipcMain.handle('app:getServicePorts', () => getAllocatedPorts())
+
   // Conversations
   ipcMain.handle('db:createConversation', (_e, title?: string) => {
     const db = getDb()
