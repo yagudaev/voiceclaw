@@ -240,6 +240,116 @@
   }
 }
 
+:root.light {
+  color-scheme: light;
+  --brand-paper: #f1e8da;
+  --brand-paper-strong: #e8ddcd;
+  --brand-panel: #fdf9f1;
+  --brand-panel-strong: #ffffff;
+  --brand-ink: #191511;
+  --brand-muted: #665f58;
+  --brand-accent: #b4492f;
+  --brand-accent-hover: #963a25;
+  --brand-accent-wash: rgba(180, 73, 47, 0.14);
+  --brand-sage: #697668;
+  --brand-sage-wash: rgba(105, 118, 104, 0.15);
+  --brand-line: rgba(25, 21, 17, 0.1);
+  --brand-line-strong: rgba(25, 21, 17, 0.2);
+  --brand-shadow: 0 18px 40px rgba(25, 21, 17, 0.08);
+  --brand-grid-line: rgba(25, 21, 17, 0.055);
+  --brand-contrast-bg: #191511;
+  --brand-contrast-fg: #ffffff;
+  --brand-contrast-fg-hover: #fffaf2;
+  --brand-contrast-muted: rgba(255, 255, 255, 0.7);
+  --brand-contrast-line: rgba(255, 255, 255, 0.2);
+  --background: var(--brand-paper);
+  --foreground: var(--brand-ink);
+  --card: var(--brand-panel);
+  --card-foreground: var(--brand-ink);
+  --popover: var(--brand-panel);
+  --popover-foreground: var(--brand-ink);
+  --primary: var(--brand-accent);
+  --primary-foreground: #fffaf2;
+  --secondary: var(--brand-paper-strong);
+  --secondary-foreground: var(--brand-ink);
+  --muted: var(--brand-paper-strong);
+  --muted-foreground: var(--brand-muted);
+  --accent: var(--brand-accent-wash);
+  --accent-foreground: var(--brand-accent);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: var(--brand-line-strong);
+  --input: var(--brand-line-strong);
+  --ring: rgba(180, 73, 47, 0.45);
+  --chart-1: var(--brand-accent);
+  --chart-2: var(--brand-sage);
+  --chart-3: var(--brand-ink);
+  --chart-4: var(--brand-muted);
+  --chart-5: var(--brand-paper-strong);
+  --sidebar: var(--brand-panel);
+  --sidebar-foreground: var(--brand-ink);
+  --sidebar-primary: var(--brand-accent);
+  --sidebar-primary-foreground: #fffaf2;
+  --sidebar-accent: var(--brand-paper-strong);
+  --sidebar-accent-foreground: var(--brand-ink);
+  --sidebar-border: var(--brand-line-strong);
+  --sidebar-ring: rgba(180, 73, 47, 0.45);
+}
+
+:root.dark {
+  color-scheme: dark;
+  --brand-paper: #171310;
+  --brand-paper-strong: #211b16;
+  --brand-panel: #211b16;
+  --brand-panel-strong: #2c251f;
+  --brand-ink: #f5eadc;
+  --brand-muted: #b9aa98;
+  --brand-accent: #d86a4d;
+  --brand-accent-hover: #ef8668;
+  --brand-accent-wash: rgba(216, 106, 77, 0.18);
+  --brand-sage: #9cac99;
+  --brand-sage-wash: rgba(156, 172, 153, 0.18);
+  --brand-line: rgba(245, 234, 220, 0.1);
+  --brand-line-strong: rgba(245, 234, 220, 0.2);
+  --brand-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --brand-grid-line: rgba(245, 234, 220, 0.055);
+  --brand-contrast-bg: #0f0b09;
+  --brand-contrast-fg: #f5eadc;
+  --brand-contrast-fg-hover: #eadcc9;
+  --brand-contrast-muted: rgba(245, 234, 220, 0.72);
+  --brand-contrast-line: rgba(245, 234, 220, 0.22);
+  --background: var(--brand-paper);
+  --foreground: var(--brand-ink);
+  --card: var(--brand-panel);
+  --card-foreground: var(--brand-ink);
+  --popover: var(--brand-panel);
+  --popover-foreground: var(--brand-ink);
+  --primary: var(--brand-accent);
+  --primary-foreground: #171310;
+  --secondary: var(--brand-paper-strong);
+  --secondary-foreground: var(--brand-ink);
+  --muted: var(--brand-paper-strong);
+  --muted-foreground: var(--brand-muted);
+  --accent: var(--brand-accent-wash);
+  --accent-foreground: var(--brand-accent);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: var(--brand-line-strong);
+  --input: var(--brand-line-strong);
+  --ring: rgba(216, 106, 77, 0.45);
+  --chart-1: var(--brand-accent);
+  --chart-2: var(--brand-sage);
+  --chart-3: var(--brand-ink);
+  --chart-4: var(--brand-muted);
+  --chart-5: var(--brand-paper-strong);
+  --sidebar: var(--brand-panel);
+  --sidebar-foreground: var(--brand-ink);
+  --sidebar-primary: var(--brand-accent);
+  --sidebar-primary-foreground: #171310;
+  --sidebar-accent: var(--brand-paper-strong);
+  --sidebar-accent-foreground: var(--brand-ink);
+  --sidebar-border: var(--brand-line-strong);
+  --sidebar-ring: rgba(216, 106, 77, 0.45);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -256,6 +366,14 @@
   html {
     @apply font-sans;
   }
+}
+
+.brand-hero-field {
+  background-image:
+    linear-gradient(to right, var(--brand-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--brand-grid-line) 1px, transparent 1px);
+  background-size: 112px 112px;
+  opacity: 0.65;
 }
 
 .brand-hero-scrim-mobile {

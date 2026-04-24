@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Fraunces, Geist, Geist_Mono, JetBrains_Mono } from "next/font/google"
+import Script from "next/script"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -22,6 +23,19 @@ const fraunces = Fraunces({
   subsets: ["latin"],
 })
 
+const themeScript = `
+(() => {
+  try {
+    const theme = window.localStorage.getItem("voiceclaw-theme")
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.classList.add(theme)
+    }
+  } catch {
+    return
+  }
+})()
+`
+
 export const metadata: Metadata = {
   title: "VoiceClaw - Voice for the Agent You Already Trust",
   description:
@@ -36,9 +50,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${fraunces.variable}`}
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
+        <Script
+          id="voiceclaw-theme"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
         {children}
       </body>
     </html>
