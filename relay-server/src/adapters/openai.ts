@@ -158,7 +158,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
   private async openUpstream(config: SessionConfigEvent): Promise<void> {
     const apiKey = process.env[this.apiKeyEnv]
-    if (!apiKey) throw new Error(`${this.apiKeyEnv} not set`)
+    if (!apiKey) throw new Error(`${this.providerName} API key not configured`)
 
     this.resetResponseState()
 
@@ -262,7 +262,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
   private async openUpstreamWithSummary(config: SessionConfigEvent, summary: string): Promise<void> {
     const apiKey = process.env[this.apiKeyEnv]
-    if (!apiKey) throw new Error(`${this.apiKeyEnv} not set`)
+    if (!apiKey) throw new Error(`${this.providerName} API key not configured`)
 
     this.resetResponseState()
 
