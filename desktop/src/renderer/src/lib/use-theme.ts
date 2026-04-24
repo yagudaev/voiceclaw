@@ -3,9 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 export type Theme = 'dark' | 'light' | 'system'
 
 const THEME_KEY = 'theme'
+const DEFAULT_THEME: Theme = 'system'
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>('dark')
+  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME)
 
   const applyTheme = useCallback((t: Theme) => {
     const isDark =
@@ -25,13 +26,13 @@ export function useTheme() {
 
   useEffect(() => {
     const saved = localStorage.getItem(THEME_KEY) as Theme | null
-    const initial = saved || 'dark'
+    const initial = saved || DEFAULT_THEME
     setThemeState(initial)
     applyTheme(initial)
 
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const handler = () => {
-      const current = (localStorage.getItem(THEME_KEY) as Theme) || 'dark'
+      const current = (localStorage.getItem(THEME_KEY) as Theme) || DEFAULT_THEME
       if (current === 'system') applyTheme('system')
     }
     mq.addEventListener('change', handler)

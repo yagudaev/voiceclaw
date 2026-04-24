@@ -236,8 +236,8 @@ export function SettingsPage() {
                 <button
                   key={m}
                   onClick={() => updateModel(m)}
-                  className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors
-                    ${model === m ? 'border-primary bg-primary/10' : 'border-input'}
+                  className={`w-full flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors
+                    ${model === m ? 'border-primary bg-accent' : 'border-input'}
                     hover:bg-accent cursor-pointer
                   `}
                 >
@@ -263,8 +263,8 @@ export function SettingsPage() {
               <button
                 key={v}
                 onClick={() => updateVoice(v)}
-                className={`rounded-lg border px-3 py-2 text-sm text-left transition-colors
-                  ${voice === v ? 'border-primary bg-primary/10 font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
+                className={`rounded-md border px-3 py-2 text-sm text-left transition-colors
+                  ${voice === v ? 'border-primary bg-accent font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
                 `}
               >
                 {model.startsWith('gemini-')
@@ -339,8 +339,8 @@ export function SettingsPage() {
               <button
                 key={t}
                 onClick={() => setTheme(t)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm capitalize transition-colors
-                  ${theme === t ? 'border-primary bg-primary/10 font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm capitalize transition-colors
+                  ${theme === t ? 'border-primary bg-accent font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
                 `}
               >
                 {t}
@@ -382,7 +382,7 @@ export function SettingsPage() {
         <Card className="p-4 space-y-2 text-xs text-muted-foreground">
           <p className="font-medium">Setup</p>
           <ol className="list-decimal list-inside space-y-0.5">
-            <li>Start the relay server: <code className="bg-muted px-1 py-0.5 rounded">cd relay-server && yarn dev</code></li>
+            <li>Start the relay server: <code className="rounded bg-muted px-1 py-0.5">cd relay-server && yarn dev</code></li>
             <li>Enter the relay server URL shown on startup</li>
             <li>Enter your API key for authentication</li>
             <li>Click Test to verify the connection</li>
@@ -422,8 +422,8 @@ function ConnectionStatus({
   onTest: () => void
 }) {
   return (
-    <div className={`flex items-center justify-between rounded-lg border px-3 py-2
-      ${status === 'ok' ? 'border-green-500/30 bg-green-500/5'
+    <div className={`flex items-center justify-between rounded-md border px-3 py-2
+      ${status === 'ok' ? 'border-[var(--brand-sage)] bg-[var(--brand-sage-wash)]'
         : status === 'error' ? 'border-destructive/50 bg-destructive/5'
         : 'border-input'}
     `}>
@@ -431,12 +431,12 @@ function ConnectionStatus({
         {status === 'testing' ? (
           <div className="h-4 w-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
         ) : status === 'ok' ? (
-          <Wifi size={16} className="text-green-500" />
+          <Wifi size={16} className="text-[var(--brand-sage)]" />
         ) : (
           <WifiOff size={16} className={status === 'error' ? 'text-destructive' : 'text-muted-foreground'} />
         )}
         <span className={`text-sm ${
-          status === 'ok' ? 'text-green-500'
+          status === 'ok' ? 'text-[var(--brand-sage)]'
           : status === 'error' ? 'text-destructive'
           : 'text-muted-foreground'
         }`}>

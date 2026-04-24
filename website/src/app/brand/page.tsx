@@ -51,7 +51,7 @@ const SURFACE_NOTES = [
   },
   {
     title: "Desktop",
-    description: "Respect system preference, keep panels compact, and reserve rust for active routing.",
+    description: "Respect system preference, keep panels compact, use rust wash for navigation, and reserve solid rust for calls or live signal.",
   },
   {
     title: "Mobile",
@@ -209,7 +209,7 @@ export default function BrandGuidelinesPage() {
       <GuidelineSection
         eyebrow="05"
         title="Dark mode direction"
-        description="The website follows system preference with a warm dark palette, not blue-black SaaS chrome."
+        description="Website and platform apps follow system preference with a warm dark palette, not blue-black SaaS chrome."
         icon={<Moon className="size-5" />}
       >
         <div className="grid gap-3 md:grid-cols-3">
@@ -284,7 +284,7 @@ export default function BrandGuidelinesPage() {
           />
           <ImplementationCard
             title="Desktop"
-            description="Respect system preference and keep controls compact."
+            description="Default to system theme, keep controls compact, and use sage for calm connection state."
           />
           <ImplementationCard
             title="Mobile"
