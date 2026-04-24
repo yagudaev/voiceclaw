@@ -329,6 +329,8 @@ export class TurnTracer {
     if (usage.inputAudioTokens != null) usageDetails.input_audio = usage.inputAudioTokens
     if (usage.outputAudioTokens != null) usageDetails.output_audio = usage.outputAudioTokens
     target.update({ usageDetails })
+    const otelUsage = usageToOtelAttrs(usage)
+    if (Object.keys(otelUsage).length > 0) target.otelSpan.setAttributes(otelUsage)
   }
 
   // Stamp media-capture attrs on the voice-turn span for `turnId`. Written as
@@ -460,4 +462,18 @@ function safeParse(s: string): unknown {
 
 function isNonNegativeFinite(v: number | undefined): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0
+}
+
+export function usageToOtelAttrs(usage: {
+  promptTokens?: number
+  completionTokens?: number
+  inputAudioTokens?: number
+  outputAudioTokens?: number
+}): Record<string, number> {
+  const attrs: Record<string, number> = {}
+  if (usage.promptTokens != null) attrs["gen_ai.usage.input_tokens"] = usage.promptTokens
+  if (usage.completionTokens != null) attrs["gen_ai.usage.output_tokens"] = usage.completionTokens
+  if (usage.inputAudioTokens != null) attrs["gen_ai.usage.input_audio_tokens"] = usage.inputAudioTokens
+  if (usage.outputAudioTokens != null) attrs["gen_ai.usage.output_audio_tokens"] = usage.outputAudioTokens
+  return attrs
 }
