@@ -9,6 +9,7 @@ out/
 # env
 .env
 .env.local
+.env.build
 .mcp.json
 
 # mobile build artifacts

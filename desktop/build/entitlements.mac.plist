@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Microphone access for the voice capture pipeline. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Camera: required entitlement for screen capture APIs in some
+         Electron versions, even if we don't use the camera directly. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+
+    <!-- Electron V8 needs JIT. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Some native modules (better-sqlite3, node-ffi-style) trip this;
+         without it notarization still succeeds but runtime can
+         SIGKILL on macOS 12+. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Required by Electron Hardened Runtime so the preload/renderer
+         scripts can be loaded dynamically. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- Network client (relay connection, auth, updates). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Network server so the bundled OpenClaw gateway can bind a
+         localhost port. Required for bundled services to accept
+         connections from the main window / mobile-pairing QR. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+</dict>
+</plist>
