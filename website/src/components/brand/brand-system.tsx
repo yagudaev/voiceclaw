@@ -130,11 +130,17 @@ export function VoiceClawMark({
   )
 }
 
-export function BrandWordmark({ className = "" }: { className?: string }) {
+export function BrandWordmark({
+  className = "",
+  accent = true,
+}: {
+  className?: string
+  accent?: boolean
+}) {
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <span className="flex size-8 items-center justify-center rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] text-[var(--brand-ink)]">
-        <VoiceClawMark className="size-5" />
+        <VoiceClawMark className="size-5" accent={accent} />
       </span>
       <span className="text-base font-semibold text-[var(--brand-ink)]">
         VoiceClaw

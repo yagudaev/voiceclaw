@@ -2,7 +2,7 @@ import type { SVGProps } from 'react'
 
 export function VoiceClawMark({
   className,
-  accent = false,
+  accent = true,
   ...props
 }: SVGProps<SVGSVGElement> & {
   accent?: boolean

@@ -10,7 +10,7 @@ type VoiceClawMarkProps = SvgProps & {
 
 export function VoiceClawMark({
   size = 32,
-  accent = false,
+  accent = true,
   color,
   ...props
 }: VoiceClawMarkProps) {

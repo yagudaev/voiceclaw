@@ -102,7 +102,8 @@ export default function BrandGuidelinesPage() {
             </div>
             <p className="mt-5 text-sm leading-7 text-[var(--brand-muted)]">
               The mark is an abstract grip around a measured signal. It should
-              read as a tool, not a literal claw.
+              read as a tool, not a literal claw. The rust signal stroke is the
+              default brand mark accent.
             </p>
           </div>
         </div>

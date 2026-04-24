@@ -1,10 +1,10 @@
-import Image from "next/image"
+import type { ReactNode } from "react"
 import Link from "next/link"
 import {
   ArrowRight,
-  BookOpen,
-  GitBranch,
+  Download,
   Mic2,
+  PlayCircle,
   RadioTower,
   Route,
   ShieldCheck,
@@ -16,7 +16,14 @@ import {
   SectionHeading,
   SignalBars,
   StatBlock,
+  VoiceClawMark,
 } from "@/components/brand/brand-system"
+
+const REPO_URL = "https://github.com/yagudaev/voiceclaw"
+const MAC_DOWNLOAD_URL = "https://github.com/yagudaev/voiceclaw/releases"
+const TESTFLIGHT_SIGNUP_URL = ""
+const DEMO_EMBED_URL = "https://www.youtube.com/embed/iAS7vj2vRaA"
+const HERO_BARS = [26, 44, 58, 42, 24, 34, 52, 78, 50, 31, 66, 86, 60, 38, 54, 82, 48, 72]
 
 export default function Home() {
   return (
@@ -24,6 +31,7 @@ export default function Home() {
       <Header />
       <main>
         <HeroSection />
+        <DemoSection />
         <ProofSection />
         <WorkflowSection />
         <PlatformSection />
@@ -45,17 +53,14 @@ function Header() {
           <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="#work">
             How it works
           </Link>
-          <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="/brand">
-            Brand
-          </Link>
           <a
-            href="https://github.com/yagudaev/voiceclaw"
+            href={MAC_DOWNLOAD_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 text-[var(--brand-ink)] shadow-[var(--brand-shadow)] transition hover:border-[var(--brand-accent)]"
           >
-            <GitBranch className="size-4" />
-            GitHub
+            <Download className="size-4" />
+            Download Mac
           </a>
         </nav>
       </div>
@@ -65,57 +70,161 @@ function Header() {
 
 function HeroSection() {
   return (
-    <section className="relative isolate min-h-[calc(100svh-4rem)] overflow-hidden border-b border-[var(--brand-line-strong)]">
-      <Image
-        src="/demo-thumbnail.jpg"
-        alt="VoiceClaw in use beside a live work document"
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover object-[70%_center]"
-      />
-      <div className="brand-hero-scrim-mobile absolute inset-0 sm:hidden" />
-      <div className="brand-hero-scrim-desktop absolute inset-0 hidden sm:block" />
+    <section className="relative isolate overflow-hidden border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)]">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0)_42%,rgba(25,21,17,0.04))]" />
       <div className="relative mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col justify-between px-5 py-10 sm:px-8 sm:py-14">
-        <div className="max-w-4xl pt-12 sm:pt-20">
-          <div className="mb-8 inline-flex items-center gap-3 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 font-mono text-xs text-[var(--brand-muted)] shadow-[var(--brand-shadow)]">
-            <span className="size-2 rounded-full bg-[var(--brand-accent)]" />
-            Open source voice layer
+        <div className="grid flex-1 items-center gap-10 lg:grid-cols-[minmax(0,0.82fr)_minmax(440px,1fr)]">
+          <div className="max-w-3xl pt-8 sm:pt-14">
+            <div className="mb-8 inline-flex items-center gap-3 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 font-mono text-xs text-[var(--brand-muted)] shadow-[var(--brand-shadow)]">
+              <span className="size-2 rounded-full bg-[var(--brand-accent)]" />
+              Open source voice layer
+            </div>
+            <h1 className="font-serif text-5xl leading-none text-[var(--brand-ink)] sm:text-7xl lg:text-8xl">
+              VoiceClaw
+            </h1>
+            <p className="mt-6 max-w-2xl font-serif text-3xl leading-tight text-[var(--brand-ink)] sm:text-5xl">
+              Voice for the agent you already trust.
+            </p>
+            <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--brand-muted)] sm:text-xl">
+              Talk to your own agent on iPhone and Mac. Point VoiceClaw at an
+              OpenAI-compatible endpoint and it handles the mic, the route, and
+              the transcript while your agent does the real work.
+            </p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <a
+                href={MAC_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
+              >
+                <Download className="size-4" />
+                Download for Mac
+              </a>
+              <Link
+                href="#demo"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
+              >
+                <PlayCircle className="size-4" />
+                Watch demo
+              </Link>
+            </div>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--brand-muted)]">
+              <TestFlightSignupNotice />
+            </p>
+            <div className="mt-8 lg:hidden">
+              <HeroMiniSignal />
+            </div>
           </div>
-          <h1 className="font-serif text-5xl leading-none text-[var(--brand-ink)] sm:text-7xl lg:text-8xl">
-            VoiceClaw
-          </h1>
-          <p className="mt-6 max-w-2xl font-serif text-3xl leading-tight text-[var(--brand-ink)] sm:text-5xl">
-            Voice for the agent you already trust.
-          </p>
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--brand-muted)] sm:text-xl">
-            Talk to your own agent on iPhone and Mac. Point VoiceClaw at an
-            OpenAI-compatible endpoint and it handles the mic, the route, and
-            the transcript while your agent does the real work.
-          </p>
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <a
-              href="https://github.com/yagudaev/voiceclaw"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
-            >
-              <GitBranch className="size-4" />
-              View on GitHub
-            </a>
-            <Link
-              href="/brand"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
-            >
-              <BookOpen className="size-4" />
-              Brand guidelines
-            </Link>
-          </div>
+          <HeroSignalScene />
         </div>
         <div className="mt-8 grid max-w-md grid-cols-3 gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] p-3 shadow-[var(--brand-shadow)] sm:mt-14 sm:max-w-3xl sm:gap-4 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
           {PRODUCT_PROOF.map((item) => (
             <StatBlock key={item.label} value={item.value} label={item.label} />
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function HeroSignalScene() {
+  return (
+    <div className="relative hidden min-h-[560px] lg:block" aria-hidden="true">
+      <div className="absolute left-0 right-10 top-4 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-contrast-bg)] p-8 text-[var(--brand-contrast-fg)] shadow-[var(--brand-shadow)]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <VoiceClawMark className="size-7" accent />
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-[var(--brand-contrast-muted)]">
+              Live call
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-3 py-2 font-mono text-xs uppercase tracking-[0.28em] text-[var(--brand-contrast-fg)]">
+            <span className="size-2 rounded-full bg-[var(--brand-accent)]" />
+            Rec
+          </span>
+        </div>
+        <h2 className="mt-12 font-serif text-5xl leading-none">
+          Listening...
+        </h2>
+        <HeroWaveform className="mt-20 h-32" />
+        <div className="mt-10 grid grid-cols-[80px_1fr_1fr] gap-6">
+          <div
+            className="flex size-20 items-center justify-center rounded-full bg-[var(--brand-accent)] text-primary-foreground"
+            style={{
+              boxShadow:
+                "0 0 0 16px color-mix(in oklch, var(--brand-accent) 18%, transparent)",
+            }}
+          >
+            <Mic2 className="size-8" />
+          </div>
+          <HeroMetric label="Voice" value="Gemini · Zephyr" />
+          <HeroMetric label="Route" value="OpenAI compatible" />
+        </div>
+      </div>
+      <div className="absolute bottom-6 right-0 w-[58%] rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] p-6 shadow-[var(--brand-shadow)]">
+        <div className="mb-5 flex items-center justify-between">
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-[var(--brand-accent)]">
+            Transcript
+          </p>
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-[var(--brand-muted)]">
+            Live
+          </p>
+        </div>
+        <div className="space-y-3">
+          <TranscriptBubble speaker="You">
+            Can you update my scratchpad and remind me to launch tomorrow?
+          </TranscriptBubble>
+          <TranscriptBubble speaker="VoiceClaw" active>
+            Done. I found the note and added the reminder.
+          </TranscriptBubble>
+        </div>
+        <div className="mt-5 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel-strong)] px-4 py-3 font-mono text-xs uppercase tracking-[0.24em] text-[var(--brand-muted)]">
+          <span className="mr-2 inline-block size-2 rounded-full bg-[var(--brand-accent)]" />
+          On-device route active
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HeroMiniSignal() {
+  return (
+    <div className="rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-contrast-bg)] p-5 text-[var(--brand-contrast-fg)] shadow-[var(--brand-shadow)]">
+      <div className="flex items-center justify-between">
+        <p className="font-mono text-xs uppercase tracking-[0.24em] text-[var(--brand-contrast-muted)]">
+          Live call
+        </p>
+        <span className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-2 py-1 font-mono text-xs uppercase tracking-[0.22em]">
+          <span className="size-2 rounded-full bg-[var(--brand-accent)]" />
+          Rec
+        </span>
+      </div>
+      <HeroWaveform className="mt-7 h-20" />
+    </div>
+  )
+}
+
+function DemoSection() {
+  return (
+    <section
+      id="demo"
+      className="border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)] px-5 py-20 sm:px-8"
+    >
+      <div className="mx-auto max-w-7xl">
+        <SectionHeading
+          eyebrow="Demo"
+          title="Watch VoiceClaw route a real conversation."
+          description="The launch demo shows VoiceClaw in front of a live working context: mic, transcript, route, and response in one loop."
+        />
+        <div className="mt-10 overflow-hidden rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-ink)] shadow-[var(--brand-shadow)]">
+          <iframe
+            className="aspect-video w-full"
+            src={DEMO_EMBED_URL}
+            title="VoiceClaw demo"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
         </div>
       </div>
     </section>
@@ -212,7 +321,7 @@ function PlatformSection() {
         <SectionHeading
           eyebrow="Surfaces"
           title="One brand, native to iPhone and Mac."
-          description="The website sets the system: warm field, carbon type, fine rules, and one rust signal. Product surfaces inherit the same restraint without forcing the same layout."
+          description="The Mac app is the starting point today. iPhone is available through TestFlight while App Store review finishes."
         />
         <div className="mt-12 grid gap-4 lg:grid-cols-2">
           <SurfaceCard
@@ -240,30 +349,30 @@ function GetStartedSection() {
             Get started
           </p>
           <h2 className="mt-4 max-w-3xl font-serif text-5xl leading-none sm:text-6xl">
-            Give your existing agent a voice front end.
+            Start with the Mac app.
           </h2>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--brand-contrast-muted)]">
-            Clone the repo, run the relay, connect your endpoint, and start
-            talking. No hosted brain required.
+            Download VoiceClaw for macOS, connect your agent endpoint, and start
+            talking. <TestFlightSignupNotice contrast />
           </p>
         </div>
         <div className="flex flex-col justify-end gap-3">
           <a
-            href="https://github.com/yagudaev/voiceclaw"
+            href={MAC_DOWNLOAD_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
           >
-            <GitBranch className="size-4" />
-            Open repository
+            <Download className="size-4" />
+            Download for Mac
           </a>
           <a
-            href="https://github.com/yagudaev/voiceclaw#quick-start"
+            href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-5 text-sm font-semibold text-[var(--brand-contrast-fg)] transition hover:border-[var(--brand-contrast-fg)]"
           >
-            Quick start
+            View source
             <ArrowRight className="size-4" />
           </a>
         </div>
@@ -282,7 +391,7 @@ function Footer() {
             Brand guidelines
           </Link>
           <a
-            href="https://github.com/yagudaev/voiceclaw"
+            href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-[var(--brand-ink)]"
@@ -300,7 +409,7 @@ function FeatureCard({
   title,
   description,
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   title: string
   description: string
 }) {
@@ -346,7 +455,7 @@ function SurfaceCard({
   title,
   description,
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   title: string
   description: string
 }) {
@@ -382,6 +491,95 @@ function MiniMetric({
         {value}
       </p>
       <p className="mt-1 text-xs text-[var(--brand-muted)]">{label}</p>
+    </div>
+  )
+}
+
+function TestFlightSignupNotice({ contrast = false }: { contrast?: boolean }) {
+  const linkClassName = contrast
+    ? "font-semibold text-[var(--brand-contrast-fg)] underline decoration-[var(--brand-accent)] underline-offset-4"
+    : "font-semibold text-[var(--brand-ink)] underline decoration-[var(--brand-accent)] underline-offset-4"
+
+  if (!TESTFLIGHT_SIGNUP_URL) {
+    return (
+      <>
+        iPhone is in App Store review, and TestFlight signup is available now.
+      </>
+    )
+  }
+
+  return (
+    <>
+      iPhone is in App Store review, and{" "}
+      <a
+        href={TESTFLIGHT_SIGNUP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={linkClassName}
+      >
+        TestFlight signup is available now
+      </a>
+      .
+    </>
+  )
+}
+
+function HeroWaveform({ className = "" }: { className?: string }) {
+  return (
+    <div className={`flex items-end gap-2 ${className}`}>
+      {HERO_BARS.map((height, index) => (
+        <span
+          key={`hero-bar-${index}`}
+          className={`block flex-1 rounded-sm ${
+            index === 7 || index === 15
+              ? "bg-[var(--brand-accent)]"
+              : "bg-[var(--brand-contrast-muted)]"
+          }`}
+          style={{ height: `${height}%` }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-l border-[var(--brand-contrast-line)] pl-5">
+      <p className="font-mono text-xs uppercase tracking-[0.24em] text-[var(--brand-contrast-muted)]">
+        {label}
+      </p>
+      <p className="mt-3 text-base text-[var(--brand-contrast-fg)]">{value}</p>
+    </div>
+  )
+}
+
+function TranscriptBubble({
+  speaker,
+  active = false,
+  children,
+}: {
+  speaker: string
+  active?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={`rounded-md border px-4 py-3 ${
+        active
+          ? "border-[var(--brand-ink)] bg-[var(--brand-ink)] text-[var(--brand-panel)]"
+          : "border-[var(--brand-line-strong)] bg-[var(--brand-panel-strong)] text-[var(--brand-ink)]"
+      }`}
+    >
+      <p
+        className={`font-mono text-xs uppercase tracking-[0.22em] ${
+          active
+            ? "text-[var(--brand-panel)] opacity-70"
+            : "text-[var(--brand-muted)]"
+        }`}
+      >
+        {speaker}
+      </p>
+      <p className="mt-2 text-sm leading-6">{children}</p>
     </div>
   )
 }
