@@ -167,7 +167,15 @@ function TabContent({
 }) {
   switch (tab) {
     case "transcript":
-      return <TranscriptTab turns={voiceTurns} sessionStartNs={startNs} />
+      return (
+        <TranscriptTab
+          sessionId={sessionId}
+          turns={voiceTurns}
+          media={media}
+          sessionStartNs={startNs}
+          durationMs={totalMs}
+        />
+      )
     case "turns":
       // TurnsTab uses useSearchParams — wrap in Suspense per Next.js 15 rules.
       return (

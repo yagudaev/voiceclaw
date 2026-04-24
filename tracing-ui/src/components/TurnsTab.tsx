@@ -9,10 +9,11 @@
 // particular step. Client-side router updates keep the rest of the page
 // interactive without full reloads.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import type { MediaRow, ObservationRow, TraceWithObservations } from "@/lib/db"
 import { AttributesTabs } from "./AttributesTabs"
+import { MediaTimeline } from "./MediaTimeline"
 
 export type TurnsTabProps = {
   sessionId: string
@@ -59,13 +60,10 @@ export function TurnsTab({ sessionId, traces, media, sessionStartNs }: TurnsTabP
     [router, search, sessionId],
   )
 
-  // Media for the active turn. Filter by trace_id so we only load what we need
-  // into the audio player — a session with 30 turns shouldn't load 30 audio
-  // files upfront.
-  const activeMedia = useMemo(
-    () => (activeTrace ? media.filter((m) => m.trace_id === activeTrace.trace_id) : []),
-    [media, activeTrace],
-  )
+  const sessionTotalMs = useMemo(() => {
+    const endNs = Math.max(...traces.map((t) => Number(t.end_time_ns ?? t.start_time_ns)))
+    return Math.max(0, Math.round((endNs - sessionStartNs) / 1e6))
+  }, [sessionStartNs, traces])
 
   if (traces.length === 0) {
     return (
@@ -85,8 +83,11 @@ export function TurnsTab({ sessionId, traces, media, sessionStartNs }: TurnsTabP
       />
       <TimelinePanel
         trace={activeTrace}
-        media={activeMedia}
+        traces={traces}
+        media={media}
         sessionId={sessionId}
+        sessionStartNs={sessionStartNs}
+        sessionTotalMs={sessionTotalMs}
         activeStepSpanId={activeStep?.span_id ?? null}
         onSelectStep={(spanId) => setSelection(activeTraceId, spanId)}
       />
@@ -155,14 +156,20 @@ function TurnRail({
 
 function TimelinePanel({
   trace,
+  traces,
   media,
   sessionId,
+  sessionStartNs,
+  sessionTotalMs,
   activeStepSpanId,
   onSelectStep,
 }: {
   trace: TraceWithObservations | null
+  traces: TraceWithObservations[]
   media: MediaRow[]
   sessionId: string
+  sessionStartNs: number
+  sessionTotalMs: number
   activeStepSpanId: string | null
   onSelectStep: (spanId: string) => void
 }) {
@@ -177,7 +184,14 @@ function TimelinePanel({
 
   return (
     <div className="overflow-y-auto">
-      <MediaPlayer media={media} sessionId={sessionId} turnTotalMs={turnTotalMs} />
+      <MediaTimeline
+        sessionId={sessionId}
+        media={media}
+        durationMs={sessionTotalMs}
+        turns={traces}
+        sessionStartNs={sessionStartNs}
+        highlightedTraceId={trace.trace_id}
+      />
 
       <div className="px-5 py-4 space-y-2">
         <div className="flex items-center justify-between text-xs text-zinc-500">
@@ -366,197 +380,6 @@ function Section({ title, value }: { title: string; value: unknown }) {
   )
 }
 
-// --- media player (user + assistant audio + optional video) ---
-
-function MediaPlayer({
-  media,
-  sessionId,
-  turnTotalMs,
-}: {
-  media: MediaRow[]
-  sessionId: string
-  turnTotalMs: number
-}) {
-  const user = media.find((m) => m.kind === "user_audio" || m.kind === "user")
-  const assistant = media.find(
-    (m) => m.kind === "assistant_audio" || m.kind === "assistant",
-  )
-  const video = media.find((m) => m.kind === "video")
-
-  if (!user && !assistant && !video) {
-    return (
-      <div className="border-b border-zinc-800 px-5 py-4 text-xs text-zinc-500">
-        No captured media for this turn. (The relay writes PCM + JPEG files when
-        capture is enabled; older sessions have none.)
-      </div>
-    )
-  }
-
-  return (
-    <div className="border-b border-zinc-800 p-5 space-y-3">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-zinc-500">
-        <span>Turn media</span>
-        <span className="tabular-nums text-zinc-400">{turnTotalMs.toLocaleString()}ms</span>
-      </div>
-      {user && <AudioTrack row={user} sessionId={sessionId} label="User" accent="user" />}
-      {assistant && (
-        <AudioTrack row={assistant} sessionId={sessionId} label="Assistant" accent="assistant" />
-      )}
-      {video && <VideoPlayer row={video} sessionId={sessionId} />}
-    </div>
-  )
-}
-
-function AudioTrack({
-  row,
-  sessionId,
-  label,
-  accent,
-}: {
-  row: MediaRow
-  sessionId: string
-  label: string
-  accent: "user" | "assistant"
-}) {
-  if (!row.file_path) return null
-  const url = mediaUrlFromFilePath(row.file_path)
-  if (!url) return null
-  return (
-    <div className="rounded border border-zinc-800 p-3 space-y-2">
-      <div className="flex items-center justify-between text-[11px]">
-        <span
-          className={[
-            "rounded px-2 py-0.5 text-[10px] uppercase tracking-wide",
-            accent === "user"
-              ? "bg-blue-600/20 text-blue-200 border border-blue-500/30"
-              : "bg-emerald-600/20 text-emerald-200 border border-emerald-500/30",
-          ].join(" ")}
-        >
-          {label}
-        </span>
-        <span className="text-zinc-500 tabular-nums">
-          {row.duration_ms != null ? `${row.duration_ms}ms` : "—"}
-          {row.sample_rate_hz != null && ` · ${row.sample_rate_hz}Hz`}
-          {row.codec && ` · ${row.codec}`}
-        </span>
-      </div>
-      {/* Browser <audio> handles WAV natively — the API endpoint re-wraps PCM16 on the fly. */}
-      <audio
-        controls
-        src={url}
-        className="w-full h-8 [&::-webkit-media-controls-panel]:bg-zinc-900"
-        preload="metadata"
-      />
-    </div>
-  )
-}
-
-function VideoPlayer({ row, sessionId }: { row: MediaRow; sessionId: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [timings, setTimings] = useState<{ frames: { offset_ms: number; file: string }[] } | null>(
-    null,
-  )
-  const [playing, setPlaying] = useState(false)
-  const [frameIdx, setFrameIdx] = useState(0)
-  // Intrinsic aspect of the first loaded frame — used to size the canvas so
-  // wide screens/portraits don't get stretched to fill the container.
-  const [aspect, setAspect] = useState<number | null>(null)
-  const mediaPrefix = mediaDirUrlFromFilePath(row.file_path ?? "")
-
-  useEffect(() => {
-    if (!mediaPrefix) return
-    fetch(`${mediaPrefix}/timings.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setTimings(j))
-      .catch(() => setTimings(null))
-  }, [mediaPrefix])
-
-  useEffect(() => {
-    if (!playing || !timings) return
-    const frames = timings.frames
-    if (frameIdx >= frames.length - 1) {
-      setPlaying(false)
-      return
-    }
-    const cur = frames[frameIdx].offset_ms
-    const next = frames[frameIdx + 1].offset_ms
-    const delay = Math.max(10, next - cur)
-    const handle = setTimeout(() => setFrameIdx((i) => i + 1), delay)
-    return () => clearTimeout(handle)
-  }, [playing, frameIdx, timings])
-
-  useEffect(() => {
-    if (!timings || !mediaPrefix) return
-    const frame = timings.frames[frameIdx]
-    if (!frame) return
-    const url = `${mediaPrefix}/${encodeURIComponent(frame.file)}`
-    const img = new Image()
-    img.onload = () => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext("2d")
-      ctx?.drawImage(img, 0, 0)
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        setAspect(img.naturalWidth / img.naturalHeight)
-      }
-    }
-    img.src = url
-  }, [timings, frameIdx, mediaPrefix])
-
-  if (!mediaPrefix) return null
-  if (!timings) {
-    return (
-      <div className="rounded border border-zinc-800 p-3 text-[11px] text-zinc-500">
-        Loading video frames…
-      </div>
-    )
-  }
-  const frameCount = timings.frames.length
-  return (
-    <div className="rounded border border-zinc-800 p-3 space-y-2">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="rounded px-2 py-0.5 text-[10px] uppercase tracking-wide bg-purple-600/20 text-purple-200 border border-purple-500/30">
-          Video
-        </span>
-        <span className="text-zinc-500 tabular-nums">
-          {frameCount} frame{frameCount === 1 ? "" : "s"}
-          {row.duration_ms != null && ` · ${row.duration_ms}ms`}
-        </span>
-      </div>
-      <canvas
-        ref={canvasRef}
-        className="w-full rounded bg-black"
-        style={aspect ? { aspectRatio: aspect, height: "auto" } : { maxHeight: "16rem" }}
-      />
-      <div className="flex items-center gap-2 text-[11px]">
-        <button
-          type="button"
-          onClick={() => {
-            if (frameIdx >= frameCount - 1) setFrameIdx(0)
-            setPlaying((p) => !p)
-          }}
-          className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-200 hover:bg-zinc-900"
-        >
-          {playing ? "Pause" : "Play"}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0, frameCount - 1)}
-          value={frameIdx}
-          onChange={(e) => setFrameIdx(Number(e.target.value))}
-          className="flex-1"
-        />
-        <span className="tabular-nums text-zinc-500">
-          {frameIdx + 1}/{frameCount}
-        </span>
-      </div>
-    </div>
-  )
-}
-
 // --- helpers (private) ---
 
 type SpanNode = ObservationRow & { depth: number; children: SpanNode[] }
@@ -587,40 +410,6 @@ function buildSpanTree(trace: TraceWithObservations): SpanNode[] {
   }
   for (const r of roots) walk(r)
   return flat
-}
-
-function extractBasename(path: string): string | null {
-  if (!path) return null
-  const parts = path.split("/")
-  return parts[parts.length - 1] || null
-}
-
-// Derive a media URL from a stored absolute path like
-//   /Users/<user>/.voiceclaw/media/<sessionDir>/user-<turnId>.pcm
-// We mount the API route at /api/media/[sessionId]/[...path], where the
-// route resolves under MEDIA_ROOT/<sessionId>/... on disk. The UI doesn't
-// know MEDIA_ROOT, so we take the LAST two path segments — the on-disk
-// session dir + file basename — which already match the layout the relay
-// wrote. Works even when sessionKey is hashed because we read the hashed
-// dir name straight out of the stored file_path.
-function mediaUrlFromFilePath(filePath: string): string | null {
-  if (!filePath) return null
-  const parts = filePath.split("/").filter(Boolean)
-  if (parts.length < 2) return null
-  const file = parts[parts.length - 1]
-  const dir = parts[parts.length - 2]
-  return `/api/media/${encodeURIComponent(dir)}/${encodeURIComponent(file)}`
-}
-
-// For media that is itself a directory (e.g. video-<turnId>/) returns the
-// URL prefix under which its frame files + timings.json live.
-function mediaDirUrlFromFilePath(filePath: string): string | null {
-  if (!filePath) return null
-  const parts = filePath.split("/").filter(Boolean)
-  if (parts.length < 2) return null
-  const dirName = parts[parts.length - 1]
-  const sessionDir = parts[parts.length - 2]
-  return `/api/media/${encodeURIComponent(sessionDir)}/${encodeURIComponent(dirName)}`
 }
 
 function parseAttrs(raw: string | null): Record<string, unknown> {
