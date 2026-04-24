@@ -8,7 +8,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-rebuild -f -w better-sqlite3 --module-dir .",
-    "dist:mac": "electron-vite build && node scripts/with-build-env.mjs electron-builder --mac"
+    "dist:mac": "electron-vite build && node scripts/with-build-env.mjs electron-builder --mac",
+    "build:icon": "tsx scripts/build-mac-icon.ts ../mobile/assets/images/ios/icon-1024x1024.png build/icon-master.png build/icon.iconset && iconutil -c icns build/icon.iconset -o build/icon.icns"
   },
   "installConfig": {
     "hoistingLimits": "workspaces"
@@ -31,7 +32,9 @@
     "electron-vite": "^5.0.0",
     "lucide-react": "^1.8.0",
     "postcss": "^8.5.3",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3",
     "vite": "^8.0.8"
   }

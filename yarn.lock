@@ -21492,7 +21492,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tsx@npm:^4.19.2, tsx@npm:^4.19.4":
+"tsx@npm:^4.19.2, tsx@npm:^4.19.4, tsx@npm:^4.21.0":
   version: 4.21.0
   resolution: "tsx@npm:4.21.0"
   dependencies:
@@ -22459,8 +22459,10 @@ __metadata:
     postcss: "npm:^8.5.3"
     react: "npm:^19.1.0"
     react-dom: "npm:^19.1.0"
+    sharp: "npm:^0.34.5"
     tailwind-merge: "npm:^3.5.0"
     tailwindcss: "npm:^3.4.17"
+    tsx: "npm:^4.21.0"
     typescript: "npm:^5.8.3"
     vite: "npm:^8.0.8"
   languageName: unknown
