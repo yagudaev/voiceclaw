@@ -1,8 +1,26 @@
-import { ipcMain, net } from 'electron'
+import { dialog, ipcMain, net, shell, systemPreferences } from 'electron'
 import { getDb } from './db'
 import { isLaunchAtLoginEnabled, setLaunchAtLogin } from './login-items'
 import { serviceManager } from './services/service-manager'
 import { getAllocatedPorts } from './ports'
+import {
+  type OnboardingPayload,
+  type WizardStepId,
+  getOnboardingState,
+  markOnboardingComplete,
+  resetOnboarding,
+  updateOnboardingStep,
+} from './onboarding'
+import {
+  type ProviderId,
+  geminiSmokeCall,
+  listConfiguredProviders,
+  setProviderKey,
+  validateProviderKey,
+} from './provider-keys'
+import { detectBrains } from './brain-detect'
+import { startSignInFlow } from './auth'
+import { getMainWindow } from './window-lifecycle'
 
 export function registerIpcHandlers() {
   // App lifecycle / system integration
@@ -154,6 +172,86 @@ export function registerIpcHandlers() {
     const rows = db.prepare('SELECT * FROM settings').all() as { key: string, value: string }[]
     return Object.fromEntries(rows.map((r) => [r.key, r.value]))
   })
+
+  // Onboarding state
+  ipcMain.handle('onboarding:getState', () => getOnboardingState())
+  ipcMain.handle(
+    'onboarding:updateStep',
+    (_e, step: WizardStepId, patch: OnboardingPayload | undefined) =>
+      updateOnboardingStep(step, patch ?? {}),
+  )
+  ipcMain.handle('onboarding:complete', () => markOnboardingComplete())
+  ipcMain.handle('onboarding:reset', async () => {
+    const window = getMainWindow()
+    const result = window
+      ? await dialog.showMessageBox(window, {
+          type: 'warning',
+          buttons: ['Start over', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          title: 'Restart onboarding?',
+          message: 'Restart onboarding from step 1?',
+          detail:
+            'Saved API keys and sign-in remain in place — only the wizard cursor resets.',
+        })
+      : { response: 0 }
+    if (result.response !== 0) return { ok: false }
+    resetOnboarding()
+    return { ok: true, state: getOnboardingState() }
+  })
+  ipcMain.handle('onboarding:startSignIn', () => {
+    startSignInFlow('google')
+    return { ok: true }
+  })
+
+  // Permissions (macOS) — read + request mic / screen / accessibility.
+  ipcMain.handle('perm:getMediaStatus', (_e, kind: 'microphone' | 'screen') => {
+    if (process.platform !== 'darwin') return 'granted'
+    return systemPreferences.getMediaAccessStatus(kind)
+  })
+  ipcMain.handle('perm:requestMic', async () => {
+    if (process.platform !== 'darwin') return true
+    return systemPreferences.askForMediaAccess('microphone')
+  })
+  ipcMain.handle('perm:getAccessibility', () => {
+    if (process.platform !== 'darwin') return true
+    return systemPreferences.isTrustedAccessibilityClient(false)
+  })
+  ipcMain.handle('perm:openSettings', (_e, pane: 'mic' | 'screen' | 'accessibility') => {
+    if (process.platform !== 'darwin') return
+    const anchor =
+      pane === 'mic'
+        ? 'Privacy_Microphone'
+        : pane === 'screen'
+          ? 'Privacy_ScreenCapture'
+          : 'Privacy_Accessibility'
+    void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`)
+  })
+
+  // Provider keys + smoke test
+  ipcMain.handle('provider:listConfigured', () => listConfiguredProviders())
+  ipcMain.handle(
+    'provider:validateAndSave',
+    async (_e, provider: ProviderId, key: string) => {
+      const result = await validateProviderKey(provider, key)
+      if (!result.ok) return result
+      try {
+        setProviderKey(provider, key)
+        return { ok: true as const }
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : 'Could not save key.',
+        }
+      }
+    },
+  )
+  ipcMain.handle('provider:geminiSmoke', async (_e, prompt: string) => {
+    return geminiSmokeCall(prompt)
+  })
+
+  // Brain detection
+  ipcMain.handle('brain:detect', () => detectBrains())
 
   // Network: test relay server connection from main process (avoids CORS)
   ipcMain.handle('net:healthCheck', async (_e, url: string) => {

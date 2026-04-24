@@ -1,13 +1,66 @@
+import { useEffect, useState } from 'react'
 import { StepFrame } from './StepFrame'
+import { onboarding, type OnboardingPayload } from '../../lib/onboarding-api'
 
 type Props = {
-  onContinue?: () => void
+  onContinue?: (patch: OnboardingPayload) => void
   onBack?: () => void
   onSkip?: () => void
   onStartOver?: () => void
+  initialSignedIn?: boolean
+  previewMode?: boolean
 }
 
-export function StepSignIn({ onContinue, onBack, onSkip, onStartOver }: Props) {
+type SignInState =
+  | { kind: 'idle' }
+  | { kind: 'pending'; provider: 'google' | 'apple' }
+  | { kind: 'success'; user: { email?: string | null; name?: string | null } | null }
+  | { kind: 'error'; error: string }
+
+export function StepSignIn({
+  onContinue,
+  onBack,
+  onSkip,
+  onStartOver,
+  initialSignedIn = false,
+  previewMode = false,
+}: Props) {
+  const [state, setState] = useState<SignInState>(
+    initialSignedIn ? { kind: 'success', user: null } : { kind: 'idle' },
+  )
+
+  // Listen for the deep-link callback from main. The main process redeems
+  // the ticket and forwards a friendlier shape to the renderer.
+  useEffect(() => {
+    if (previewMode) return
+    const off = onboarding.onAuthCallback((payload) => {
+      if (payload.ok) {
+        setState({ kind: 'success', user: payload.user })
+      } else {
+        setState({ kind: 'error', error: humanizeAuthError(payload.error) })
+      }
+    })
+    return off
+  }, [previewMode])
+
+  const handleSignIn = async (provider: 'google' | 'apple') => {
+    if (previewMode) {
+      setState({ kind: 'success', user: { email: 'preview@voiceclaw.app', name: 'Preview' } })
+      return
+    }
+    setState({ kind: 'pending', provider })
+    try {
+      await onboarding.startSignIn()
+    } catch (err) {
+      setState({
+        kind: 'error',
+        error: err instanceof Error ? err.message : 'Could not open browser.',
+      })
+    }
+  }
+
+  const isSignedIn = state.kind === 'success'
+
   return (
     <StepFrame
       stepIndex={2}
@@ -15,15 +68,37 @@ export function StepSignIn({ onContinue, onBack, onSkip, onStartOver }: Props) {
       eyebrow="02 / Sign in"
       title="Tell us where to find you."
       description="We use your email to send build updates and reach out when something breaks. Not for marketing, not for training. If you'd rather keep things anonymous, skip this — it's safe."
-      primaryAction={{ label: 'Continue', onClick: onContinue, disabled: true }}
+      primaryAction={{
+        label: isSignedIn ? 'Continue' : 'Continue without signing in',
+        onClick: () =>
+          onContinue?.({
+            signedIn: isSignedIn,
+            user:
+              state.kind === 'success'
+                ? {
+                    email: state.user?.email ?? null,
+                    name: state.user?.name ?? null,
+                  }
+                : undefined,
+          }),
+      }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       skipAction={{ label: 'Skip — use without an account', onClick: onSkip }}
       onStartOver={onStartOver}
     >
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         <div className="flex flex-col gap-3">
-          <AuthButton provider="google" />
-          <AuthButton provider="apple" />
+          <AuthButton
+            provider="google"
+            onClick={() => handleSignIn('google')}
+            pending={state.kind === 'pending' && state.provider === 'google'}
+          />
+          <AuthButton
+            provider="apple"
+            onClick={() => handleSignIn('apple')}
+            pending={state.kind === 'pending' && state.provider === 'apple'}
+            disabled
+          />
 
           <p
             className="mt-3 text-[13px] leading-[1.6]"
@@ -32,6 +107,24 @@ export function StepSignIn({ onContinue, onBack, onSkip, onStartOver }: Props) {
             We'll open your browser to finish signing in. You'll come back here
             automatically.
           </p>
+
+          {state.kind === 'pending' ? (
+            <StatusLine
+              tone="info"
+              text={`Waiting for ${state.provider} sign-in to finish in your browser…`}
+            />
+          ) : null}
+          {state.kind === 'error' ? <StatusLine tone="error" text={state.error} /> : null}
+          {state.kind === 'success' ? (
+            <StatusLine
+              tone="ok"
+              text={
+                state.user?.email
+                  ? `Signed in as ${state.user.email}.`
+                  : 'Signed in. Welcome aboard.'
+              }
+            />
+          ) : null}
         </div>
 
         <aside
@@ -104,11 +197,28 @@ export function StepSignIn({ onContinue, onBack, onSkip, onStartOver }: Props) {
   )
 }
 
-function AuthButton({ provider }: { provider: 'google' | 'apple' }) {
-  const label = provider === 'google' ? 'Continue with Google' : 'Continue with Apple'
+function AuthButton({
+  provider,
+  onClick,
+  pending = false,
+  disabled = false,
+}: {
+  provider: 'google' | 'apple'
+  onClick?: () => void
+  pending?: boolean
+  disabled?: boolean
+}) {
+  const label =
+    provider === 'google'
+      ? pending
+        ? 'Opening Google in your browser…'
+        : 'Continue with Google'
+      : 'Continue with Apple (coming soon)'
   return (
     <button
-      className="group flex items-center gap-4 rounded-[18px] border px-6 py-4 text-left transition-all hover:-translate-y-[1px]"
+      onClick={onClick}
+      disabled={disabled || pending}
+      className="group flex items-center gap-4 rounded-[18px] border px-6 py-4 text-left transition-all hover:-translate-y-[1px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
       style={{
         borderColor: 'var(--line-strong)',
         backgroundColor: 'var(--panel)',
@@ -144,6 +254,35 @@ function AuthButton({ provider }: { provider: 'google' | 'apple' }) {
       </span>
     </button>
   )
+}
+
+function StatusLine({ tone, text }: { tone: 'info' | 'ok' | 'error'; text: string }) {
+  const color = tone === 'ok' ? '#3f6230' : tone === 'error' ? 'var(--accent)' : 'var(--muted)'
+  return (
+    <p
+      className="rounded-[12px] border px-3 py-2 text-[12px] leading-[1.55]"
+      style={{
+        borderColor: 'var(--line-strong)',
+        backgroundColor: 'var(--panel-strong)',
+        color,
+        fontFamily: 'var(--font-sans)',
+      }}
+    >
+      {text}
+    </p>
+  )
+}
+
+function humanizeAuthError(raw: string): string {
+  if (raw.startsWith('redeem_failed_501')) {
+    return "Sign-in isn't fully wired in this build. Skip for now — your keys still work."
+  }
+  if (raw.startsWith('redeem_failed_410')) return 'That sign-in link already expired. Try again.'
+  if (raw.startsWith('redeem_failed_404')) return "That sign-in link wasn't found."
+  if (raw === 'safeStorage_unavailable') {
+    return 'macOS Keychain is locked. Unlock it and try again.'
+  }
+  return `Sign-in failed: ${raw}`
 }
 
 function Check() {

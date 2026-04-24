@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { StepFrame } from './StepFrame'
-
-type ProviderId = 'gemini' | 'openai' | 'xai'
+import {
+  providerApi,
+  type OnboardingPayload,
+  type ProviderId,
+} from '../../lib/onboarding-api'
 
 type Provider = {
   id: ProviderId
@@ -51,12 +54,19 @@ const PROVIDERS: Provider[] = [
   },
 ]
 
+type ValidationState =
+  | { kind: 'empty' }
+  | { kind: 'typing' }
+  | { kind: 'validating' }
+  | { kind: 'valid' }
+  | { kind: 'invalid'; error: string }
+
 type Props = {
-  onContinue?: () => void
+  onContinue?: (patch: OnboardingPayload) => void
   onBack?: () => void
   onStartOver?: () => void
   initialProvider?: ProviderId
-  initialKey?: string
+  previewMode?: boolean
 }
 
 export function StepProvider({
@@ -64,12 +74,63 @@ export function StepProvider({
   onBack,
   onStartOver,
   initialProvider = 'gemini',
-  initialKey = '',
+  previewMode = false,
 }: Props) {
   const [selected, setSelected] = useState<ProviderId>(initialProvider)
-  const [apiKey, setApiKey] = useState(initialKey)
+  const [apiKey, setApiKey] = useState('')
+  const [validation, setValidation] = useState<ValidationState>({ kind: 'empty' })
   const active = PROVIDERS.find((p) => p.id === selected)!
-  const looksValid = apiKey.length > 20 && apiKey.startsWith(active.prefix)
+
+  const handleKeyChange = (key: string) => {
+    setApiKey(key)
+    if (key.length === 0) {
+      setValidation({ kind: 'empty' })
+    } else {
+      setValidation({ kind: 'typing' })
+    }
+  }
+
+  const handleValidate = async () => {
+    if (apiKey.length < 8) {
+      setValidation({ kind: 'invalid', error: 'Key looks too short.' })
+      return
+    }
+    if (previewMode) {
+      setValidation({ kind: 'valid' })
+      return
+    }
+    setValidation({ kind: 'validating' })
+    try {
+      const result = await providerApi.validateAndSave(selected, apiKey)
+      if (result.ok) {
+        setValidation({ kind: 'valid' })
+      } else {
+        setValidation({ kind: 'invalid', error: result.error })
+      }
+    } catch (err) {
+      setValidation({
+        kind: 'invalid',
+        error: err instanceof Error ? err.message : 'Validation failed.',
+      })
+    }
+  }
+
+  const handleContinue = async () => {
+    if (validation.kind !== 'valid') {
+      await handleValidate()
+      // re-read state inside handleValidate; handleContinue stops here
+      // and the user clicks Continue again once they see the green check.
+      return
+    }
+    onContinue?.({ provider: selected, providerKeyValidated: true })
+  }
+
+  const continueLabel =
+    validation.kind === 'valid'
+      ? 'Continue'
+      : validation.kind === 'validating'
+        ? 'Checking…'
+        : 'Validate + continue'
 
   return (
     <StepFrame
@@ -79,9 +140,9 @@ export function StepProvider({
       title="Pick a voice. Paste a key."
       description="VoiceClaw doesn't keep your key. It goes straight into macOS Keychain on this machine, encrypted the way the OS encrypts your Wi-Fi passwords."
       primaryAction={{
-        label: looksValid ? 'Validate + continue' : 'Continue',
-        onClick: onContinue,
-        disabled: !looksValid,
+        label: continueLabel,
+        onClick: () => void handleContinue(),
+        disabled: validation.kind === 'validating' || apiKey.length === 0,
       }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       onStartOver={onStartOver}
@@ -95,6 +156,7 @@ export function StepProvider({
             onSelect={() => {
               setSelected(provider.id)
               setApiKey('')
+              setValidation({ kind: 'empty' })
             }}
           />
         ))}
@@ -140,7 +202,12 @@ export function StepProvider({
             <input
               type="password"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => handleKeyChange(e.target.value)}
+              onBlur={() => {
+                if (apiKey.length > 0 && validation.kind === 'typing') {
+                  void handleValidate()
+                }
+              }}
               placeholder={active.placeholder}
               className="w-full rounded-[14px] border px-5 py-4 text-[15px] outline-none transition-colors focus:border-[var(--ink)]"
               style={{
@@ -152,8 +219,17 @@ export function StepProvider({
               }}
             />
           </div>
-          <ValidationBadge state={apiKey.length === 0 ? 'empty' : looksValid ? 'valid' : 'typing'} />
+          <ValidationBadge state={validation} />
         </div>
+
+        {validation.kind === 'invalid' ? (
+          <p
+            className="mt-3 text-[12px] leading-[1.55]"
+            style={{ color: 'var(--accent)', fontFamily: 'var(--font-sans)' }}
+          >
+            {validation.error}
+          </p>
+        ) : null}
 
         <p className="mt-4 text-[12px] leading-[1.6]" style={{ color: 'var(--muted)' }}>
           Your key never leaves this Mac. The test call is a token mint against{' '}
@@ -172,6 +248,10 @@ export function StepProvider({
     </StepFrame>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function ProviderCard({
   provider,
@@ -248,32 +328,75 @@ function RadioDot({ selected }: { selected: boolean }) {
   )
 }
 
-function ValidationBadge({ state }: { state: 'empty' | 'typing' | 'valid' }) {
-  if (state === 'empty') return null
-  const isValid = state === 'valid'
+function ValidationBadge({ state }: { state: ValidationState }) {
+  if (state.kind === 'empty') return null
+  const visual = mapVisual(state)
   return (
     <div
       className="flex items-center gap-2 rounded-[14px] border px-4"
       style={{
-        borderColor: isValid ? 'var(--accent)' : 'var(--line-strong)',
-        backgroundColor: isValid ? 'var(--accent-soft)' : 'var(--panel-strong)',
+        borderColor: visual.border,
+        backgroundColor: visual.background,
         minWidth: 140,
       }}
     >
       <span
         className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: isValid ? 'var(--accent)' : 'var(--muted)' }}
+        style={{ backgroundColor: visual.dot }}
       />
       <span
         className="text-[12px] uppercase"
         style={{
           fontFamily: 'var(--font-mono)',
           letterSpacing: '0.2em',
-          color: isValid ? 'var(--accent)' : 'var(--muted)',
+          color: visual.color,
         }}
       >
-        {isValid ? 'Looks valid' : 'Checking…'}
+        {visual.label}
       </span>
     </div>
   )
+}
+
+function mapVisual(state: ValidationState): {
+  border: string
+  background: string
+  color: string
+  dot: string
+  label: string
+} {
+  if (state.kind === 'valid') {
+    return {
+      border: 'var(--accent)',
+      background: 'var(--accent-soft)',
+      color: 'var(--accent)',
+      dot: 'var(--accent)',
+      label: 'Looks valid',
+    }
+  }
+  if (state.kind === 'invalid') {
+    return {
+      border: 'var(--accent)',
+      background: 'var(--panel-strong)',
+      color: 'var(--accent)',
+      dot: 'var(--accent)',
+      label: 'Invalid',
+    }
+  }
+  if (state.kind === 'validating') {
+    return {
+      border: 'var(--line-strong)',
+      background: 'var(--panel-strong)',
+      color: 'var(--muted)',
+      dot: 'var(--muted)',
+      label: 'Checking…',
+    }
+  }
+  return {
+    border: 'var(--line-strong)',
+    background: 'var(--panel-strong)',
+    color: 'var(--muted)',
+    dot: 'var(--muted)',
+    label: 'Press tab to check',
+  }
 }
