@@ -98,6 +98,7 @@ export default defineConfig({
           items: [
             { slug: 'guides/tracing' },
             { slug: 'tracing-ui/spec', label: 'Tracing UI spec' },
+            { slug: 'tracing/session-media', label: 'Session media timeline' },
           ],
         },
       ],
