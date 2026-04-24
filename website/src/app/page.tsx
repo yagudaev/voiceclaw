@@ -3,7 +3,7 @@ import Link from "next/link"
 import {
   ArrowRight,
   Download,
-  Mic2,
+  Mic,
   PlayCircle,
   RadioTower,
   Route,
@@ -18,6 +18,7 @@ import {
   StatBlock,
   VoiceClawMark,
 } from "@/components/brand/brand-system"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
 const MAC_DOWNLOAD_URL = "https://github.com/yagudaev/voiceclaw/releases"
@@ -49,18 +50,21 @@ function Header() {
         <Link href="/" aria-label="VoiceClaw home">
           <BrandWordmark />
         </Link>
-        <nav className="flex items-center gap-5 text-sm text-[var(--brand-muted)]">
+        <nav className="flex items-center gap-2 text-sm text-[var(--brand-muted)] sm:gap-5">
           <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="#work">
             How it works
           </Link>
+          <ThemeSwitcher />
           <a
             href={MAC_DOWNLOAD_URL}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label="Download for Mac"
+            title="Download for Mac"
             className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 text-[var(--brand-ink)] shadow-[var(--brand-shadow)] transition hover:border-[var(--brand-accent)]"
           >
             <Download className="size-4" />
-            Download Mac
+            <span className="hidden sm:inline">Download Mac</span>
           </a>
         </nav>
       </div>
@@ -71,7 +75,7 @@ function Header() {
 function HeroSection() {
   return (
     <section className="relative isolate overflow-hidden border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)]">
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0)_42%,rgba(25,21,17,0.04))]" />
+      <div className="brand-hero-field absolute inset-0" />
       <div className="relative mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col justify-between px-5 py-10 sm:px-8 sm:py-14">
         <div className="grid flex-1 items-center gap-10 lg:grid-cols-[minmax(0,0.82fr)_minmax(440px,1fr)]">
           <div className="max-w-3xl pt-8 sm:pt-14">
@@ -155,7 +159,7 @@ function HeroSignalScene() {
                 "0 0 0 16px color-mix(in oklch, var(--brand-accent) 18%, transparent)",
             }}
           >
-            <Mic2 className="size-8" />
+            <Mic className="size-8" />
           </div>
           <HeroMetric label="Voice" value="Gemini · Zephyr" />
           <HeroMetric label="Route" value="OpenAI compatible" />
@@ -242,7 +246,7 @@ function ProofSection() {
         />
         <div className="mt-12 grid gap-4 md:grid-cols-3">
           <FeatureCard
-            icon={<Mic2 className="size-5" />}
+            icon={<Mic className="size-5" />}
             title="Natural voice in front"
             description="Low-latency voice sessions with transcript continuity and clear live state."
           />

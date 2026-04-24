@@ -19,6 +19,7 @@ import {
   SignalBars,
   VoiceClawMark,
 } from "@/components/brand/brand-system"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 export const metadata: Metadata = {
   title: "VoiceClaw Brand Guidelines",
@@ -77,7 +78,10 @@ export default function BrandGuidelinesPage() {
             <ArrowLeft className="size-4" />
             Home
           </Link>
-          <BrandWordmark />
+          <div className="flex items-center gap-3">
+            <ThemeSwitcher />
+            <BrandWordmark />
+          </div>
         </div>
       </header>
 
