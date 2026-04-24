@@ -25,7 +25,7 @@ import {
 } from "@/lib/downloads"
 
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
-const MAC_DOWNLOAD_URL = "/api/download/mac"
+const MAC_DOWNLOAD_URL = "/download"
 const TESTFLIGHT_SIGNUP_URL = ""
 const DEMO_EMBED_URL = "https://www.youtube.com/embed/iAS7vj2vRaA"
 const HERO_BARS = [26, 44, 58, 42, 24, 34, 52, 78, 50, 31, 66, 86, 60, 38, 54, 82, 48, 72]
@@ -64,8 +64,11 @@ function Header({
           <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="#work">
             How it works
           </Link>
+          <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="/download">
+            Download
+          </Link>
           <ThemeSwitcher />
-          <a
+          <Link
             href={MAC_DOWNLOAD_URL}
             aria-label="Download for Mac"
             title={downloadTitle(macRelease)}
@@ -73,7 +76,7 @@ function Header({
           >
             <Download className="size-4" />
             <span className="hidden sm:inline">Download Mac</span>
-          </a>
+          </Link>
         </nav>
       </div>
     </header>
@@ -107,14 +110,14 @@ function HeroSection({
               the transcript while your agent does the real work.
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <a
+              <Link
                 href={MAC_DOWNLOAD_URL}
                 title={downloadTitle(macRelease)}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
               >
                 <Download className="size-4" />
                 Download for Mac
-              </a>
+              </Link>
               <Link
                 href="#demo"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
@@ -377,14 +380,14 @@ function GetStartedSection({
           </p>
         </div>
         <div className="flex flex-col justify-end gap-3">
-          <a
+          <Link
             href={MAC_DOWNLOAD_URL}
             title={downloadTitle(macRelease)}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
           >
             <Download className="size-4" />
             Download for Mac
-          </a>
+          </Link>
           <MacDownloadVersion release={macRelease} contrast />
           <a
             href={REPO_URL}

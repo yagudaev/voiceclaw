@@ -55,7 +55,14 @@ dmg:
       type: link
       path: /Applications
 
-# Publish config is intentionally omitted so local `dist:mac` builds a
-# DMG without trying to upload. GitHub Releases provider lands in the
-# CI pipeline PR alongside electron-updater wiring.
-publish: null
+# Publish target for the CI release pipeline. electron-updater reads
+# the generated `app-update.yml` inside the packaged .app at runtime to
+# know where to check for new versions, so this block is required even
+# if we never invoke `electron-builder --publish`. Local builds pass
+# `--publish never` from the `dist:mac` script so they never attempt to
+# upload regardless of whether GH_TOKEN is set in the shell.
+publish:
+  provider: github
+  owner: yagudaev
+  repo: voiceclaw
+  releaseType: release

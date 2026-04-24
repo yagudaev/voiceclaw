@@ -82,6 +82,7 @@ export default defineConfig({
           items: [
             { slug: 'relay-server' },
             { slug: 'desktop-app' },
+            { slug: 'desktop/releasing', label: 'Desktop: releasing' },
             { slug: 'mobile-app' },
           ],
         },

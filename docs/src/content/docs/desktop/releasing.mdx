@@ -1,0 +1,132 @@
+---
+title: Releasing the desktop app
+description: Tag, ship, and notarize the macOS VoiceClaw desktop build. Covers the GitHub Actions release pipeline, required secrets, and how electron-updater consumes the published artifacts.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+
+Every tagged release produces a signed, notarized universal DMG on GitHub, plus the `latest-mac.yml` manifest that `electron-updater` reads at runtime. The marketing site's `/download` page redirects to the same release, so a single tag push is the whole public-distribution story.
+
+## Cutting a release
+
+<Steps>
+
+1. Confirm `desktop/package.json` has the version you want to ship. Bump it on a feature branch if needed, open a PR, merge.
+
+2. From `main`, create and push the tag. The tag name must match `v*.*.*`:
+
+   ```bash
+   git checkout main
+   git pull
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+3. Watch the `Release desktop` workflow run in GitHub Actions. On `macos-14` it typically takes 15–25 minutes, most of which is Apple notarization.
+
+4. When the workflow finishes, a new draft-free GitHub Release exists at `https://github.com/yagudaev/voiceclaw/releases/tag/v0.1.0` with the DMG, `.blockmap`, and `latest-mac.yml` attached.
+
+5. Edit the release description with the user-facing changelog if needed. The download page pulls the latest release automatically within 5 minutes of publishing.
+
+</Steps>
+
+<Aside type="tip">
+You can also run the workflow manually from the Actions tab via `workflow_dispatch` — useful for re-running a release against an existing tag after fixing a flaky notarization step.
+</Aside>
+
+## Required GitHub secrets
+
+Five repository secrets power the sign + notarize path. Configure them under **Settings → Secrets and variables → Actions** before the first tag push.
+
+| Secret | What it is | How to get it |
+| :-- | :-- | :-- |
+| `APPLE_API_KEY_P8` | Base64 of the App Store Connect API `.p8` file | `base64 -i AuthKey_SG645CPQP8.p8 \| pbcopy` |
+| `APPLE_API_KEY_ID` | The key ID (e.g. `SG645CPQP8`) | Visible in App Store Connect → Users and Access → Keys |
+| `APPLE_API_ISSUER` | The issuer UUID for the team | Same page, top of the Keys table |
+| `DEVELOPER_ID_CERT_P12` | Base64 of the Developer ID Application `.p12` | Keychain Access → export cert + private key as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
+| `DEVELOPER_ID_CERT_PASSWORD` | Password used when exporting the `.p12` | Whatever you typed during export — store it in 1Password |
+
+The default `GITHUB_TOKEN` injection takes care of uploading the DMG to the matching Release; no extra token needed.
+
+## Rotating the App Store Connect key
+
+Apple's API keys don't expire but they can be revoked. If you ever need to rotate:
+
+<Steps>
+
+1. In App Store Connect, **Users and Access → Keys**, generate a new key. Download the `.p8` once — it's not recoverable.
+
+2. Base64 it and update the `APPLE_API_KEY_P8` secret:
+
+   ```bash
+   base64 -i AuthKey_<NEW_ID>.p8 | pbcopy
+   ```
+
+   Paste into GitHub, replacing the old value.
+
+3. Update `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` if they changed.
+
+4. Revoke the old key in App Store Connect.
+
+5. Re-run the release workflow on the most recent tag to confirm signing still works before the next real release.
+
+</Steps>
+
+## What lands on a release
+
+After a successful run you'll see three artifacts attached to the GitHub Release:
+
+- `VoiceClaw-<version>-universal.dmg` — the universal build, roughly 180–220 MB.
+- `VoiceClaw-<version>-universal.dmg.blockmap` — delta-update manifest consumed by `electron-updater`.
+- `latest-mac.yml` — the top-level manifest `electron-updater` reads first. Points at the DMG and blockmap by URL + SHA-512.
+
+The workflow also uploads the same files as a workflow artifact (`voiceclaw-dmg`) for 14 days — handy if the Release publish step fails after the build succeeded.
+
+## How electron-updater consumes the release
+
+At runtime the app reads the `publish` block from `desktop/electron-builder.yml` — which writes an `app-update.yml` into the packaged `.app` — and hits `https://github.com/yagudaev/voiceclaw/releases/latest/download/latest-mac.yml`. From there:
+
+1. It compares the manifest's version against the running app's version.
+2. If there's a newer version, it downloads the blockmap and only the differing chunks of the DMG — a 200 MB app usually pulls 5–20 MB per update.
+3. On Apple Silicon it verifies the DMG is signed by the same Developer ID, then stages the update for the next launch.
+
+No extra server, no extra auth — the public Release is the update channel.
+
+## Local builds vs CI builds
+
+<Tabs>
+<TabItem label="Local">
+
+```bash
+cd desktop
+yarn dist:mac
+```
+
+The script hardcodes `--publish never`, so even if `GH_TOKEN` is set in your shell the build never uploads. Output lives in `desktop/dist/`.
+
+</TabItem>
+<TabItem label="CI">
+
+```bash
+cd desktop
+yarn dist:mac --publish always
+```
+
+The trailing `--publish always` overrides the default in the script. This flag plus a valid `GH_TOKEN` is what uploads to the Release matching the current tag.
+
+</TabItem>
+</Tabs>
+
+## Troubleshooting
+
+<Aside type="caution" title="Notarization timed out">
+Apple's notarization service occasionally stalls for 10+ minutes. Re-running the workflow on the same tag is safe — electron-builder just asks notarytool to re-submit.
+</Aside>
+
+<Aside type="caution" title="Code signing identity not found">
+If the cert import step fails, the `.p12` export likely didn't include the private key. Re-export from Keychain with "Developer ID Application" **and** its "Apple Development Key" both selected (hold ⌘ to multi-select).
+</Aside>
+
+<Aside type="caution" title="Release already exists">
+electron-builder refuses to overwrite an existing Release by default. Delete the Release (not the tag) in the GitHub UI and re-run the workflow, or bump the version and tag again.
+</Aside>
