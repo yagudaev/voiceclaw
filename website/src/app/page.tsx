@@ -1,46 +1,60 @@
+import Image from "next/image"
+import Link from "next/link"
 import {
-  Mic,
-  Key,
-  MessageSquare,
-  Code2,
-  Settings,
-  MessagesSquare,
-  AudioLines,
+  ArrowRight,
+  BookOpen,
+  GitBranch,
+  Mic2,
+  RadioTower,
+  Route,
+  ShieldCheck,
+  TerminalSquare,
 } from "lucide-react"
+import {
+  BrandWordmark,
+  PRODUCT_PROOF,
+  SectionHeading,
+  SignalBars,
+  StatBlock,
+} from "@/components/brand/brand-system"
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="min-h-screen text-[var(--brand-ink)]">
       <Header />
       <main>
         <HeroSection />
-        <FeaturesSection />
-        <HowItWorksSection />
-        <CTASection />
+        <ProofSection />
+        <WorkflowSection />
+        <PlatformSection />
+        <GetStartedSection />
       </main>
       <Footer />
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Sections
-// ---------------------------------------------------------------------------
-
 function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        <a href="/" className="text-lg font-semibold tracking-tight">
-          VoiceClaw
-        </a>
-        <nav className="flex items-center gap-4">
+    <header className="sticky top-0 z-50 border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)]/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
+        <Link href="/" aria-label="VoiceClaw home">
+          <BrandWordmark />
+        </Link>
+        <nav className="flex items-center gap-5 text-sm text-[var(--brand-muted)]">
+          <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="#work">
+            How it works
+          </Link>
+          <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="/brand">
+            Brand
+          </Link>
           <a
             href="https://github.com/yagudaev/voiceclaw"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 text-[var(--brand-ink)] shadow-[var(--brand-shadow)] transition hover:border-[var(--brand-accent)]"
           >
+            <GitBranch className="size-4" />
             GitHub
           </a>
         </nav>
@@ -51,139 +65,206 @@ function Header() {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden px-6 py-32 sm:py-40">
-      {/* Subtle gradient background */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-primary/5 blur-3xl" />
+    <section className="relative isolate min-h-[calc(100svh-4rem)] overflow-hidden border-b border-[var(--brand-line-strong)]">
+      <Image
+        src="/demo-thumbnail.jpg"
+        alt="VoiceClaw in use beside a live work document"
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-[70%_center]"
+      />
+      <div className="absolute inset-0 bg-[rgba(241,232,218,0.78)] sm:hidden" />
+      <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(241,232,218,0.98)_0%,rgba(241,232,218,0.9)_38%,rgba(241,232,218,0.22)_70%,rgba(241,232,218,0.02)_100%)] sm:block" />
+      <div className="relative mx-auto flex min-h-[calc(100svh-4rem)] max-w-7xl flex-col justify-between px-5 py-10 sm:px-8 sm:py-14">
+        <div className="max-w-4xl pt-12 sm:pt-20">
+          <div className="mb-8 inline-flex items-center gap-3 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 font-mono text-xs text-[var(--brand-muted)] shadow-[var(--brand-shadow)]">
+            <span className="size-2 rounded-full bg-[var(--brand-accent)]" />
+            Open source voice layer
+          </div>
+          <h1 className="font-serif text-5xl leading-none text-[var(--brand-ink)] sm:text-7xl lg:text-8xl">
+            VoiceClaw
+          </h1>
+          <p className="mt-6 max-w-2xl font-serif text-3xl leading-tight text-[var(--brand-ink)] sm:text-5xl">
+            Voice for the agent you already trust.
+          </p>
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--brand-muted)] sm:text-xl">
+            Talk to your own agent on iPhone and Mac. Point VoiceClaw at an
+            OpenAI-compatible endpoint and it handles the mic, the route, and
+            the transcript while your agent does the real work.
+          </p>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <a
+              href="https://github.com/yagudaev/voiceclaw"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-white transition hover:bg-[var(--brand-accent-hover)]"
+            >
+              <GitBranch className="size-4" />
+              View on GitHub
+            </a>
+            <Link
+              href="/brand"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
+            >
+              <BookOpen className="size-4" />
+              Brand guidelines
+            </Link>
+          </div>
+        </div>
+        <div className="mt-8 grid max-w-md grid-cols-3 gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] p-3 shadow-[var(--brand-shadow)] sm:mt-14 sm:max-w-3xl sm:gap-4 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+          {PRODUCT_PROOF.map((item) => (
+            <StatBlock key={item.label} value={item.value} label={item.label} />
+          ))}
+        </div>
       </div>
+    </section>
+  )
+}
 
-      <div className="mx-auto max-w-3xl text-center">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
-          Voice interface for any AI
-        </h1>
-        <p className="mt-6 text-lg leading-8 text-muted-foreground sm:text-xl">
-          Talk to your AI assistant by voice. Connect to any LLM. Open source.
-        </p>
-        <div className="mt-10 flex items-center justify-center gap-4">
+function ProofSection() {
+  return (
+    <section className="border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)] px-5 py-20 sm:px-8">
+      <div className="mx-auto max-w-7xl">
+        <SectionHeading
+          eyebrow="Why it exists"
+          title="Bring the brain. VoiceClaw keeps the conversation precise."
+          description="Realtime voice models are fast, but your useful agent already knows your tools. VoiceClaw sits between microphone and endpoint as a thin interface layer."
+        />
+        <div className="mt-12 grid gap-4 md:grid-cols-3">
+          <FeatureCard
+            icon={<Mic2 className="size-5" />}
+            title="Natural voice in front"
+            description="Low-latency voice sessions with transcript continuity and clear live state."
+          />
+          <FeatureCard
+            icon={<Route className="size-5" />}
+            title="Your agent behind it"
+            description="Route speech into OpenClaw, Hermes, MCP-based agents, or your own OpenAI-compatible service."
+          />
+          <FeatureCard
+            icon={<ShieldCheck className="size-5" />}
+            title="Open source by default"
+            description="Run the relay yourself, inspect the code, and keep provider keys under your control."
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function WorkflowSection() {
+  return (
+    <section
+      id="work"
+      className="border-b border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 py-20 sm:px-8"
+    >
+      <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(360px,1fr)]">
+        <SectionHeading
+          eyebrow="Signal path"
+          title="A calmer way to route live work."
+          description="The product should feel like an instrument panel stripped to essentials. Every surface explains where the signal is, where it is going, and what came back."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel-strong)] p-5 shadow-[var(--brand-shadow)]">
+            <div className="mb-5 flex items-center justify-between">
+              <p className="font-mono text-xs text-[var(--brand-muted)]">
+                SESSION FIELD
+              </p>
+              <span className="rounded-md bg-[var(--brand-accent-wash)] px-2 py-1 font-mono text-xs text-[var(--brand-accent)]">
+                live
+              </span>
+            </div>
+            <SignalBars />
+            <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+              <MiniMetric label="Latency" value="182ms" />
+              <MiniMetric label="Mode" value="Bridge" />
+              <MiniMetric label="Scope" value="BYO" />
+            </div>
+          </div>
+          <ol className="grid gap-4">
+            <WorkflowStep
+              number="01"
+              title="Talk"
+              description="A clear mic state tells the user when VoiceClaw is listening."
+            />
+            <WorkflowStep
+              number="02"
+              title="Route"
+              description="VoiceClaw sends the turn to the configured agent endpoint."
+            />
+            <WorkflowStep
+              number="03"
+              title="Read back"
+              description="The reply returns as audio, transcript, and context you can skim."
+            />
+          </ol>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PlatformSection() {
+  return (
+    <section className="border-b border-[var(--brand-line-strong)] bg-[var(--brand-paper)] px-5 py-20 sm:px-8">
+      <div className="mx-auto max-w-7xl">
+        <SectionHeading
+          eyebrow="Surfaces"
+          title="One brand, native to iPhone and Mac."
+          description="The website sets the system: warm field, carbon type, fine rules, and one rust signal. Product surfaces inherit the same restraint without forcing the same layout."
+        />
+        <div className="mt-12 grid gap-4 lg:grid-cols-2">
+          <SurfaceCard
+            icon={<RadioTower className="size-5" />}
+            title="Mobile"
+            description="Fast voice capture, clean session state, and thumb-reachable controls for iPhone."
+          />
+          <SurfaceCard
+            icon={<TerminalSquare className="size-5" />}
+            title="Desktop"
+            description="A menu-bar companion with compact panels, system theme respect, and visible routing state."
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function GetStartedSection() {
+  return (
+    <section className="bg-[var(--brand-ink)] px-5 py-20 text-white sm:px-8">
+      <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
+          <p className="font-mono text-xs uppercase text-[var(--brand-paper-strong)]">
+            Get started
+          </p>
+          <h2 className="mt-4 max-w-3xl font-serif text-5xl leading-none sm:text-6xl">
+            Give your existing agent a voice front end.
+          </h2>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-white/70">
+            Clone the repo, run the relay, connect your endpoint, and start
+            talking. No hosted brain required.
+          </p>
+        </div>
+        <div className="flex flex-col justify-end gap-3">
           <a
             href="https://github.com/yagudaev/voiceclaw"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-panel-strong)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:bg-[var(--brand-paper)]"
           >
-            <GitHubIcon className="size-4" />
-            View on GitHub
+            <GitBranch className="size-4" />
+            Open repository
           </a>
           <a
-            href="#features"
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-5 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Learn more
-          </a>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function FeaturesSection() {
-  return (
-    <section id="features" className="border-t border-border/40 px-6 py-24">
-      <div className="mx-auto max-w-5xl">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Everything you need
-          </h2>
-          <p className="mt-4 text-muted-foreground">
-            A complete voice and chat interface for your favourite AI models.
-          </p>
-        </div>
-
-        <div className="mt-16 grid gap-8 sm:grid-cols-2">
-          <FeatureCard
-            icon={<Mic className="size-5" />}
-            title="Real-time voice conversations"
-            description="Have natural, real-time voice conversations with any AI model. Low latency streaming keeps the dialogue flowing."
-          />
-          <FeatureCard
-            icon={<Key className="size-5" />}
-            title="Bring Your Own Key"
-            description="Connect to OpenAI, Anthropic, Groq, or self-hosted models. Your keys, your data, your choice."
-          />
-          <FeatureCard
-            icon={<MessageSquare className="size-5" />}
-            title="Full chat + voice in one app"
-            description="Switch seamlessly between text chat and voice. See the full conversation history in both modes."
-          />
-          <FeatureCard
-            icon={<Code2 className="size-5" />}
-            title="Open source"
-            description="Run it yourself. Inspect the code. Contribute. VoiceClaw is fully open source under the MIT licence."
-          />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function HowItWorksSection() {
-  return (
-    <section className="border-t border-border/40 px-6 py-24">
-      <div className="mx-auto max-w-5xl">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            How it works
-          </h2>
-          <p className="mt-4 text-muted-foreground">
-            Get started in three simple steps.
-          </p>
-        </div>
-
-        <div className="mt-16 grid gap-10 sm:grid-cols-3">
-          <StepCard
-            step={1}
-            icon={<Settings className="size-5" />}
-            title="Configure your API"
-            description="Add your API key for OpenAI, Anthropic, Groq, or any compatible provider."
-          />
-          <StepCard
-            step={2}
-            icon={<MessagesSquare className="size-5" />}
-            title="Start a conversation"
-            description="Create a new conversation and choose your model. Text or voice -- it is up to you."
-          />
-          <StepCard
-            step={3}
-            icon={<AudioLines className="size-5" />}
-            title="Talk naturally"
-            description="Press the mic button and speak. VoiceClaw handles transcription, inference, and speech synthesis."
-          />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function CTASection() {
-  return (
-    <section className="border-t border-border/40 px-6 py-24">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Open source and free
-        </h2>
-        <p className="mt-4 text-lg text-muted-foreground">
-          VoiceClaw is open source. Star the repo, open an issue, or contribute
-          a pull request.
-        </p>
-        <div className="mt-8">
-          <a
-            href="https://github.com/yagudaev/voiceclaw"
+            href="https://github.com/yagudaev/voiceclaw#quick-start"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/20 px-5 text-sm font-semibold text-white transition hover:border-white/50"
           >
-            <GitHubIcon className="size-4" />
-            GitHub
+            Quick start
+            <ArrowRight className="size-4" />
           </a>
         </div>
       </div>
@@ -193,47 +274,24 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="mt-auto border-t border-border/40 px-6 py-8">
-      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm text-muted-foreground sm:flex-row">
-        <p>
-          Built by{" "}
+    <footer className="border-t border-[var(--brand-line-strong)] bg-[var(--brand-paper)] px-5 py-8 sm:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col justify-between gap-5 text-sm text-[var(--brand-muted)] sm:flex-row sm:items-center">
+        <BrandWordmark />
+        <div className="flex gap-5">
+          <Link href="/brand" className="hover:text-[var(--brand-ink)]">
+            Brand guidelines
+          </Link>
           <a
-            href="https://github.com/yagudaev"
+            href="https://github.com/yagudaev/voiceclaw"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-foreground transition-colors hover:text-primary"
+            className="hover:text-[var(--brand-ink)]"
           >
-            Michael Yagudaev
+            GitHub
           </a>
-        </p>
-        <a
-          href="https://github.com/yagudaev/voiceclaw"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 transition-colors hover:text-foreground"
-        >
-          <GitHubIcon className="size-4" />
-          GitHub
-        </a>
+        </div>
       </div>
     </footer>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Helper components
-// ---------------------------------------------------------------------------
-
-function GitHubIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-    </svg>
   )
 }
 
@@ -247,41 +305,83 @@ function FeatureCard({
   description: string
 }) {
   return (
-    <div className="rounded-xl border border-border/40 bg-card/50 p-6 transition-colors hover:bg-card">
-      <div className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+    <article className="rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] p-6 shadow-[var(--brand-shadow)]">
+      <div className="mb-5 flex size-10 items-center justify-center rounded-md bg-[var(--brand-accent-wash)] text-[var(--brand-accent)]">
         {icon}
       </div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+      <h3 className="text-xl font-semibold text-[var(--brand-ink)]">{title}</h3>
+      <p className="mt-3 text-sm leading-7 text-[var(--brand-muted)]">
         {description}
       </p>
-    </div>
+    </article>
   )
 }
 
-function StepCard({
-  step,
+function WorkflowStep({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <li className="rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel-strong)] p-5 shadow-[var(--brand-shadow)]">
+      <p className="font-mono text-xs text-[var(--brand-accent)]">
+        {number}
+      </p>
+      <h3 className="mt-3 text-lg font-semibold text-[var(--brand-ink)]">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm leading-7 text-[var(--brand-muted)]">
+        {description}
+      </p>
+    </li>
+  )
+}
+
+function SurfaceCard({
   icon,
   title,
   description,
 }: {
-  step: number
   icon: React.ReactNode
   title: string
   description: string
 }) {
   return (
-    <div className="text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-        {icon}
+    <article className="rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] p-6 shadow-[var(--brand-shadow)]">
+      <div className="flex items-start gap-4">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel-strong)] text-[var(--brand-ink)]">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold text-[var(--brand-ink)]">
+            {title}
+          </h3>
+          <p className="mt-3 text-sm leading-7 text-[var(--brand-muted)]">
+            {description}
+          </p>
+        </div>
       </div>
-      <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-        Step {step}
-      </span>
-      <h3 className="mt-2 text-lg font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        {description}
+    </article>
+  )
+}
+
+function MiniMetric({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="border-t border-[var(--brand-line)] pt-3">
+      <p className="font-mono text-xs text-[var(--brand-ink)]">
+        {value}
       </p>
+      <p className="mt-1 text-xs text-[var(--brand-muted)]">{label}</p>
     </div>
   )
 }
