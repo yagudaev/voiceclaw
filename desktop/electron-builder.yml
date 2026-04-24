@@ -1,0 +1,58 @@
+appId: com.getvoiceclaw.desktop
+productName: VoiceClaw
+copyright: "Copyright © 2026 Nano 3 Labs Ltd."
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - "out/**/*"
+  - "package.json"
+  - "!node_modules/**/{README.md,LICENSE*,*.map,*.ts}"
+
+# Ship a universal DMG so one download covers both Apple Silicon and
+# Intel Macs. Slightly larger file in exchange for zero "which one do I
+# download?" confusion at install time.
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - universal
+
+  # Identity string matches `security find-identity`.
+  identity: "Developer ID Application: Nano 3 Labs Ltd (HN6T5KD4ND)"
+
+  # Hardened Runtime + entitlements are required for notarization.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+  # Descriptions that appear when macOS prompts for permission.
+  extendInfo:
+    NSMicrophoneUsageDescription: "VoiceClaw uses your microphone to send voice to the AI provider you configured (Google Gemini, OpenAI, or xAI) for real-time conversation. Audio streams directly to the provider — nothing is stored on our servers."
+    NSCameraUsageDescription: "VoiceClaw only uses your camera when you explicitly start a video-enabled session. It is otherwise idle."
+    NSScreenCaptureUsageDescription: "VoiceClaw can share your screen with the AI on demand, so it can see what you're looking at when you ask it to. Sharing is off until you start it."
+
+  notarize:
+    teamId: HN6T5KD4ND
+
+dmg:
+  title: "VoiceClaw ${version}"
+  icon: build/icon.icns
+  iconSize: 96
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 420
+      y: 200
+      type: link
+      path: /Applications
+
+# Publish config is intentionally omitted so local `dist:mac` builds a
+# DMG without trying to upload. GitHub Releases provider lands in the
+# CI pipeline PR alongside electron-updater wiring.
+publish: null
