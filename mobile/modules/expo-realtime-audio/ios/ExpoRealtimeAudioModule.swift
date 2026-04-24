@@ -7,12 +7,15 @@ public class ExpoRealtimeAudioModule: Module {
     public func definition() -> ModuleDefinition {
         Name("ExpoRealtimeAudio")
 
-        Events("onAudioCaptured", "onError", "onLog", "onRmsMetrics")
+        Events("onAudioCaptured", "onAudioCapturedRaw", "onError", "onLog", "onRmsMetrics")
 
         OnCreate {
             self.audioManager = RealtimeAudioManager(
                 onAudioCaptured: { [weak self] base64Audio in
                     self?.sendEvent("onAudioCaptured", ["data": base64Audio])
+                },
+                onAudioCapturedRaw: { [weak self] base64Audio in
+                    self?.sendEvent("onAudioCapturedRaw", ["data": base64Audio])
                 },
                 onError: { [weak self] message in
                     self?.sendEvent("onError", ["message": message])

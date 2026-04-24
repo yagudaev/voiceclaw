@@ -10,7 +10,7 @@
 
 import { promises as fs } from "node:fs"
 import { homedir } from "node:os"
-import { join, resolve, extname, basename } from "node:path"
+import { join, resolve, extname, basename, dirname } from "node:path"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -21,13 +21,10 @@ const MEDIA_ROOT = process.env.VOICECLAW_MEDIA_DIR
 // PCM sidecar sample rate keys we accept, in order of preference.
 const SAMPLE_RATE_KEYS = ["sampleRate", "sample_rate_hz", "sample_rate"]
 
-// User audio is captured post-AEC on the iOS client and echo-gated to match
-// what Gemini received (silence frames when the speaker is playing back).
-// Result: the raw user PCM is ~30 dB quieter on average than the assistant.
-// We auto-normalize user-* files at WAV wrap time so browser playback is
-// audible. The on-disk PCM is never mutated — only the streamed copy.
-// Proper fix (capture a separate un-gated mic tap in the iOS native module)
-// tracked as a follow-up; this is the zero-risk viewer-side patch.
+// Older user-* files were captured post-AEC and echo-gated to match what
+// Gemini received, which made recordings too quiet or silence-stuffed. Newer
+// clients also write user-capture-* files before the echo gate; prefer those
+// when present and keep normalization only for the older gated fallback.
 const USER_AUDIO_TARGET_PEAK_I16 = 29000 // ~-1 dB from int16 max (32767)
 const USER_AUDIO_MAX_GAIN = 8 // cap amplification — silent files stay silent
 
@@ -46,19 +43,22 @@ export async function GET(
     return new NextResponse("forbidden", { status: 403 })
   }
 
+  const readTarget = await preferCapturePcm(target)
+
   let bytes: Buffer
   try {
-    bytes = await fs.readFile(target)
+    bytes = await fs.readFile(readTarget)
   } catch {
     return new NextResponse("not found", { status: 404 })
   }
 
-  const ext = extname(target).toLowerCase()
+  const ext = extname(readTarget).toLowerCase()
 
   if (ext === ".pcm") {
-    const sampleRate = await readSampleRate(target)
-    const isUserAudio = basename(target).startsWith("user-")
-    const pcmForWav = isUserAudio ? normalizePcmGain(bytes) : bytes
+    const sampleRate = await readSampleRate(readTarget)
+    const name = basename(readTarget)
+    const isGatedUserAudio = name.startsWith("user-") && !name.startsWith("user-capture-")
+    const pcmForWav = isGatedUserAudio ? normalizePcmGain(bytes) : bytes
     const wav = pcmToWav(pcmForWav, sampleRate, 1)
     return new NextResponse(wav as unknown as BodyInit, {
       status: 200,
@@ -100,25 +100,39 @@ async function readSampleRate(pcmPath: string): Promise<number> {
   return 24000
 }
 
+async function preferCapturePcm(target: string): Promise<string> {
+  const name = basename(target)
+  if (extname(name).toLowerCase() !== ".pcm") return target
+  if (!name.startsWith("user-") || name.startsWith("user-capture-")) return target
+
+  const captureTarget = join(dirname(target), `user-capture-${name.slice("user-".length)}`)
+  try {
+    const stat = await fs.stat(captureTarget)
+    return stat.size > 0 ? captureTarget : target
+  } catch {
+    return target
+  }
+}
+
 function pcmToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
   const byteRate = sampleRate * channels * 2
   const blockAlign = channels * 2
   const dataSize = pcm.length
   const buf = Buffer.alloc(44 + dataSize)
   let off = 0
-  buf.write("RIFF", off); off += 4
-  buf.writeUInt32LE(36 + dataSize, off); off += 4
-  buf.write("WAVE", off); off += 4
-  buf.write("fmt ", off); off += 4
-  buf.writeUInt32LE(16, off); off += 4
-  buf.writeUInt16LE(1, off); off += 2
-  buf.writeUInt16LE(channels, off); off += 2
-  buf.writeUInt32LE(sampleRate, off); off += 4
-  buf.writeUInt32LE(byteRate, off); off += 4
-  buf.writeUInt16LE(blockAlign, off); off += 2
-  buf.writeUInt16LE(16, off); off += 2
-  buf.write("data", off); off += 4
-  buf.writeUInt32LE(dataSize, off); off += 4
+  off = writeAscii(buf, off, "RIFF")
+  off = writeUInt32(buf, off, 36 + dataSize)
+  off = writeAscii(buf, off, "WAVE")
+  off = writeAscii(buf, off, "fmt ")
+  off = writeUInt32(buf, off, 16)
+  off = writeUInt16(buf, off, 1)
+  off = writeUInt16(buf, off, channels)
+  off = writeUInt32(buf, off, sampleRate)
+  off = writeUInt32(buf, off, byteRate)
+  off = writeUInt16(buf, off, blockAlign)
+  off = writeUInt16(buf, off, 16)
+  off = writeAscii(buf, off, "data")
+  off = writeUInt32(buf, off, dataSize)
   pcm.copy(buf, off)
   return buf
 }
@@ -163,4 +177,19 @@ function guessContentType(ext: string): string {
     case ".mp4": return "video/mp4"
     default: return "application/octet-stream"
   }
+}
+
+function writeAscii(buf: Buffer, off: number, value: string): number {
+  buf.write(value, off)
+  return off + value.length
+}
+
+function writeUInt16(buf: Buffer, off: number, value: number): number {
+  buf.writeUInt16LE(value, off)
+  return off + 2
+}
+
+function writeUInt32(buf: Buffer, off: number, value: number): number {
+  buf.writeUInt32LE(value, off)
+  return off + 4
 }

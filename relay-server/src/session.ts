@@ -266,6 +266,11 @@ export class RelaySession {
         this.media.onUserAudioChunk(event.data)
         this.adapter?.sendAudio(event.data)
         break
+      case "audio.append_capture_only":
+        // Raw mic capture for recordings only. Do not forward upstream; Gemini
+        // should keep receiving the echo-gated stream via audio.append.
+        this.media.onUserAudioChunkCaptureOnly(event.data)
+        break
       case "audio.commit":
         this.adapter?.commitAudio()
         break

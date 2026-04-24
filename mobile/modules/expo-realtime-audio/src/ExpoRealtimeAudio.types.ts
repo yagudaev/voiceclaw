@@ -20,6 +20,7 @@ export type AudioLogEvent = {
 
 export type ExpoRealtimeAudioModuleEvents = {
   onAudioCaptured: (event: AudioCapturedEvent) => void
+  onAudioCapturedRaw: (event: AudioCapturedEvent) => void
   onError: (event: AudioErrorEvent) => void
   onLog: (event: AudioLogEvent) => void
   onRmsMetrics: (event: RmsMetricsEvent) => void

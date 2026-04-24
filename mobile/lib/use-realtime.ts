@@ -105,7 +105,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
   // Listen for audio from native module and forward to WebSocket
   useEffect(() => {
-    const subscription = ExpoRealtimeAudioModule.addListener(
+    const gatedSubscription = ExpoRealtimeAudioModule.addListener(
       'onAudioCaptured',
       (event: { data: string }) => {
         if (mutedRef.current) return
@@ -117,7 +117,22 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         }
       },
     )
-    return () => subscription.remove()
+    const rawCaptureSubscription = ExpoRealtimeAudioModule.addListener(
+      'onAudioCapturedRaw',
+      (event: { data: string }) => {
+        if (mutedRef.current) return
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'audio.append_capture_only',
+            data: event.data,
+          }))
+        }
+      },
+    )
+    return () => {
+      gatedSubscription.remove()
+      rawCaptureSubscription.remove()
+    }
   }, [])
 
   const handleMessage = useCallback((event: MessageEvent) => {

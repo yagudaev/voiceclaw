@@ -23,6 +23,10 @@ async function run() {
     capture.onUserAudioChunk(chunk.toString("base64"))
     capture.onAssistantAudioChunk(chunk.toString("base64"))
   }
+  const rawChunk = Buffer.alloc(640)
+  for (let i = 0; i < 10; i++) {
+    capture.onUserAudioChunkCaptureOnly(rawChunk.toString("base64"))
+  }
 
   // Two video frames (1-byte payload is fine for this test — JPEG validation
   // isn't part of the capture contract; the relay writes raw JPEG bytes as-is).
@@ -32,11 +36,18 @@ async function run() {
   const attrs = await capture.finalizeTurn()
 
   const expectedUserPath = join(root, "unit-session", "user-turn-001.pcm")
+  const expectedUserCapturePath = join(root, "unit-session", "user-capture-turn-001.pcm")
   const expectedAssistantPath = join(root, "unit-session", "assistant-turn-001.pcm")
   const expectedVideoDir = join(root, "unit-session", "video-turn-001")
 
-  if (attrs["media.user_audio.path"] !== expectedUserPath) {
+  if (attrs["media.user_audio.path"] !== expectedUserCapturePath) {
     throw new Error(`user path mismatch: ${attrs["media.user_audio.path"]}`)
+  }
+  if (attrs["media.user_audio.gated_path"] !== expectedUserPath) {
+    throw new Error(`gated user path mismatch: ${attrs["media.user_audio.gated_path"]}`)
+  }
+  if (attrs["media.user_audio.capture_path"] !== expectedUserCapturePath) {
+    throw new Error(`capture user path mismatch: ${attrs["media.user_audio.capture_path"]}`)
   }
   if (attrs["media.assistant_audio.path"] !== expectedAssistantPath) {
     throw new Error(`assistant path mismatch: ${attrs["media.assistant_audio.path"]}`)
@@ -48,13 +59,19 @@ async function run() {
     throw new Error(`expected provider=local, got ${attrs["media.user_audio.provider"]}`)
   }
   if (!existsSync(expectedUserPath)) throw new Error("user pcm file missing")
+  if (!existsSync(expectedUserCapturePath)) throw new Error("user capture pcm file missing")
   if (!existsSync(expectedUserPath + ".json")) throw new Error("user sidecar missing")
+  if (!existsSync(expectedUserCapturePath + ".json")) throw new Error("user capture sidecar missing")
   if (!existsSync(expectedAssistantPath)) throw new Error("assistant pcm file missing")
 
   // Verify the user PCM got 50 * 320 bytes.
   const userBytes = readFileSync(expectedUserPath).byteLength
   if (userBytes !== 50 * 320) {
     throw new Error(`expected 16000 bytes in user.pcm, got ${userBytes}`)
+  }
+  const userCaptureBytes = readFileSync(expectedUserCapturePath).byteLength
+  if (userCaptureBytes !== 10 * 640) {
+    throw new Error(`expected 6400 bytes in user-capture.pcm, got ${userCaptureBytes}`)
   }
 
   // Timing JSON for video frames.
@@ -72,17 +89,34 @@ async function run() {
   // Second turn through the same session — must not clobber turn-001 files.
   capture.startTurn("turn-002")
   capture.onUserAudioChunk(chunk.toString("base64"))
+  capture.onUserAudioChunkCaptureOnly(rawChunk.toString("base64"))
   const attrs2 = await capture.finalizeTurn()
-  if (attrs2["media.user_audio.path"] === expectedUserPath) {
-    throw new Error("turn-002 reused turn-001's path")
+  if (attrs2["media.user_audio.path"] === expectedUserCapturePath) {
+    throw new Error("turn-002 reused turn-001's capture path")
   }
   if (!existsSync(expectedUserPath)) {
     throw new Error("turn-001 user.pcm deleted by turn-002")
   }
+  if (!existsSync(expectedUserCapturePath)) {
+    throw new Error("turn-001 user-capture.pcm deleted by turn-002")
+  }
 
   console.log("  PASS  second turn writes to distinct files")
 
-  capture.endSession()
+  const sessionAttrs = await capture.finalizeSession()
+  const sessionUserWav = sessionAttrs["media.session_audio.user.path"]
+  if (typeof sessionUserWav !== "string") {
+    throw new Error(`missing session user wav path: ${JSON.stringify(sessionAttrs)}`)
+  }
+  const sessionUserBytes = readFileSync(sessionUserWav).byteLength
+  const expectedSessionUserBytes = 44 + 10 * 640 + 640
+  if (sessionUserBytes !== expectedSessionUserBytes) {
+    throw new Error(`expected session user wav to use capture bytes (${expectedSessionUserBytes}), got ${sessionUserBytes}`)
+  }
+
+  console.log("  PASS  session user wav prefers capture-only PCM")
+
+  await capture.endSession()
 
   // Disabled mode should be a no-op.
   const noop = new MediaCapture({ enabled: false, rootDir: root })
