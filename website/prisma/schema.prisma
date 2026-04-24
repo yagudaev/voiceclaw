@@ -1,0 +1,87 @@
+// VoiceClaw identity schema.
+// Minimal by design: email + OAuth sub for identity, hashed device tokens
+// for long-lived app auth, one-time-use auth tickets for the browser →
+// desktop/mobile handoff.
+//
+// The rest of VoiceClaw's data (audio, transcripts, conversations, provider
+// keys) lives on the user's own Mac / phone and is never stored here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  name                    String?
+  googleSub               String?   @unique
+  appleSub                String?   @unique
+  // Apple-specific: the user's Apple ID email may differ from what they
+  // use for Google (Sign in with Apple + Hide My Email). Store separately
+  // so TestFlight invites can be sent to the right address.
+  appleIdEmail            String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  // Mobile-access request workflow (NAN-661 flow). Requested/granted
+  // timestamps preserve history; a boolean would lose it.
+  mobileAccessRequestedAt DateTime?
+  mobileAccessGrantedAt   DateTime?
+
+  // Analytics opt-out (defaults to null = opted in). Nullable so we can
+  // distinguish "user explicitly opted out" from "haven't asked yet".
+  analyticsOptedOutAt     DateTime?
+
+  devices      Device[]
+  authTickets  AuthTicket[]
+
+  @@index([email])
+}
+
+model Device {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Human-readable label ("Michael's MacBook Pro (Desktop)") — user can
+  // see + revoke devices from settings later.
+  label       String?
+  platform    String?  // "desktop-macos" | "ios" | "android" — for display only.
+
+  // SHA-256 of the long-lived token. We never store the token itself so a
+  // DB leak can't impersonate a user's device.
+  tokenHash   String   @unique
+
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+
+  @@index([userId])
+}
+
+model AuthTicket {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // SHA-256 of the one-time ticket passed to the deep link.
+  ticketHash  String   @unique
+
+  // Short-lived: minted at OAuth callback, consumed within ~60s by the
+  // desktop/mobile app. Expired rows are pruned periodically.
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  // Client hint used by the desktop/mobile app when redeeming. Not
+  // security-critical but helps debugging.
+  targetPlatform String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
