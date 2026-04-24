@@ -6,7 +6,7 @@
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-000000?logo=apple&logoColor=white)]()
 [![Platform: iOS](https://img.shields.io/badge/Platform-iOS-000000?logo=apple&logoColor=white)]()
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live_API-4285F4?logo=google&logoColor=white)]()
-[![OpenAI Realtime](https://img.shields.io/badge/OpenAI-Realtime_API-412991?logo=openai&logoColor=white)]()
+[![Grok Voice](https://img.shields.io/badge/Grok-Voice_API-000000)]()
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](relay-server/Dockerfile)
 
 Open-source voice AI assistant. Talk to any AI model in real time from your phone or desktop.
@@ -72,7 +72,7 @@ yarn dev            # mobile + web + server together
 
 ## How it works: the `ask_brain` pattern
 
-Realtime voice models (Gemini Live, OpenAI Realtime) are great at natural conversation but can't use tools, access memory, or call external APIs on their own. VoiceClaw bridges this gap with a simple escalation pattern:
+Realtime voice models (Gemini Live, Grok Voice, OpenAI Realtime) are great at natural conversation but can't use tools, access memory, or call external APIs on their own. VoiceClaw bridges this gap with a simple escalation pattern:
 
 1. You speak to a **realtime voice model** that handles conversation naturally
 2. When the model needs capabilities it doesn't have, it calls the `ask_brain` tool
@@ -97,7 +97,7 @@ flowchart LR
   end
     Mobile -- WebSocket<br>audio+video --> Relay["🔗 Relay Server<br>(TypeScript / Node.js)<br><br>- Session mgmt<br>- Provider adapter<br>- Brain agent gateway<br>- Tracing (Langfuse / OTEL)"]
     Desktop -- WebSocket<br>audio + video --> Relay
-    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / OpenAI Realtime)<br><br>- Speech to Speech"]
+    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / Grok Voice / OpenAI Realtime)<br><br>- Speech to Speech"]
     Provider -- tool call: ask_brain --> Relay
     Relay <-- POST /v1/chat/completions<br>(SSE stream) --> Brain["🧠 Brain AI<br>(OpenAI-compatible agent)<br><br>- Web search<br>- Calendar / tasks<br>- Long-term memory"]
 
@@ -146,6 +146,7 @@ The relay server reads these environment variables from `relay-server/.env`:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes (for Gemini provider) | Google Gemini API key for Live API |
+| `XAI_API_KEY` | Yes (for xAI provider) | xAI API key for Grok Voice API |
 | `OPENAI_API_KEY` | Yes (for OpenAI provider) | OpenAI API key for Realtime API |
 | `RELAY_API_KEY` | Recommended | API key clients must send to connect. Generate with `openssl rand -hex 24` |
 | `BRAIN_GATEWAY_AUTH_TOKEN` | Optional | Auth token for your brain agent endpoint |
@@ -155,7 +156,7 @@ The relay server reads these environment variables from `relay-server/.env`:
 | `LANGFUSE_SECRET_KEY` | Optional | Langfuse tracing secret key |
 | `LANGFUSE_BASE_URL` | Optional | Langfuse endpoint (default: `https://cloud.langfuse.com`) |
 
-You need at least one provider key (`OPENAI_API_KEY` or `GEMINI_API_KEY`) for the relay to be useful.
+You need at least one provider key (`GEMINI_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`) for the relay to be useful.
 
 ## Project Structure
 

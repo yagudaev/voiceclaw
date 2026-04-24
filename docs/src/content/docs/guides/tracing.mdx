@@ -25,7 +25,7 @@ memory.save-transcript            [SPAN]          service: voiceclaw-relay   (en
     └── openclaw.llm              [GENERATION]    service: openclaw-gateway
 ```
 
-- **`voice-turn`** — lazily created on the first real content (user transcript, assistant delta, or tool call). Carries the assembled system prompt as the system message of the span's input, plus the user turn. Model (`gemini-3.1-flash-live-preview` / `gpt-5.4-realtime`), turnId, turnIndex, and `client.turnStartedAt` metadata live on the span.
+- **`voice-turn`** — lazily created on the first real content (user transcript, assistant delta, or tool call). Carries the assembled system prompt as the system message of the span's input, plus the user turn. Model (`gemini-3.1-flash-live-preview` / `grok-voice-think-fast-1.0` / `gpt-5.4-realtime`), turnId, turnIndex, and `client.turnStartedAt` metadata live on the span.
 - **`ask_brain`** — opened when the realtime model emits a tool call with `name=ask_brain`. Closed when the real brain response lands, not when the "searching" placeholder is sent. Duration reflects the actual brain call.
 - **`openclaw.chat_completions`** — the HTTP envelope span for the brain request. Input is the incoming messages array; output is the final response text.
 - **`openclaw.llm`** — the generation span for the actual LLM call. Input is a chat-format array starting with the **resolved** system prompt claude-cli saw (including MEMORY.md / IDENTITY.md / SOUL.md workspace bootstrap). Usage tokens + `gen_ai.request.model` attached.

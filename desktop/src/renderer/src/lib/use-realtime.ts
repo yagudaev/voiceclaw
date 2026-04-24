@@ -200,7 +200,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
       ws.onopen = async () => {
         console.log('[useRealtime] WebSocket connected, sending session.config')
-        const provider = config.model?.startsWith('gemini-') ? 'gemini' : 'openai'
+        const provider = getProviderForRealtimeModel(config.model)
         ws.send(
           JSON.stringify({
             type: 'session.config',
@@ -313,4 +313,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   }, [])
 
   return { start, stop, setMuted, sendFrame, getInputLevel, isConnected, isReconnecting, sessionId }
+}
+
+function getProviderForRealtimeModel(model?: string): 'gemini' | 'openai' | 'xai' {
+  if (model?.startsWith('gemini-')) return 'gemini'
+  if (model?.startsWith('grok-voice-')) return 'xai'
+  return 'openai'
 }

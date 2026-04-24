@@ -32,7 +32,7 @@ export class TurnTracer {
   private model: string | null = null
   // Assembled system prompt that the realtime provider was configured with —
   // attached to every voice-turn span so the trace is self-contained and a
-  // reader can see exactly what instructions Gemini / OpenAI Realtime was
+  // reader can see exactly what instructions Gemini / Grok Voice / OpenAI Realtime was
   // running under without cross-referencing the relay code.
   private sessionInstructions: string | null = null
 
@@ -363,7 +363,7 @@ export class TurnTracer {
       return
     }
     // Compose the input as a chat conversation including the system prompt
-    // Gemini / OpenAI Realtime was configured with, so each trace is self-
+    // Gemini / Grok Voice / OpenAI Realtime was configured with, so each trace is self-
     // contained: a reader can see the full context the voice model ran under
     // without cross-referencing the relay code.
     const chatInput: Array<{ role: string; content: string }> = []

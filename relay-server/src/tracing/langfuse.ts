@@ -5,7 +5,7 @@
 //   Session = one relay WebSocket connection (sessionKey → Langfuse sessionId)
 //   Trace   = one voice turn (user utterance → assistant finished speaking)
 //   Observations (spans):
-//     - generation: model turn (Gemini Live / OpenAI Realtime); usage on close
+//     - generation: model turn (Gemini Live / Grok Voice / OpenAI Realtime); usage on close
 //     - agent/tool: brain tool calls
 //     - span: mobile-side timing reports (stt/llm/tts latency from the device)
 //

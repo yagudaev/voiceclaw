@@ -9,11 +9,29 @@ import { log, error as logError } from "../log.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 const DEFAULT_MODEL = "gpt-realtime-mini"
+const DEFAULT_VOICE = "marin"
+
+export interface OpenAICompatibleAdapterOptions {
+  providerName?: string
+  realtimeUrl?: string
+  apiKeyEnv?: string
+  defaultModel?: string
+  defaultVoice?: string
+  authHeaders?: Record<string, string>
+  sessionFormat?: "openai" | "xai"
+}
 
 const ROTATION_INTERVAL_MS = parseInt(process.env.ROTATION_INTERVAL_MS ?? String(50 * 60 * 1000), 10) // 50 min default
 const WATCHDOG_TIMEOUT_MS = 20_000 // 20 seconds with no audio out
 
 export class OpenAIAdapter implements ProviderAdapter {
+  private providerName: string
+  private realtimeUrl: string
+  private apiKeyEnv: string
+  private defaultModel: string
+  private defaultVoice: string
+  private authHeaders: Record<string, string>
+  private sessionFormat: "openai" | "xai"
   private upstream: WebSocket | null = null
   private sendToClient: SendToClient | null = null
   private config: SessionConfigEvent | null = null
@@ -36,6 +54,16 @@ export class OpenAIAdapter implements ProviderAdapter {
   private lastUpstreamAudioAtMs: number | null = null
   private firstAudioDeltaAtMs: number | null = null
   private turnWasInterrupted = false
+
+  constructor(options: OpenAICompatibleAdapterOptions = {}) {
+    this.providerName = options.providerName ?? "openai"
+    this.realtimeUrl = options.realtimeUrl ?? OPENAI_REALTIME_URL
+    this.apiKeyEnv = options.apiKeyEnv ?? "OPENAI_API_KEY"
+    this.defaultModel = options.defaultModel ?? DEFAULT_MODEL
+    this.defaultVoice = options.defaultVoice ?? DEFAULT_VOICE
+    this.authHeaders = options.authHeaders ?? { "OpenAI-Beta": "realtime=v1" }
+    this.sessionFormat = options.sessionFormat ?? "openai"
+  }
 
   async connect(config: SessionConfigEvent, sendToClient: SendToClient): Promise<void> {
     this.sendToClient = sendToClient
@@ -61,7 +89,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   injectContext(text: string) {
-    log(`[openai] Injecting context via conversation.item.create (${text.length} chars)`)
+    log(`[${this.providerName}] Injecting context via conversation.item.create (${text.length} chars)`)
     this.sendUpstream({
       type: "conversation.item.create",
       item: {
@@ -101,7 +129,7 @@ export class OpenAIAdapter implements ProviderAdapter {
       },
     })
     if (this.isResponseActive) {
-      log(`[openai] Tool result (${callId}) arrived mid-response, canceling current response before continuing`)
+      log(`[${this.providerName}] Tool result (${callId}) arrived mid-response, canceling current response before continuing`)
       this.pendingResponseCreate = true
       if (!this.pendingResponseCancel) {
         this.pendingResponseCancel = true
@@ -129,24 +157,24 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   private async openUpstream(config: SessionConfigEvent): Promise<void> {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error("OPENAI_API_KEY not set")
+    const apiKey = process.env[this.apiKeyEnv]
+    if (!apiKey) throw new Error(`${this.apiKeyEnv} not set`)
 
     this.resetResponseState()
 
-    const model = config.model || DEFAULT_MODEL
-    const url = `${OPENAI_REALTIME_URL}?model=${model}`
+    const model = config.model || this.defaultModel
+    const url = `${this.realtimeUrl}?model=${model}`
 
     return new Promise((resolve, reject) => {
       this.upstream = new WebSocket(url, {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
-          "OpenAI-Beta": "realtime=v1",
+          ...this.authHeaders,
         },
       })
 
       this.upstream.on("open", () => {
-        log(`[openai] Upstream WebSocket connected (model=${model})`)
+        log(`[${this.providerName}] Upstream WebSocket connected (model=${model})`)
         this.configureSession(config)
         resolve()
       })
@@ -155,17 +183,17 @@ export class OpenAIAdapter implements ProviderAdapter {
         try {
           this.handleUpstreamEvent(JSON.parse(String(raw)))
         } catch (err) {
-          logError("[openai] Failed to parse upstream message:", err)
+          logError(`[${this.providerName}] Failed to parse upstream message:`, err)
         }
       })
 
       this.upstream.on("error", (err) => {
-        logError("[openai] Upstream error:", err.message)
+        logError(`[${this.providerName}] Upstream error:`, err.message)
         if (!this.isRotating) reject(err)
       })
 
       this.upstream.on("close", (code, reason) => {
-        log(`[openai] Upstream closed: ${code} ${String(reason)}`)
+        log(`[${this.providerName}] Upstream closed: ${code} ${String(reason)}`)
         if (!this.isRotating) {
           this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
         }
@@ -195,25 +223,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
     this.sendUpstream({
       type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        instructions,
-        voice: config.voice || "marin",
-        input_audio_format: "pcm16",
-        output_audio_format: "pcm16",
-        input_audio_transcription: {
-          model: "gpt-4o-mini-transcribe",
-        },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 800,
-        },
-        tools,
-        tool_choice: tools.length > 0 ? "auto" : "none",
-        temperature: 0.8,
-      },
+      session: this.buildSessionConfig(config, instructions, tools),
     })
   }
 
@@ -222,12 +232,12 @@ export class OpenAIAdapter implements ProviderAdapter {
     if (!this.config || this.isRotating) return
     this.isRotating = true
 
-    log("[openai] Starting session rotation...")
+    log(`[${this.providerName}] Starting session rotation...`)
     this.sendToClient?.({ type: "session.rotating" })
 
     // Summarize transcript for context injection
     const summary = this.summarizeTranscript()
-    log(`[openai] Transcript summary (${summary.length} chars): ${summary.substring(0, 100)}...`)
+    log(`[${this.providerName}] Transcript summary (${summary.length} chars): ${summary.substring(0, 100)}...`)
 
     // Close old upstream
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
@@ -241,9 +251,9 @@ export class OpenAIAdapter implements ProviderAdapter {
       this.transcript = [] // Clear transcript for new session
       this.startRotationTimer()
       this.sendToClient?.({ type: "session.rotated", sessionId: `rotated-${Date.now()}` })
-      log("[openai] Session rotation complete")
+      log(`[${this.providerName}] Session rotation complete`)
     } catch (err) {
-      logError("[openai] Rotation failed:", err)
+      logError(`[${this.providerName}] Rotation failed:`, err)
       this.sendToClient?.({ type: "error", message: "session rotation failed", code: 502 })
     } finally {
       this.isRotating = false
@@ -251,24 +261,24 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   private async openUpstreamWithSummary(config: SessionConfigEvent, summary: string): Promise<void> {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error("OPENAI_API_KEY not set")
+    const apiKey = process.env[this.apiKeyEnv]
+    if (!apiKey) throw new Error(`${this.apiKeyEnv} not set`)
 
     this.resetResponseState()
 
-    const model = config.model || DEFAULT_MODEL
-    const url = `${OPENAI_REALTIME_URL}?model=${model}`
+    const model = config.model || this.defaultModel
+    const url = `${this.realtimeUrl}?model=${model}`
 
     return new Promise((resolve, reject) => {
       this.upstream = new WebSocket(url, {
         headers: {
           "Authorization": `Bearer ${apiKey}`,
-          "OpenAI-Beta": "realtime=v1",
+          ...this.authHeaders,
         },
       })
 
       this.upstream.on("open", () => {
-        log("[openai] New upstream connected after rotation")
+        log(`[${this.providerName}] New upstream connected after rotation`)
         this.configureSession(config, summary)
         resolve()
       })
@@ -277,17 +287,17 @@ export class OpenAIAdapter implements ProviderAdapter {
         try {
           this.handleUpstreamEvent(JSON.parse(String(raw)))
         } catch (err) {
-          logError("[openai] Failed to parse upstream message:", err)
+          logError(`[${this.providerName}] Failed to parse upstream message:`, err)
         }
       })
 
       this.upstream.on("error", (err) => {
-        logError("[openai] New upstream error:", err.message)
+        logError(`[${this.providerName}] New upstream error:`, err.message)
         reject(err)
       })
 
       this.upstream.on("close", (code, reason) => {
-        log(`[openai] Upstream closed: ${code} ${String(reason)}`)
+        log(`[${this.providerName}] Upstream closed: ${code} ${String(reason)}`)
         if (!this.isRotating) {
           this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
         }
@@ -315,7 +325,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private startRotationTimer() {
     this.clearRotationTimer()
     this.rotationTimer = setTimeout(() => {
-      log(`[openai] Rotation timer fired after ${ROTATION_INTERVAL_MS / 1000}s`)
+      log(`[${this.providerName}] Rotation timer fired after ${ROTATION_INTERVAL_MS / 1000}s`)
       this.rotate()
     }, ROTATION_INTERVAL_MS)
   }
@@ -356,14 +366,23 @@ export class OpenAIAdapter implements ProviderAdapter {
     switch (event.type) {
       // Session lifecycle
       case "session.created":
-        log(`[openai] Session created: ${event.session?.id}`)
+        log(`[${this.providerName}] Session created: ${event.session?.id}`)
         break
       case "session.updated":
-        log("[openai] Session updated")
+        log(`[${this.providerName}] Session updated`)
+        break
+      case "ping":
+      case "conversation.created":
+      case "conversation.item.added":
+      case "response.output_item.added":
+      case "response.output_item.done":
+      case "response.content_part.added":
+      case "response.content_part.done":
         break
 
       // Audio output
       case "response.audio.delta":
+      case "response.output_audio.delta":
         if (this.firstAudioDeltaAtMs == null) {
           this.firstAudioDeltaAtMs = Date.now()
         }
@@ -373,6 +392,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Transcripts
       case "response.audio_transcript.delta":
+      case "response.output_audio_transcript.delta":
         if (this.firstTextDeltaAtMs == null) {
           this.firstTextDeltaAtMs = Date.now()
         }
@@ -383,6 +403,7 @@ export class OpenAIAdapter implements ProviderAdapter {
         })
         break
       case "response.audio_transcript.done":
+      case "response.output_audio_transcript.done":
         this.transcript.push({ role: "assistant", text: event.transcript })
         this.sendToClient?.({
           type: "transcript.done",
@@ -402,7 +423,9 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // User speech transcription (final)
       case "conversation.item.input_audio_transcription.completed":
-        this.transcript.push({ role: "user", text: event.transcript })
+        if (event.transcript) {
+          this.transcript.push({ role: "user", text: event.transcript })
+        }
         this.sendToClient?.({
           type: "transcript.done",
           text: event.transcript,
@@ -426,7 +449,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Function calls
       case "response.function_call_arguments.done":
-        log(`[openai] Tool call: ${event.name} (${event.call_id})`)
+        log(`[${this.providerName}] Tool call: ${event.name} (${event.call_id})`)
         this.pendingToolCalls++
         this.pauseWatchdog()
         this.sendToClient?.({
@@ -468,7 +491,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       // Errors
       case "error":
-        logError(`[openai] Error: ${event.error?.message ?? event}`)
+        logError(`[${this.providerName}] Error: ${event.error?.message ?? event}`)
         this.resetResponseState()
         this.sendToClient?.({
           type: "error",
@@ -491,8 +514,9 @@ export class OpenAIAdapter implements ProviderAdapter {
             event.type !== "response.text.delta" &&
             event.type !== "response.text.done" &&
             event.type !== "response.audio.done" &&
+            event.type !== "response.output_audio.done" &&
             event.type !== "response.function_call_arguments.delta") {
-          log(`[openai] Unhandled event: ${event.type}`)
+          log(`[${this.providerName}] Unhandled event: ${event.type}`)
         }
     }
   }
@@ -508,12 +532,12 @@ export class OpenAIAdapter implements ProviderAdapter {
 
   private handleWatchdogTimeout() {
     if (this.isResponseActive) {
-      log("[openai] Watchdog fired during active response, deferring")
+      log(`[${this.providerName}] Watchdog fired during active response, deferring`)
       this.resetWatchdog()
       return
     }
 
-    log("[openai] Watchdog: no audio for 20s, injecting prompt")
+    log(`[${this.providerName}] Watchdog: no audio for 20s, injecting prompt`)
     this.sendUpstream({
       type: "conversation.item.create",
       item: {
@@ -528,7 +552,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private requestResponse(reason: string) {
     if (this.isResponseActive) {
       this.pendingResponseCreate = true
-      log(`[openai] Skipping response.create (${reason}) because a response is already active`)
+      log(`[${this.providerName}] Skipping response.create (${reason}) because a response is already active`)
       return
     }
 
@@ -542,7 +566,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   private flushPendingResponseCreate() {
     if (!this.pendingResponseCreate) return
 
-    log("[openai] Flushing queued response.create")
+    log(`[${this.providerName}] Flushing queued response.create`)
     this.pendingResponseCreate = false
     if (this.sendUpstream({ type: "response.create" })) {
       this.isResponseActive = true
@@ -623,6 +647,46 @@ export class OpenAIAdapter implements ProviderAdapter {
       firstOutputModality,
     })
     this.resetLatencyMarks()
+  }
+
+  private buildSessionConfig(
+    config: SessionConfigEvent,
+    instructions: string,
+    tools: ReturnType<typeof getTools>,
+  ): Record<string, unknown> {
+    const common = {
+      instructions,
+      voice: config.voice || this.defaultVoice,
+      turn_detection: {
+        type: "server_vad",
+        threshold: 0.5,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 800,
+      },
+      tools,
+      tool_choice: tools.length > 0 ? "auto" : "none",
+    }
+
+    if (this.sessionFormat === "xai") {
+      return {
+        ...common,
+        audio: {
+          input: { format: { type: "audio/pcm", rate: 24000 } },
+          output: { format: { type: "audio/pcm", rate: 24000 } },
+        },
+      }
+    }
+
+    return {
+      ...common,
+      modalities: ["text", "audio"],
+      input_audio_format: "pcm16",
+      output_audio_format: "pcm16",
+      input_audio_transcription: {
+        model: "gpt-4o-mini-transcribe",
+      },
+      temperature: 0.8,
+    }
   }
 }
 

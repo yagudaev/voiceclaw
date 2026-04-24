@@ -5,7 +5,7 @@ description: Detailed system design, audio flow, session lifecycle, brain agent,
 
 import { Aside } from '@astrojs/starlight/components'
 
-VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay server over WebSocket, and the relay server talks to AI providers (Gemini Live, OpenAI Realtime) over their native WebSocket APIs.
+VoiceClaw is a three-tier system: clients (mobile/desktop) talk to a relay server over WebSocket, and the relay server talks to AI providers (Gemini Live, Grok Voice, OpenAI Realtime) over their native WebSocket APIs.
 
 ## System Overview
 
@@ -22,7 +22,7 @@ flowchart LR
   end
     Mobile -- WebSocket<br>audio+video --> Relay["🔗 Relay Server<br>(TypeScript / Node.js)<br><br>- Session mgmt<br>- Provider adapter<br>- Brain agent gateway<br>- Tracing (Langfuse / OTEL)"]
     Desktop -- WebSocket<br>audio + video --> Relay
-    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / OpenAI Realtime)<br><br>- Speech to Speech"]
+    Relay <-- Provider WebSocket<br>audio + video --> Provider["📢 Realtime AI Provider<br>(Gemini Live / Grok Voice / OpenAI Realtime)<br><br>- Speech to Speech"]
     Provider -- tool call: ask_brain --> Relay
     Relay <-- POST /v1/chat/completions<br>(SSE stream) --> Brain["🧠 Brain AI<br>(OpenAI-compatible agent)<br><br>- Web search<br>- Calendar / tasks<br>- Long-term memory"]
 
@@ -61,10 +61,10 @@ flowchart LR
 +--------+---------+
          |
          | Provider WebSocket
-         | (Gemini BidiGenerateContent / OpenAI Realtime)
+         | (Gemini BidiGenerateContent / Grok Voice / OpenAI Realtime)
          |
 +--------+---------+
-|   AI Provider    |   Gemini Live or OpenAI Realtime API
+|   AI Provider    |   Gemini Live, Grok Voice, or OpenAI Realtime API
 |                  |   Voice activity detection (VAD)
 |                  |   Speech-to-text + text-to-speech
 +------------------+
@@ -141,7 +141,7 @@ Mic -> PCM16 24kHz -> base64 -> audio.append -> [Relay] -> provider format -> [A
 
 ## Video / Screen Sharing Flow
 
-The desktop app can share screen content with the AI (Gemini only -- OpenAI Realtime does not support video input).
+The desktop app can share screen content with the AI (Gemini only -- Grok Voice and OpenAI Realtime do not support video input).
 
 1. User picks a screen source via Electron's `desktopCapturer`
 2. `ScreenCapture` grabs frames at **1 FPS**

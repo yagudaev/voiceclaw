@@ -116,7 +116,7 @@ function loadAgentIdentity(provider: SessionConfigEvent["provider"]): string {
   const profile = loadAgentProfile()
   const soul = loadFile("SOUL.md")
 
-  if (provider === "openai") {
+  if (provider === "openai" || provider === "xai") {
     return buildOpenAIVoiceIdentity(profile, soul)
   }
 
