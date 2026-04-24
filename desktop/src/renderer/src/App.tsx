@@ -44,7 +44,7 @@ export function App() {
 
   return (
     <ConversationProvider>
-      <div className="h-screen flex flex-col bg-background text-foreground">
+      <div className="h-screen flex flex-col bg-background text-foreground vc-window-surface">
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
         <main className="flex-1 flex flex-col overflow-hidden relative">
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'chat' ? 'hidden' : ''}`}>

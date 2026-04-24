@@ -26,9 +26,9 @@ export function AudioLevelMeter({ getLevel, active }: AudioLevelMeterProps) {
   const width = Math.min(100, level * 500)
 
   return (
-    <div className="h-1 bg-muted rounded-full overflow-hidden">
+    <div className="h-1 overflow-hidden rounded-full bg-muted">
       <div
-        className="h-full bg-green-500 transition-[width] duration-100"
+        className="h-full bg-primary transition-[width] duration-100"
         style={{ width: `${width}%` }}
       />
     </div>

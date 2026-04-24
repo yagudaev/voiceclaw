@@ -16,10 +16,10 @@ export function MessageBubble({ message, showLatency }: MessageBubbleProps) {
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
       <div
         className={`
-          max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
+          max-w-[80%] rounded-md px-4 py-2.5 text-sm leading-relaxed
           ${isUser
-            ? 'bg-primary text-primary-foreground rounded-br-md'
-            : 'bg-muted text-foreground rounded-bl-md'
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-card text-foreground border border-border'
           }
         `}
       >
@@ -33,7 +33,7 @@ export function MessageBubble({ message, showLatency }: MessageBubbleProps) {
               key={i}
               src={part.url}
               alt={part.alt}
-              className="rounded-lg max-w-full mt-2 mb-1"
+              className="rounded-md max-w-full mt-2 mb-1"
               loading="lazy"
             />
           ),

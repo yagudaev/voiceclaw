@@ -21,7 +21,7 @@ export function ScreenSharePicker({ onSelect, onCancel }: ScreenSharePickerProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-[640px] max-h-[80vh] flex flex-col">
+      <div className="w-[640px] max-h-[80vh] flex flex-col rounded-md border border-border bg-card vc-panel-shadow">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">Share Screen</h2>
@@ -42,12 +42,12 @@ export function ScreenSharePicker({ onSelect, onCancel }: ScreenSharePickerProps
                 <button
                   key={source.id}
                   onClick={() => onSelect(source)}
-                  className="group rounded-xl border border-border bg-background p-2 hover:border-primary/50 hover:bg-accent transition-colors text-left"
+                  className="group rounded-md border border-border bg-background p-2 hover:border-primary/50 hover:bg-accent transition-colors text-left"
                 >
                   <img
                     src={source.thumbnailDataURL}
                     alt={source.name}
-                    className="w-full h-32 object-contain rounded-lg bg-muted mb-2"
+                    className="w-full h-32 object-contain rounded-md bg-muted mb-2"
                   />
                   <p className="text-xs text-muted-foreground group-hover:text-foreground truncate px-1">
                     {source.name}

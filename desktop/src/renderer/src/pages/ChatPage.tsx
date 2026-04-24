@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button'
 import { MessageBubble } from '../components/MessageBubble'
 import { ThinkingDots } from '../components/ThinkingDots'
 import { AudioLevelMeter } from '../components/AudioLevelMeter'
+import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 import { ScreenSharePicker } from '../components/ScreenSharePicker'
 import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
@@ -306,7 +307,7 @@ export function ChatPage() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-background/65 backdrop-blur">
         <div className="text-sm text-muted-foreground">
           {messages.length > 0
             ? `${messages.length} messages`
@@ -321,10 +322,14 @@ export function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !isCallActive && (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <div className="text-4xl mb-4">🎙</div>
-            <p className="text-lg font-medium">VoiceClaw Desktop</p>
-            <p className="text-sm mt-1">Press the call button to start a voice conversation</p>
+          <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
+            <div className="mb-5 flex size-16 items-center justify-center rounded-md border border-border bg-card text-foreground vc-panel-shadow">
+              <VoiceClawMark className="size-10" accent />
+            </div>
+            <p className="vc-font-serif text-2xl leading-none text-foreground">VoiceClaw Desktop</p>
+            <p className="mt-3 max-w-sm text-sm leading-6">
+              Start a call to speak with your agent through the precise voice layer.
+            </p>
           </div>
         )}
         {messages.map((msg) => (
@@ -335,10 +340,10 @@ export function ChatPage() {
           <div className={`flex ${streamingRole === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
             <div
               className={`
-                max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
+                max-w-[80%] rounded-md px-4 py-2.5 text-sm leading-relaxed
                 ${streamingRole === 'user'
-                  ? 'bg-primary text-primary-foreground rounded-br-md'
-                  : 'bg-muted text-foreground rounded-bl-md'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-card text-foreground border border-border'
                 }
               `}
             >
@@ -350,7 +355,7 @@ export function ChatPage() {
         {/* Thinking indicator */}
         {isThinking && !streamingText && (
           <div className="flex justify-start mb-3">
-            <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
+            <div className="rounded-md border border-border bg-card px-4 py-2.5">
               <ThinkingDots />
             </div>
           </div>
@@ -360,7 +365,7 @@ export function ChatPage() {
 
       {/* Screen sharing indicator */}
       {isScreenSharing && (
-        <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-green-500">
+        <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-[var(--brand-sage)]">
           <Monitor size={14} />
           <span className="truncate">Sharing: {screenSourceName}</span>
           <button
@@ -391,7 +396,7 @@ export function ChatPage() {
         {!isCallActive && !isConnecting ? (
           <Button
             onClick={startCall}
-            className="bg-green-500 hover:bg-green-600 text-white px-6"
+            className="px-6"
           >
             <Phone size={18} className="mr-2" />
             Start Call
@@ -411,7 +416,7 @@ export function ChatPage() {
                 variant="ghost"
                 size="icon"
                 onClick={isScreenSharing ? stopScreenShare : () => setShowScreenPicker(true)}
-                className={isScreenSharing ? 'text-green-500' : screenShareDisabled ? 'text-muted-foreground opacity-50' : 'text-foreground'}
+                className={isScreenSharing ? 'text-[var(--brand-sage)]' : screenShareDisabled ? 'text-muted-foreground opacity-50' : 'text-foreground'}
                 disabled={screenShareDisabled}
               >
                 {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
@@ -429,7 +434,7 @@ export function ChatPage() {
               <span className="text-sm text-muted-foreground animate-pulse">Connecting...</span>
             )}
             {realtime.isReconnecting && (
-              <span className="text-sm text-yellow-500 animate-pulse">Reconnecting...</span>
+              <span className="text-sm text-[var(--brand-sage)] animate-pulse">Reconnecting...</span>
             )}
           </>
         )}

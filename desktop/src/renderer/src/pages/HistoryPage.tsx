@@ -85,7 +85,7 @@ export function HistoryPage({ isVisible, onNavigateToChat }: HistoryPageProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-background/65 backdrop-blur">
         <div className="text-sm text-muted-foreground">
           {conversations.length} conversation{conversations.length === 1 ? '' : 's'}
         </div>
@@ -131,7 +131,7 @@ export function HistoryPage({ isVisible, onNavigateToChat }: HistoryPageProps) {
                         e.stopPropagation()
                         handleDelete(conv.id, getDisplayTitle(conv))
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-muted-foreground hover:text-destructive transition-all"
                     >
                       <Trash2 size={14} />
                     </button>
