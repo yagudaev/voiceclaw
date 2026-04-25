@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
@@ -96,6 +96,12 @@ app.whenReady().then(async () => {
   // Reflect service state in the tray icon.
   serviceManager.on('change', () => refreshTrayState())
 
+  // Renderer announces when a realtime session opens/closes so the tray
+  // can show "On a call" instead of "Idle" while a session is live.
+  ipcMain.handle('tray:setCallActive', (_e, active: boolean) => {
+    setCallActive(Boolean(active))
+  })
+
   // First-run: default launch-at-login to ON so mobile devices can
   // reach this Mac without the user opening the app first. User can
   // flip it off from Settings.
@@ -170,7 +176,21 @@ if (process.env.VOICECLAW_TEST_ERROR === '1') {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// An active voice call wins over service state — the user cares more
+// about "am I live?" than "are background services healthy?" while a
+// session is running.
+let callActive = false
+
+export function setCallActive(active: boolean): void {
+  callActive = active
+  refreshTrayState()
+}
+
 function refreshTrayState() {
+  if (callActive) {
+    setTrayState('on-call')
+    return
+  }
   const statuses = serviceManager.getAllStatuses()
   const values = Object.values(statuses)
   if (values.length === 0) {

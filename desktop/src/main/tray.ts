@@ -10,7 +10,7 @@ import { serviceManager, type ServiceStatus } from './services/service-manager'
 // The icon changes to reflect connection state so the user can see at a
 // glance whether everything is up without opening the window.
 
-export type TrayState = 'idle' | 'ready' | 'warn' | 'error'
+export type TrayState = 'idle' | 'ready' | 'warn' | 'error' | 'on-call'
 
 type TrayContext = {
   onOpenWindow: () => void
@@ -108,6 +108,8 @@ function serviceMenuItems(
 
 function stateLabel(state: TrayState): string {
   switch (state) {
+    case 'on-call':
+      return 'On a call'
     case 'ready':
       return 'Ready'
     case 'warn':

@@ -68,6 +68,17 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
+  // Surface call activity to the menu-bar tray so it can show "On a call"
+  // while a session is live instead of the default "Idle".
+  useEffect(() => {
+    window.electronAPI?.tray?.setCallActive(isConnected).catch(() => {})
+    if (isConnected) {
+      return () => {
+        window.electronAPI?.tray?.setCallActive(false).catch(() => {})
+      }
+    }
+  }, [isConnected])
+
   const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
     if (!configRef.current?.tracingEnabled) return
     if (wsRef.current?.readyState !== WebSocket.OPEN) return

@@ -44,6 +44,10 @@ const electronAPI = {
     getServicePorts: () =>
       ipcRenderer.invoke('app:getServicePorts') as Promise<Record<string, number>>,
   },
+  tray: {
+    setCallActive: (active: boolean) =>
+      ipcRenderer.invoke('tray:setCallActive', active) as Promise<void>,
+  },
   db: {
     createConversation: (title?: string) => ipcRenderer.invoke('db:createConversation', title),
     getLatestConversation: () => ipcRenderer.invoke('db:getLatestConversation'),
