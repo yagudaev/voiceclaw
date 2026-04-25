@@ -32,7 +32,10 @@ export function registerScreenCaptureHandlers() {
       .sort((a, b) => a.id.localeCompare(b.id))
     const windows = sources
       .filter((s) => s.id.startsWith('window:'))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => {
+        const byName = a.name.localeCompare(b.name)
+        return byName !== 0 ? byName : a.id.localeCompare(b.id)
+      })
 
     return [...screens, ...windows].map((s) => ({
       id: s.id,
