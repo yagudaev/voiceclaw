@@ -1,5 +1,6 @@
 // Tool definitions for STS sessions
-// echo_tool for testing, ask_brain for brain agent integration
+// echo_tool for testing, ask_brain for brain agent integration,
+// web_search for fast Tavily-backed lookups (only when a Tavily key is set)
 
 import type { SessionConfigEvent } from "../types.js"
 
@@ -43,6 +44,26 @@ const ASK_BRAIN: RealtimeTool = {
   },
 }
 
+// Fast Tavily-backed lookup. Phrased to nudge the model toward web_search for
+// quick "what / when / who" factual questions and ask_brain for anything that
+// needs the user's own context (memory, calendar, tasks, files). Both tools
+// can coexist — the model picks based on the query.
+const WEB_SEARCH: RealtimeTool = {
+  type: "function",
+  name: "web_search",
+  description: "Fast public web lookup via Tavily. Use this for quick factual questions where the answer lives on the public web — current events, definitions, prices, scores, schedules, recent news, 'what is X', 'when did Y happen'. Much faster than ask_brain (typically 1-3s). Do NOT use for anything personal to the user (their calendar, tasks, memory, files) — those need ask_brain. Returns top results with title, url, and snippet, plus a short synthesized answer when available.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "The web search query — phrase it as you would search Google",
+      },
+    },
+    required: ["query"],
+  },
+}
+
 export function getTools(config: SessionConfigEvent): RealtimeTool[] {
   const tools: RealtimeTool[] = [ECHO_TOOL]
 
@@ -50,7 +71,21 @@ export function getTools(config: SessionConfigEvent): RealtimeTool[] {
     tools.push(ASK_BRAIN)
   }
 
+  if (resolveTavilyKey(config)) {
+    tools.push(WEB_SEARCH)
+  }
+
   return tools
+}
+
+// Resolve Tavily key from session config first, env as fallback. Exported so
+// session.ts uses the same precedence when handling tool calls.
+export function resolveTavilyKey(config: SessionConfigEvent): string | null {
+  const fromConfig = config.tavilyApiKey?.trim()
+  if (fromConfig) return fromConfig
+  const fromEnv = process.env.TAVILY_API_KEY?.trim()
+  if (fromEnv) return fromEnv
+  return null
 }
 
 // Gemini function declaration format (no type:"function" wrapper)
@@ -68,7 +103,7 @@ export function getGeminiTools(config: SessionConfigEvent): GeminiFunctionDeclar
   }))
 }
 
-/** Handle synchronous server-side tools. Returns null for async tools like ask_brain. */
+/** Handle synchronous server-side tools. Returns null for async tools like ask_brain and web_search. */
 export function handleToolCall(
   name: string,
   args: string,
@@ -79,6 +114,7 @@ export function handleToolCall(
       return JSON.stringify({ echoed: parsed.message })
     }
     case "ask_brain":
+    case "web_search":
       // Handled asynchronously by session.ts
       return null
     default:
