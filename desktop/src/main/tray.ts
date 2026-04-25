@@ -26,7 +26,12 @@ export function createTray(ctx: TrayContext): Tray {
   context = ctx
   tray = new Tray(buildIcon('idle'))
   tray.setToolTip('VoiceClaw')
-  tray.on('click', () => ctx.onOpenWindow())
+  // No click handler: with a context menu attached via setContextMenu,
+  // macOS shows the menu on single click and that's the standard
+  // menu-bar-app behavior. An explicit tray.on('click', …) that called
+  // showMainWindow stole focus to the new window the moment the click
+  // landed, which dismissed the menu before it could finish opening.
+  // The window is reachable from the "Open VoiceClaw" menu item.
   rebuildMenu()
 
   serviceManager.on('change', () => rebuildMenu())
