@@ -1,7 +1,14 @@
 import { ipcMain, desktopCapturer, systemPreferences, shell, session } from 'electron'
 
+export type ScreenSourceIPC = {
+  id: string
+  name: string
+  thumbnailDataURL: string | null
+  appIconDataURL: string | null
+}
+
 export function registerScreenCaptureHandlers() {
-  ipcMain.handle('screen:getSources', async () => {
+  ipcMain.handle('screen:getSources', async (): Promise<ScreenSourceIPC[]> => {
     if (process.platform === 'darwin') {
       const status = systemPreferences.getMediaAccessStatus('screen')
       if (status !== 'granted') {
@@ -16,12 +23,23 @@ export function registerScreenCaptureHandlers() {
 
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
-      thumbnailSize: { width: 320, height: 240 },
+      thumbnailSize: { width: 640, height: 480 },
+      fetchWindowIcons: true,
     })
-    return sources.map((s) => ({
+
+    const screens = sources
+      .filter((s) => s.id.startsWith('screen:'))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const windows = sources
+      .filter((s) => s.id.startsWith('window:'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    return [...screens, ...windows].map((s) => ({
       id: s.id,
       name: s.name,
-      thumbnailDataURL: s.thumbnail.toDataURL(),
+      thumbnailDataURL: s.thumbnail.isEmpty() ? null : s.thumbnail.toDataURL(),
+      appIconDataURL:
+        s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
     }))
   })
 

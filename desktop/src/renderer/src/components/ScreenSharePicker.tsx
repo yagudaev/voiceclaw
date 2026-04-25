@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { AppWindow, Monitor, X } from 'lucide-react'
 import { Button } from './ui/Button'
 import { getScreenSources, type ScreenSource } from '../lib/screen-capture'
 
@@ -44,11 +44,7 @@ export function ScreenSharePicker({ onSelect, onCancel }: ScreenSharePickerProps
                   onClick={() => onSelect(source)}
                   className="group rounded-md border border-border bg-background p-2 hover:border-primary/50 hover:bg-accent transition-colors text-left"
                 >
-                  <img
-                    src={source.thumbnailDataURL}
-                    alt={source.name}
-                    className="w-full h-32 object-contain rounded-md bg-muted mb-2"
-                  />
+                  <SourcePreview source={source} />
                   <p className="text-xs text-muted-foreground group-hover:text-foreground truncate px-1">
                     {source.name}
                   </p>
@@ -58,6 +54,38 @@ export function ScreenSharePicker({ onSelect, onCancel }: ScreenSharePickerProps
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function SourcePreview({ source }: { source: ScreenSource }) {
+  const isScreen = source.id.startsWith('screen:')
+
+  if (source.thumbnailDataURL) {
+    return (
+      <img
+        src={source.thumbnailDataURL}
+        alt={source.name}
+        className="w-full h-32 object-contain rounded-md bg-muted mb-2"
+      />
+    )
+  }
+
+  if (source.appIconDataURL) {
+    return (
+      <div className="w-full h-32 flex items-center justify-center rounded-md bg-muted mb-2">
+        <img
+          src={source.appIconDataURL}
+          alt={source.name}
+          className="h-16 w-16 object-contain"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full h-32 flex items-center justify-center rounded-md bg-muted mb-2 text-muted-foreground">
+      {isScreen ? <Monitor size={40} /> : <AppWindow size={40} />}
     </div>
   )
 }
