@@ -31,17 +31,6 @@ const PROVIDERS: Provider[] = [
     freeTier: 'Free tier available',
   },
   {
-    id: 'openai',
-    name: 'OpenAI Realtime',
-    tagline: 'OpenAI',
-    detail: 'Sharp, precise, slightly cooler voice. Pay per minute.',
-    keyLink: 'https://platform.openai.com/api-keys',
-    keyLinkLabel: 'Get a key at platform.openai.com',
-    placeholder: 'sk-...',
-    prefix: 'sk-',
-    freeTier: 'Pay-as-you-go',
-  },
-  {
     id: 'xai',
     name: 'Grok Voice',
     tagline: 'xAI',
@@ -76,10 +65,12 @@ export function StepProvider({
   initialProvider = 'gemini',
   previewMode = false,
 }: Props) {
-  const [selected, setSelected] = useState<ProviderId>(initialProvider)
+  const [selected, setSelected] = useState<ProviderId>(
+    PROVIDERS.some((p) => p.id === initialProvider) ? initialProvider : 'gemini',
+  )
   const [apiKey, setApiKey] = useState('')
   const [validation, setValidation] = useState<ValidationState>({ kind: 'empty' })
-  const active = PROVIDERS.find((p) => p.id === selected)!
+  const active = PROVIDERS.find((p) => p.id === selected) ?? PROVIDERS[0]
 
   const handleKeyChange = (key: string) => {
     setApiKey(key)
@@ -147,7 +138,7 @@ export function StepProvider({
       secondaryAction={{ label: 'Back', onClick: onBack }}
       onStartOver={onStartOver}
     >
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {PROVIDERS.map((provider) => (
           <ProviderCard
             key={provider.id}
