@@ -210,6 +210,7 @@ export function ChatPage() {
   const startCall = useCallback(async () => {
     setConnectionError('')
     setIsConnecting(true)
+    setOutputMuted(false)
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
     const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))

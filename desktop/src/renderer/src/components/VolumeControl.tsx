@@ -95,6 +95,7 @@ export function VolumeControl({
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (disabled) return
       const step = e.shiftKey ? 0.1 : 0.05
+      const displayed = muted ? 0 : volume
       const adjust = (next: number) => {
         onVolumeChange(next)
         if (muted) onMutedChange(false)
@@ -103,12 +104,12 @@ export function VolumeControl({
         case 'ArrowUp':
         case 'ArrowRight':
           e.preventDefault()
-          adjust(Math.min(1, volume + step))
+          adjust(Math.min(1, displayed + step))
           break
         case 'ArrowDown':
         case 'ArrowLeft':
           e.preventDefault()
-          adjust(Math.max(0, volume - step))
+          adjust(Math.max(0, displayed - step))
           break
         case 'Home':
           e.preventDefault()
