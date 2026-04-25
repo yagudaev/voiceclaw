@@ -35,6 +35,11 @@ export function ChatPage() {
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
+  // Mirror of streamingRole readable synchronously in event callbacks. Used by
+  // onTranscriptDelta so we can decide "reset vs append" without putting an
+  // impure side effect inside a setState updater (which StrictMode would
+  // double-invoke and cause word duplication).
+  const streamingRoleRef = useRef<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
   const [connectionError, setConnectionError] = useState('')
   const [activeRealtimeModel, setActiveRealtimeModel] = useState('')
@@ -106,15 +111,18 @@ export function ChatPage() {
       setIsCallActive(true)
     },
     onTranscriptDelta: (text, role) => {
-      setStreamingRole((prevRole) => {
-        if (prevRole !== role) {
-          // Role switched (user→assistant or vice versa) — reset the buffer
-          setStreamingText(text)
-        } else {
-          setStreamingText((prev) => prev + text)
-        }
-        return role
-      })
+      // Role/buffer reconciliation must NOT happen inside a setState updater —
+      // React StrictMode runs updaters twice (in dev) to surface impure ones,
+      // which double-fires the side-effect setStreamingText(...) and produced
+      // the doubled-words bug (NAN-642). The current role lives in a ref so
+      // we can read it synchronously here without conjuring an updater.
+      if (streamingRoleRef.current !== role) {
+        streamingRoleRef.current = role
+        setStreamingRole(role)
+        setStreamingText(text)
+      } else {
+        setStreamingText((prev) => prev + text)
+      }
       if (role === 'assistant') setIsThinking(false)
     },
     onTranscriptDone: async (text, role) => {
@@ -135,6 +143,7 @@ export function ChatPage() {
     onTurnStarted: () => {
       setIsThinking(false)
       setStreamingText('')
+      streamingRoleRef.current = 'user'
       setStreamingRole('user')
     },
     onTurnEnded: () => {
@@ -154,6 +163,7 @@ export function ChatPage() {
       }
     },
     onToolProgress: (_callId, summary) => {
+      streamingRoleRef.current = 'assistant'
       setStreamingRole('assistant')
       setStreamingText(summary)
     },
@@ -161,12 +171,14 @@ export function ChatPage() {
       setIsCallActive(false)
       setIsThinking(false)
       setStreamingText('')
+      streamingRoleRef.current = 'assistant'
     },
     onDisconnect: () => {
       setIsCallActive(false)
       setIsConnecting(false)
       setIsThinking(false)
       setStreamingText('')
+      streamingRoleRef.current = 'assistant'
     },
     onError: (message) => {
       console.error('[ChatPage] Relay error:', message)
