@@ -14,23 +14,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:>=0.50.3 <1":
-  version: 0.80.0
-  resolution: "@anthropic-ai/sdk@npm:0.80.0"
-  dependencies:
-    json-schema-to-ts: "npm:^3.1.1"
-  peerDependencies:
-    zod: ^3.25.0 || ^4.0.0
-  peerDependenciesMeta:
-    zod:
-      optional: true
-  bin:
-    anthropic-ai-sdk: bin/cli
-  checksum: 10c0/b02c6f1f523c0ec122c8bf29ede95d685889d023c5a7d6c5b9f77149ae3c4bfd9972a56cfcc25f0ebb712d3093d050831ef76b5b9ecd0d97048d25df020b2d2d
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/sdk@npm:^0.90.0":
+"@anthropic-ai/sdk@npm:>=0.50.3 <1, @anthropic-ai/sdk@npm:^0.90.0":
   version: 0.90.0
   resolution: "@anthropic-ai/sdk@npm:0.90.0"
   dependencies:
@@ -3262,9 +3246,9 @@ __metadata:
   linkType: hard
 
 "hono@npm:^4.11.4":
-  version: 4.12.9
-  resolution: "hono@npm:4.12.9"
-  checksum: 10c0/393256552642f681e52935163508d9605e5552e186d9b99ff2caf219d4248341b83e3eb975c40a97149c86890d19d73421efc889aa465a28eb5920ccc42cff34
+  version: 4.12.15
+  resolution: "hono@npm:4.12.15"
+  checksum: 10c0/83f5778525bd4b706ddf1877c5f3cec0c8a3a0edf0944f8dfb041179c23a854166b8566f6e9be95894199a22e3b3aba139582d4ba24776e707c453d293bda24d
   languageName: node
   linkType: hard
 
