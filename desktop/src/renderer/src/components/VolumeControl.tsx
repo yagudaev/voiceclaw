@@ -139,7 +139,7 @@ export function VolumeControl({
               ? 'Agent audio muted. Open volume slider.'
               : 'Open agent volume slider'
         }
-        aria-pressed={muted}
+        aria-pressed={open ? muted : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
         disabled={disabled}
