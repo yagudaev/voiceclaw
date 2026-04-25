@@ -95,9 +95,4 @@ export function showMainWindow(): void {
 export function hideMainWindow(): void {
   if (!mainWindow) return
   mainWindow.hide()
-  // Keep the dock icon so VoiceClaw stays in Cmd+Tab and the Dock
-  // after the window is closed. Hiding the dock here switches the
-  // app to accessory activation policy and removes it from the
-  // application switcher, which surprises users who expect to bring
-  // it back the same way they would any other macOS app.
 }
