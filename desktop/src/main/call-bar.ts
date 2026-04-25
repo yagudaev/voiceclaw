@@ -10,8 +10,8 @@ import { getDb } from './db'
 // The window is created once per app launch and reused — show/hide
 // is cheap, full teardown happens on app quit.
 
-const BAR_WIDTH = 88
-const BAR_HEIGHT = 240
+const BAR_WIDTH = 68
+const BAR_HEIGHT = 168
 const SCREEN_MARGIN = 24
 const HIDE_FADE_MS = 300
 
@@ -68,8 +68,6 @@ export function createCallBar(options: { isDev: boolean; rendererUrl?: string })
     // back to chat.
     focusable: false,
     show: false,
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
