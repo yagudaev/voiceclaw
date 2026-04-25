@@ -209,6 +209,14 @@ export function ChatPage() {
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
 
+    const convId = conversationIdRef.current
+    const conversationHistory = convId
+      ? (await getMessages(convId))
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .slice(-200)
+          .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
+      : []
+
     setActiveRealtimeModel(model)
     realtime.start({
       serverUrl,
@@ -225,6 +233,7 @@ export function ChatPage() {
         locale: navigator.language,
         deviceModel: 'Desktop (Electron)',
       },
+      conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       tracingEnabled,
     })
   }, [realtime])
