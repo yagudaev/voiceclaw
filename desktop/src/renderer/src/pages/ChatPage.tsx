@@ -6,6 +6,7 @@ import { ThinkingDots } from '../components/ThinkingDots'
 import { AudioLevelMeter } from '../components/AudioLevelMeter'
 import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 import { ScreenSharePicker } from '../components/ScreenSharePicker'
+import { VolumeControl } from '../components/VolumeControl'
 import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
 import { useConversationContext } from '../lib/conversation-context'
@@ -15,6 +16,7 @@ import {
   getLatestConversation,
   getMessages,
   getSetting,
+  setSetting,
   updateConversationTitle,
   type Message,
 } from '../lib/db'
@@ -31,6 +33,8 @@ export function ChatPage() {
   const titleGeneratedRef = useRef(false)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [outputVolume, setOutputVolume] = useState(1)
+  const [outputMuted, setOutputMuted] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -75,6 +79,10 @@ export function ChatPage() {
   useEffect(() => {
     loadLatestConversation()
     getSetting('show_latency').then((v) => setShowLatency(v === 'true'))
+    getSetting('realtime_volume').then((v) => {
+      const parsed = parseFloat(v ?? '')
+      if (!Number.isNaN(parsed)) setOutputVolume(Math.max(0, Math.min(1, parsed)))
+    })
   }, [])
 
   const loadLatestConversation = async () => {
@@ -190,6 +198,14 @@ export function ChatPage() {
   const realtimeRef = useRef(realtime)
   realtimeRef.current = realtime
 
+  useEffect(() => {
+    realtime.setOutputVolume(outputVolume)
+  }, [outputVolume, realtime])
+
+  useEffect(() => {
+    realtime.setOutputMuted(outputMuted)
+  }, [outputMuted, realtime])
+
   const startCall = useCallback(async () => {
     setConnectionError('')
     setIsConnecting(true)
@@ -204,7 +220,7 @@ export function ChatPage() {
     const tavilyApiKey = tavilyEnabled
       ? ((await getSetting('tavily_api_key')) || undefined)
       : undefined
-    const volume = parseFloat((await getSetting('realtime_volume')) || '1.0')
+    const volume = outputVolume
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
@@ -236,7 +252,7 @@ export function ChatPage() {
       conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       tracingEnabled,
     })
-  }, [realtime])
+  }, [realtime, outputVolume])
 
   const endCall = useCallback(() => {
     realtime.stop()
@@ -253,6 +269,15 @@ export function ChatPage() {
     setIsMuted(next)
     realtime.setMuted(next)
   }, [isMuted, realtime])
+
+  const handleOutputVolumeChange = useCallback((next: number) => {
+    setOutputVolume(next)
+    setSetting('realtime_volume', next.toString()).catch(() => {})
+  }, [])
+
+  const handleOutputMutedChange = useCallback((next: boolean) => {
+    setOutputMuted(next)
+  }, [])
 
   // The floating call bar's context menu forwards mute / end-call
   // requests through main. Wire them to the chat UI's existing actions.
@@ -468,6 +493,13 @@ export function ChatPage() {
                 {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
               </Button>
             </span>
+            <VolumeControl
+              volume={outputVolume}
+              muted={outputMuted}
+              onVolumeChange={handleOutputVolumeChange}
+              onMutedChange={handleOutputMutedChange}
+            />
+
             <Button
               variant="destructive"
               size="icon"

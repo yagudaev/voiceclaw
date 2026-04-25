@@ -21,6 +21,8 @@ export class AudioEngine {
   private isPlaying = false
   private muted = false
   private currentRms = 0
+  private outputVolume = 1
+  private outputMuted = false
 
   // Output (AI voice) level meter — an AnalyserNode tapped off the
   // playback gain. Cheap enough to keep always-on so the call bar can
@@ -44,6 +46,7 @@ export class AudioEngine {
     // Gain node for playback volume
     this.gainNode = this.audioCtx.createGain()
     this.gainNode.connect(this.audioCtx.destination)
+    this.applyOutputGain()
 
     // Tap the gain for an output level meter. The analyser lives on the
     // gain's post-volume signal so the reading reflects what the user
@@ -112,9 +115,21 @@ export class AudioEngine {
   }
 
   setVolume(volume: number) {
-    if (this.gainNode) {
-      this.gainNode.gain.value = Math.max(0, volume)
-    }
+    this.outputVolume = Math.max(0, Math.min(1, volume))
+    this.applyOutputGain()
+  }
+
+  setOutputMuted(muted: boolean) {
+    this.outputMuted = muted
+    this.applyOutputGain()
+  }
+
+  getOutputVolume(): number {
+    return this.outputVolume
+  }
+
+  isOutputMuted(): boolean {
+    return this.outputMuted
   }
 
   async setOutputDevice(deviceId: string) {
@@ -214,6 +229,11 @@ export class AudioEngine {
 
     this.source.connect(this.processor)
     this.processor.connect(this.audioCtx.destination)
+  }
+
+  private applyOutputGain() {
+    if (!this.gainNode) return
+    this.gainNode.gain.value = this.outputMuted ? 0 : this.outputVolume
   }
 
   private drainPlaybackQueue() {
