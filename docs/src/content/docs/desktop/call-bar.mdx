@@ -1,0 +1,56 @@
+---
+title: Floating call bar
+description: A small always-on-top pill that surfaces live call state on the desktop — live waveforms, quick access back to the main window, and a drag handle so you can park it wherever you want.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+While you're on a VoiceClaw call, the desktop app opens a small always-on-top window — about the size of a wide AirPods case — that sits in the corner of your screen and shows the conversation breathing in real time. The idea is cribbed from Granola's floating call bar: a quiet companion that tells you "yes, the app is still listening, and yes, the AI is talking now" without stealing focus from whatever you're actually working on.
+
+## What it shows
+
+From top to bottom the pill has three zones:
+
+- **Brand mark.** Click it to bring the main VoiceClaw chat window back to the front. Useful when you've buried the app behind a browser and want to jump back to the transcript mid-call.
+- **Waveform.** Five vertical bars whose heights track the louder of the two live audio streams — your microphone input and the AI's voice output — sampled at 30 Hz. When you're speaking, the bars glow rust (the brand accent). When the AI is speaking, they shift to cream. When no one's talking, they breathe gently so the window still feels alive.
+- **Drag grip.** Six tiny dots that only appear when you hover. Grab the grip to drag the bar anywhere on screen — the position is remembered for next time.
+
+The whole pill uses the same warm editorial palette as the main app: carbon ink background (`#191511`), paper cream accents (`#f1e8da`), rust accent (`#b4492f`). It appears with a scale + fade entrance when a call begins and fades back out 300 ms after the call ends.
+
+## When it appears
+
+The bar is tied directly to realtime session state. The moment `useRealtime` reports `isConnected`, the main process fires `showCallBar()`; the moment it disconnects, the bar fades out. You never have to open or close it yourself.
+
+It sits above fullscreen apps too — if you're on a call while watching a fullscreen video or doing a screen-shared demo, the bar still rides along at the corner.
+
+## Dismissing it mid-call
+
+Right-click the bar for a small context menu:
+
+- **Mute mic.** Toggles your microphone for the active session (same as the mute button in the main chat UI).
+- **End call.** Hangs up immediately.
+- **Hide bar.** Hides the bar for the rest of the current session. A new call re-arms it. If you want it gone for good, see the next section.
+
+## Repositioning
+
+Hover the pill to reveal the grip at the bottom, then drag anywhere on screen. The new position is persisted to the same SQLite settings table as the rest of the app (key: `call_bar_position`). If you disconnect a second display it was parked on, the bar snaps back to the bottom-right corner of the primary display on next launch.
+
+## Disabling it from settings
+
+If you don't want the bar at all:
+
+<Steps>
+
+1. Open **Settings** from the main VoiceClaw window.
+
+2. Scroll to the **Call Bar** card.
+
+3. Toggle off **Show floating call bar during sessions**.
+
+</Steps>
+
+The setting is stored per-install in the same settings table (`call_bar_enabled`). Turning it back on takes effect on the next call.
+
+<Aside type="note" title="Under the hood">
+The bar is a separate `BrowserWindow` with `frame: false`, `transparent: true`, `alwaysOnTop: 'screen-saver'`, `focusable: false`. It loads its own HTML entry (`desktop/src/renderer/call-bar.html` + `desktop/src/renderer/src/call-bar/`), built alongside the main renderer via electron-vite's multi-entry `rollupOptions.input`. Audio levels flow renderer → main → call-bar via `ipcRenderer.send('call-bar:audio-levels', …)` at ~30 Hz — RMS for the mic comes from the existing `AudioEngine.getInputLevel()`, and output level comes from a new `AnalyserNode` tap on the playback gain.
+</Aside>

@@ -58,6 +58,9 @@ export function SettingsPage() {
   const [outputDeviceId, setOutputDeviceId] = useState('')
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([])
 
+  // Call bar (floating window during sessions)
+  const [callBarEnabled, setCallBarEnabled] = useState(true)
+
   // Debug
   const [debugMode, setDebugMode] = useState(false)
   const [showLatency, setShowLatency] = useState(false)
@@ -89,6 +92,9 @@ export function SettingsPage() {
       if (inDev) setInputDeviceId(inDev)
       const outDev = await getSetting('output_device_id')
       if (outDev) setOutputDeviceId(outDev)
+      const cb = await getSetting('call_bar_enabled')
+      // Default ON — only explicit 'false' disables. Missing row = on.
+      setCallBarEnabled(cb !== 'false')
       const dm = await getSetting('debug_mode')
       if (dm === 'true') setDebugMode(true)
       const sl = await getSetting('show_latency')
@@ -164,6 +170,11 @@ export function SettingsPage() {
     setOutputDeviceId(v)
     if (loadedRef.current) save('output_device_id', v)
   }, [save])
+
+  const toggleCallBar = useCallback((v: boolean) => {
+    setCallBarEnabled(v)
+    setSetting('call_bar_enabled', v ? 'true' : 'false')
+  }, [])
 
   const toggleDebugMode = useCallback((v: boolean) => {
     setDebugMode(v)
@@ -381,6 +392,21 @@ export function SettingsPage() {
                 {t}
               </button>
             ))}
+          </div>
+        </Card>
+
+        {/* Call Bar */}
+        <Card className="p-4 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Call Bar</h3>
+
+          <div className="flex items-center justify-between">
+            <div className="pr-4">
+              <p className="text-sm text-foreground">Show floating call bar during sessions</p>
+              <p className="text-xs text-muted-foreground">
+                A small always-on-top pill that shows live waveforms while you&apos;re on a call. Drag to reposition.
+              </p>
+            </div>
+            <Toggle checked={callBarEnabled} onChange={toggleCallBar} />
           </div>
         </Card>
 

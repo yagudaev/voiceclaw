@@ -228,6 +228,26 @@ export function ChatPage() {
     realtime.setMuted(next)
   }, [isMuted, realtime])
 
+  // The floating call bar's context menu forwards mute / end-call
+  // requests through main. Wire them to the chat UI's existing actions.
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        callBar?: {
+          onMuteToggleRequest: (h: () => void) => () => void
+          onEndCallRequest: (h: () => void) => () => void
+        }
+      }
+    }).electronAPI?.callBar
+    if (!api) return
+    const offMute = api.onMuteToggleRequest(() => toggleMute())
+    const offEnd = api.onEndCallRequest(() => endCall())
+    return () => {
+      offMute()
+      offEnd()
+    }
+  }, [toggleMute, endCall])
+
   const newConversation = useCallback(() => {
     if (isCallActive) endCall()
     conversationIdRef.current = null

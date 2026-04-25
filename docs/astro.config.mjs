@@ -83,6 +83,7 @@ export default defineConfig({
             { slug: 'relay-server' },
             { slug: 'desktop-app' },
             { slug: 'desktop/onboarding', label: 'Desktop: onboarding wizard' },
+            { slug: 'desktop/call-bar', label: 'Desktop: floating call bar' },
             { slug: 'desktop/releasing', label: 'Desktop: releasing' },
             { slug: 'mobile-app' },
           ],

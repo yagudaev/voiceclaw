@@ -1,0 +1,186 @@
+/* Call bar — standalone stylesheet for the floating window renderer.
+ * Intentionally separate from the main app's Tailwind sheet so the
+ * call-bar bundle stays tiny and doesn't ship the full design system.
+ *
+ * Brand tokens mirror the warm-editorial Option B direction already used
+ * in the main renderer (see desktop/src/renderer/src/index.css). Any
+ * edits to those tokens should be mirrored here until we unify the
+ * two sheets in a follow-up.
+ */
+
+:root {
+  --brand-paper: #f1e8da;
+  --brand-ink: #191511;
+  --brand-ink-hover: #221d18;
+  --brand-accent: #b4492f;
+  --brand-sage: #9cac99;
+  --brand-ink-muted: rgba(245, 234, 220, 0.55);
+  --brand-ink-strong: rgba(245, 234, 220, 0.9);
+  --brand-line: rgba(245, 234, 220, 0.1);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--brand-paper);
+  /* Transparent windows still paint a background unless we kill it here */
+  background-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+#call-bar-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* Inset a few pixels so the outer drop shadow isn't clipped */
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+/* Root pill ----------------------------------------------------------- */
+
+.call-bar {
+  position: relative;
+  width: 76px;
+  height: 228px;
+  border-radius: 22px;
+  background: var(--brand-ink);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px var(--brand-line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  box-sizing: border-box;
+  transition:
+    background-color 200ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 220ms ease;
+  transform: scale(0.85);
+  opacity: 0;
+  /* The whole surface is draggable by default — specific zones opt back
+     out via WebkitAppRegion: 'no-drag' inline. */
+  -webkit-app-region: drag;
+}
+
+.call-bar.is-visible {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.call-bar:hover {
+  background: var(--brand-ink-hover);
+}
+
+/* Mark (top glyph) ---------------------------------------------------- */
+
+.call-bar__mark {
+  width: 36px;
+  height: 36px;
+  color: var(--brand-ink-strong);
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
+/* Waveform pips ------------------------------------------------------- */
+
+.call-bar__waveform {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 16px 0;
+  -webkit-app-region: no-drag;
+}
+
+.call-bar__bar {
+  width: 6px;
+  border-radius: 3px;
+  background: var(--brand-ink-muted);
+  /* height is set inline; this transition smooths the per-frame updates
+     so the motion reads as a wave rather than a strobe */
+  transition:
+    height 80ms ease-out,
+    background-color 160ms ease;
+  min-height: 6px;
+  max-height: 96px;
+}
+
+.call-bar.is-user-speaking .call-bar__bar {
+  background: var(--brand-accent);
+}
+
+.call-bar.is-ai-speaking .call-bar__bar {
+  background: var(--brand-paper);
+}
+
+/* Idle shimmer — gentle breathe when no audio is flowing */
+.call-bar.is-idle .call-bar__bar {
+  animation: call-bar-breathe 2.4s ease-in-out infinite;
+}
+.call-bar.is-idle .call-bar__bar:nth-child(1) { animation-delay: 0ms; }
+.call-bar.is-idle .call-bar__bar:nth-child(2) { animation-delay: 120ms; }
+.call-bar.is-idle .call-bar__bar:nth-child(3) { animation-delay: 240ms; }
+.call-bar.is-idle .call-bar__bar:nth-child(4) { animation-delay: 360ms; }
+.call-bar.is-idle .call-bar__bar:nth-child(5) { animation-delay: 480ms; }
+
+@keyframes call-bar-breathe {
+  0%, 100% { opacity: 0.4; transform: scaleY(0.6); }
+  50% { opacity: 0.9; transform: scaleY(1); }
+}
+
+/* Drag grip (hover only) --------------------------------------------- */
+
+.call-bar__grip {
+  display: grid;
+  grid-template-columns: repeat(3, 3px);
+  grid-template-rows: repeat(2, 3px);
+  gap: 4px;
+  padding: 8px 10px 6px;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  /* The grip is explicitly the drag handle — everything else is no-drag
+     so clicks on the mark / bars stay interactive */
+  -webkit-app-region: drag;
+}
+
+.call-bar:hover .call-bar__grip {
+  opacity: 0.7;
+}
+
+.call-bar__grip-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--brand-paper);
+}
+
+/* Focusable hit-target for the mark click-to-focus-main-window */
+.call-bar__focus-zone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
