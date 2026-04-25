@@ -279,11 +279,6 @@ export default function SettingsScreen() {
 
   // --- Auto-saving wrappers ---
   // Immediate save for toggles/dropdowns
-  const updateVoiceMode = useCallback((v: VoiceMode) => {
-    setVoiceMode(v)
-    if (loadedRef.current) saveImmediate('voice_mode', v)
-  }, [saveImmediate])
-
   const updateSttProvider = useCallback((v: STTProviderValue) => {
     setSttProvider(v)
     if (loadedRef.current) saveImmediate('stt_provider', v)

@@ -417,20 +417,6 @@ export default function ChatScreen() {
   cancelReconnectRef.current = cancelReconnect
   triggerReconnectRef.current = triggerReconnect
 
-  const ensureVapiReady = useCallback(async (): Promise<boolean> => {
-    if (vapiReady) return true
-    const apiKey = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
-    if (!apiKey) return false
-    try {
-      await ExpoVapiModule.initialize(apiKey)
-      setVapiReady(true)
-      return true
-    } catch (e) {
-      console.warn('Vapi init failed:', e)
-      return false
-    }
-  }, [vapiReady])
-
   useEffect(() => {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
@@ -660,7 +646,7 @@ export default function ChatScreen() {
 
     const { apiKey, model, apiUrl } = await getApiConfig()
     if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Text chat needs a brain gateway URL. Open Settings and complete the Brain Gateway setup, or start a voice call instead.')
+      await addMessage(conversationId, 'assistant', 'Text chat over the Brain Gateway is not wired up yet — tap the mic to start a voice call.')
       await loadMessages()
       return
     }
@@ -746,160 +732,6 @@ export default function ChatScreen() {
     }
   }, [isCallActive, conversationId, loadMessages])
 
-  const startVapiCall = useCallback(async (): Promise<boolean> => {
-    const assistantId = await getSetting('assistant_id')
-    if (!assistantId) {
-      if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'The Vapi voice mode is no longer supported. Open Settings and finish your Brain Gateway URL setup to start a call.')
-        await loadMessages()
-      }
-      return false
-    }
-
-    const ready = await ensureVapiReady()
-    if (!ready) {
-      if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'The Vapi voice mode is no longer supported. Open Settings and finish your Brain Gateway URL setup to start a call.')
-        await loadMessages()
-      }
-      return false
-    }
-
-    if (!conversationId) return false
-
-    const { apiKey, apiUrl, model } = await getApiConfig()
-    const modelMessages: Array<{ role: string, content: string }> = [
-      { role: 'system', content: VOICE_SYSTEM_PROMPT },
-    ]
-
-    const prevMessages = await getMessages(conversationId)
-    if (prevMessages.length > 0) {
-      const compacted = apiKey && apiUrl
-        ? await compactMessages(conversationId, prevMessages, apiKey, model, apiUrl)
-        : prevMessages.map((m) => ({ role: m.role, content: m.content }))
-
-      const summaryMsg = compacted.find((m) => m.role === 'system' && m.content.startsWith('Previous conversation summary:'))
-      const historyMsgs = compacted.filter((m) => m.role !== 'system')
-
-      const history = historyMsgs
-        .map((m) => `${m.role}: ${m.content}`)
-        .join('\n')
-      const contextParts = []
-      if (summaryMsg) contextParts.push(summaryMsg.content)
-      if (history) contextParts.push(`Recent messages:\n${history}`)
-      contextParts.push('Continue the conversation naturally from where we left off.')
-
-      modelMessages.push({
-        role: 'system',
-        content: contextParts.join('\n\n'),
-      })
-    }
-
-    const overrides: Record<string, unknown> = {
-      server: { timeoutSeconds: 45 },
-      silenceTimeoutSeconds: 120,
-      endCallPhrases: [],
-      clientMessages: [
-        'transcript',
-        'hang',
-        'function-call',
-        'speech-update',
-        'status-update',
-        'conversation-update',
-        'model-output',
-      ],
-      firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
-      model: {
-        url: apiUrl,
-        provider: 'custom-llm',
-        model,
-        messages: modelMessages,
-        functions: [DISPLAY_TEXT_FUNCTION],
-      },
-      metadata: { conversationId: `voiceclaw:${conversationId}` },
-    }
-
-    const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
-    lastAssistantIdRef.current = assistantId
-    lastCallOverridesRef.current = callOverrides ?? null
-
-    // Store active providers for message tagging
-    activeProvidersRef.current = {
-      sttProvider: 'vapi',
-      llmProvider: model || 'vapi',
-      ttsProvider: 'vapi',
-    }
-
-    // Safety timeout: reset isConnecting if onCallStart never fires
-    if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
-    connectingTimeoutRef.current = setTimeout(() => {
-      setIsConnecting((current) => {
-        if (current) console.warn('[Chat] Connecting timed out after 15s, resetting state')
-        return false
-      })
-    }, 15_000)
-
-    await ExpoVapiModule.startCall(assistantId, callOverrides)
-    return true
-  }, [ensureVapiReady, conversationId, loadMessages])
-
-  const startCustomPipelineCall = useCallback(async (): Promise<boolean> => {
-    if (!conversationId) return false
-
-    const { apiKey, apiUrl, model } = await getApiConfig()
-    if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
-      await loadMessages()
-      return false
-    }
-
-    // Read STT/TTS provider settings
-    const sttProvider = (await getSetting('stt_provider')) || 'apple'
-    const ttsProvider = (await getSetting('tts_provider')) || 'apple'
-
-    // Store active providers for message tagging
-    activeProvidersRef.current = {
-      sttProvider,
-      llmProvider: model,
-      ttsProvider,
-    }
-
-    // Configure STT provider
-    const sttConfig: Record<string, string> = {}
-    if (sttProvider === 'deepgram') {
-      const deepgramKey = await getSetting('deepgram_api_key')
-      if (deepgramKey) sttConfig.apiKey = deepgramKey
-    }
-
-    ExpoCustomPipelineModule.setSTTProvider(sttProvider, sttConfig)
-
-    // Configure TTS provider
-    const ttsConfig: Record<string, string> = {}
-    if (ttsProvider === 'elevenlabs') {
-      const elKey = await getSetting('elevenlabs_api_key')
-      const elVoice = await getSetting('elevenlabs_voice_id')
-      console.log('[CustomPipeline] ElevenLabs config — key:', elKey ? `${elKey.substring(0, 8)}...` : 'MISSING', 'voice:', elVoice || 'default')
-      if (elKey) ttsConfig.apiKey = elKey
-      if (elVoice) ttsConfig.voiceId = elVoice
-    } else if (ttsProvider === 'openai') {
-      const oaiKey = await getSetting('openai_tts_api_key')
-      const oaiVoice = await getSetting('openai_tts_voice')
-      if (oaiKey) ttsConfig.apiKey = oaiKey
-      if (oaiVoice) ttsConfig.voice = oaiVoice
-    }
-    ExpoCustomPipelineModule.setTTSProvider(ttsProvider, ttsConfig)
-
-    console.log('[CustomPipeline] Starting pipeline with', { apiUrl, sttProvider, ttsProvider })
-    resetPipelineDebugState()
-    setPipelineDebugState((current) => ({ ...current, ttsProvider }))
-    pipeline.start()
-    setIsCallActive(true)
-    setIsConnecting(false)
-    setPipelineDebugPhase('listening')
-    soundsRef.current.playJoin()
-    return true
-  }, [conversationId, loadMessages, pipeline, resetPipelineDebugState, setPipelineDebugPhase])
-
   const stopCustomPipeline = useCallback(() => {
     pipeline.stop()
     activeProvidersRef.current = null
@@ -933,7 +765,7 @@ export default function ChatScreen() {
     const isDebug = debugPref === 'true'
 
     if (!apiKey) {
-      await addMessage(conversationId, 'assistant', 'Please configure your API key in the Realtime settings first.')
+      await addMessage(conversationId, 'assistant', 'Please configure your API key in Brain Gateway settings first.')
       await loadMessages()
       return false
     }
