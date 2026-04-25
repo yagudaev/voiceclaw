@@ -39,11 +39,7 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
-  // electron-builder bakes the .icns into the packaged .app, so the OS
-  // uses the right icon in the dock / Finder / Spotlight automatically
-  // for installed builds. In dev (`yarn dev`) Electron starts with its
-  // own default atom icon — set the dock icon explicitly so the dev
-  // dock matches what users will see in production.
+  // Packaged builds get their dock icon from the bundled .icns; dev needs it set explicitly.
   if (isDev) {
     const devDockIcon = nativeImage.createFromPath(
       join(app.getAppPath(), 'resources', 'dock', 'icon.png'),
@@ -93,11 +89,8 @@ app.whenReady().then(async () => {
     },
   })
 
-  // Reflect service state in the tray icon.
   serviceManager.on('change', () => refreshTrayState())
 
-  // Renderer announces when a realtime session opens/closes so the tray
-  // can show "On a call" instead of "Idle" while a session is live.
   ipcMain.handle('tray:setCallActive', (_e, active: boolean) => {
     setCallActive(Boolean(active))
   })
@@ -176,9 +169,6 @@ if (process.env.VOICECLAW_TEST_ERROR === '1') {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// An active voice call wins over service state — the user cares more
-// about "am I live?" than "are background services healthy?" while a
-// session is running.
 let callActive = false
 
 export function setCallActive(active: boolean): void {

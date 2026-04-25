@@ -26,12 +26,6 @@ export function createTray(ctx: TrayContext): Tray {
   context = ctx
   tray = new Tray(buildIcon('idle'))
   tray.setToolTip('VoiceClaw')
-  // No click handler: with a context menu attached via setContextMenu,
-  // macOS shows the menu on single click and that's the standard
-  // menu-bar-app behavior. An explicit tray.on('click', …) that called
-  // showMainWindow stole focus to the new window the moment the click
-  // landed, which dismissed the menu before it could finish opening.
-  // The window is reachable from the "Open VoiceClaw" menu item.
   rebuildMenu()
 
   serviceManager.on('change', () => rebuildMenu())
@@ -151,16 +145,6 @@ function prettyServiceName(name: string): string {
   }
 }
 
-// Tray glyph: a simplified VoiceClaw Mark — opposing brackets with a
-// short center pip. Pre-rendered to PNG by `yarn build:tray-icon` and
-// shipped under resources/tray/. The earlier in-process SVG rendering
-// did not work because Electron's nativeImage.createFromBuffer cannot
-// decode raw SVG — it expects PNG/JPEG bytes — so the tray ended up
-// invisible instead of showing the glyph.
-//
-// State is conveyed through the menu title and submenu (see stateLabel
-// + serviceMenuItems), not through the icon, because monochrome tinting
-// on a 18 px glyph is too subtle to read at a glance.
 function buildIcon(_state: TrayState): NativeImage {
   const image = nativeImage.createFromPath(trayIconPath())
   image.setTemplateImage(true)
@@ -168,10 +152,6 @@ function buildIcon(_state: TrayState): NativeImage {
 }
 
 function trayIconPath(): string {
-  // Packaged: copied to <Resources>/tray/ via electron-builder
-  // extraResources. Dev: read straight out of the desktop/resources
-  // checkout so a tweaked PNG shows up on the next reload without a
-  // rebuild.
   if (app.isPackaged) {
     return join(process.resourcesPath, 'tray', 'trayTemplate.png')
   }
