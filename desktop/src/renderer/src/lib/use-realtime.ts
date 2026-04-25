@@ -4,6 +4,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from './audio-engine'
 
+// Narrow, local typings for the slice of preload this file touches.
+// The full preload surface is declared by other modules (onboarding,
+// telemetry); keeping these narrow avoids circular-typing headaches.
+declare global {
+  interface Window {
+    electronAPI: Window['electronAPI'] & {
+      tray?: {
+        setCallActive: (active: boolean) => Promise<void>
+      }
+      callBar?: {
+        sendAudioLevels: (input: number, output: number) => void
+      }
+    }
+  }
+}
+
 export interface RealtimeConfig {
   serverUrl: string
   voice: string
@@ -43,6 +59,7 @@ export interface RealtimeControls {
   setMuted: (muted: boolean) => void
   sendFrame: (base64Jpeg: string) => void
   getInputLevel: () => number
+  getOutputLevel: () => number
   isConnected: boolean
   isReconnecting: boolean
   sessionId: string | null
@@ -75,6 +92,23 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
         window.electronAPI?.tray?.setCallActive(false).catch(() => {})
       }
     }
+  }, [isConnected])
+
+  // Pump input + output RMS levels to the main process at ~30 Hz while
+  // a session is live. Main fans these out to the floating call bar.
+  useEffect(() => {
+    if (!isConnected) return
+    const api = window.electronAPI?.callBar
+    if (!api?.sendAudioLevels) return
+    const interval = setInterval(() => {
+      const engine = engineRef.current
+      if (!engine) {
+        api.sendAudioLevels(0, 0)
+        return
+      }
+      api.sendAudioLevels(engine.getInputLevel(), engine.getOutputLevel())
+    }, 33)
+    return () => clearInterval(interval)
   }, [isConnected])
 
   const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
@@ -321,7 +355,21 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     return engineRef.current?.getInputLevel() ?? 0
   }, [])
 
-  return { start, stop, setMuted, sendFrame, getInputLevel, isConnected, isReconnecting, sessionId }
+  const getOutputLevel = useCallback(() => {
+    return engineRef.current?.getOutputLevel() ?? 0
+  }, [])
+
+  return {
+    start,
+    stop,
+    setMuted,
+    sendFrame,
+    getInputLevel,
+    getOutputLevel,
+    isConnected,
+    isReconnecting,
+    sessionId,
+  }
 }
 
 function getProviderForRealtimeModel(model?: string): 'gemini' | 'openai' | 'xai' {

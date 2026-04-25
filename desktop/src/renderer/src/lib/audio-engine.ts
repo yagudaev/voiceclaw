@@ -22,6 +22,12 @@ export class AudioEngine {
   private muted = false
   private currentRms = 0
 
+  // Output (AI voice) level meter — an AnalyserNode tapped off the
+  // playback gain. Cheap enough to keep always-on so the call bar can
+  // light up when the assistant is talking.
+  private outputAnalyser: AnalyserNode | null = null
+  private outputAnalyserBuf: Float32Array | null = null
+
   // AudioWorklet path
   private workletNode: AudioWorkletNode | null = null
 
@@ -38,6 +44,15 @@ export class AudioEngine {
     // Gain node for playback volume
     this.gainNode = this.audioCtx.createGain()
     this.gainNode.connect(this.audioCtx.destination)
+
+    // Tap the gain for an output level meter. The analyser lives on the
+    // gain's post-volume signal so the reading reflects what the user
+    // is actually hearing (useful for visualization; the call bar bars
+    // match perceived loudness this way).
+    this.outputAnalyser = this.audioCtx.createAnalyser()
+    this.outputAnalyser.fftSize = 512
+    this.outputAnalyserBuf = new Float32Array(this.outputAnalyser.fftSize)
+    this.gainNode.connect(this.outputAnalyser)
 
     const constraints: MediaStreamConstraints = {
       audio: {
@@ -120,9 +135,23 @@ export class AudioEngine {
     return this.currentRms
   }
 
+  getOutputLevel(): number {
+    if (!this.outputAnalyser || !this.outputAnalyserBuf) return 0
+    this.outputAnalyser.getFloatTimeDomainData(this.outputAnalyserBuf)
+    let sum = 0
+    for (let i = 0; i < this.outputAnalyserBuf.length; i++) {
+      const v = this.outputAnalyserBuf[i]
+      sum += v * v
+    }
+    return Math.sqrt(sum / this.outputAnalyserBuf.length)
+  }
+
   destroy() {
     this.stopCapture()
     this.stopPlayback()
+    this.outputAnalyser?.disconnect()
+    this.outputAnalyser = null
+    this.outputAnalyserBuf = null
     this.audioCtx?.close()
     this.audioCtx = null
     this.gainNode = null

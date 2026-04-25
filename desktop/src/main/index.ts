@@ -2,15 +2,27 @@ import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
-import { closeDb } from './db'
+import { closeDb, getDb } from './db'
 import { createTray, destroyTray, setTrayState } from './tray'
 import {
   createMainWindow,
+  getMainWindow,
   hideMainWindow,
   isQuitting,
   markQuitting,
   showMainWindow,
 } from './window-lifecycle'
+import {
+  createCallBar,
+  destroyCallBar,
+  focusMainFromCallBar,
+  hideCallBar,
+  markCallBarReady,
+  registerCallBarHooks,
+  setAudioLevels,
+  showCallBar,
+  showCallBarContextMenu,
+} from './call-bar'
 import { serviceManager } from './services/service-manager'
 import { startBundledOpenClaw } from './services/openclaw-gateway'
 import { ensureDefault as ensureLaunchAtLoginDefault } from './login-items'
@@ -95,6 +107,51 @@ app.whenReady().then(async () => {
     setCallActive(Boolean(active))
   })
 
+  // Floating call bar ------------------------------------------------------
+  // Create the window up front so show/hide is instant when a session
+  // opens. The window is hidden until setCallActive(true) fires.
+  createCallBar({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+
+  registerCallBarHooks({
+    onFocusMain: () => {
+      if (!getMainWindow()) {
+        createMainWindow({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+      }
+      showMainWindow()
+    },
+    onMuteToggle: () => {
+      getMainWindow()?.webContents.send('call-bar:request-mute-toggle')
+    },
+    onEndCall: () => {
+      getMainWindow()?.webContents.send('call-bar:request-end-call')
+    },
+    onHideRequested: () => {
+      sessionHiddenByUser = true
+      hideCallBar()
+    },
+  })
+
+  ipcMain.handle('call-bar:ready', () => {
+    markCallBarReady()
+  })
+
+  ipcMain.handle('call-bar:focus-main', () => {
+    focusMainFromCallBar()
+  })
+
+  ipcMain.handle('call-bar:open-context-menu', () => {
+    showCallBarContextMenu()
+  })
+
+  ipcMain.on('call-bar:audio-levels', (_e, payload: { input: number; output: number }) => {
+    // Use .on instead of .handle — we don't need a reply, and this
+    // fires up to 30 Hz.
+    setAudioLevels(
+      typeof payload?.input === 'number' ? payload.input : 0,
+      typeof payload?.output === 'number' ? payload.output : 0,
+    )
+  })
+
   // First-run: default launch-at-login to ON so mobile devices can
   // reach this Mac without the user opening the app first. User can
   // flip it off from Settings.
@@ -151,6 +208,7 @@ app.on('before-quit', async (event) => {
 
 app.on('will-quit', () => {
   serviceManager.stopAll()
+  destroyCallBar()
   destroyTray()
   closeDb()
 })
@@ -170,10 +228,35 @@ if (process.env.VOICECLAW_TEST_ERROR === '1') {
 // ---------------------------------------------------------------------------
 
 let callActive = false
+// "Hide bar" from the context menu hides the floating pill for the
+// rest of the current session. A new call re-arms the bar.
+let sessionHiddenByUser = false
 
 export function setCallActive(active: boolean): void {
   callActive = active
   refreshTrayState()
+  if (active) {
+    sessionHiddenByUser = false
+    if (isCallBarEnabled()) {
+      showCallBar()
+    }
+  } else {
+    hideCallBar()
+  }
+}
+
+function isCallBarEnabled(): boolean {
+  if (sessionHiddenByUser) return false
+  try {
+    const db = getDb()
+    const row = db
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get('call_bar_enabled') as { value: string } | undefined
+    // Default ON — explicit opt-out only.
+    return row?.value !== 'false'
+  } catch {
+    return true
+  }
 }
 
 function refreshTrayState() {

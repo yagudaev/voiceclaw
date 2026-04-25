@@ -48,6 +48,43 @@ const electronAPI = {
     setCallActive: (active: boolean) =>
       ipcRenderer.invoke('tray:setCallActive', active) as Promise<void>,
   },
+  callBar: {
+    // Main-renderer side: stream audio levels to main on a ~30 Hz tick
+    // while a session is live. Fire-and-forget (.send, not .invoke).
+    sendAudioLevels: (input: number, output: number) =>
+      ipcRenderer.send('call-bar:audio-levels', { input, output }),
+
+    // Main-renderer side: listen for UX requests forwarded from the
+    // call-bar context menu so the main UI can actually mute / hang up.
+    onMuteToggleRequest: (handler: () => void) => {
+      const wrapped = () => handler()
+      ipcRenderer.on('call-bar:request-mute-toggle', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:request-mute-toggle', wrapped)
+    },
+    onEndCallRequest: (handler: () => void) => {
+      const wrapped = () => handler()
+      ipcRenderer.on('call-bar:request-end-call', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:request-end-call', wrapped)
+    },
+
+    // Call-bar renderer side ------------------------------------------
+    ready: () => ipcRenderer.invoke('call-bar:ready') as Promise<void>,
+    focusMain: () => ipcRenderer.invoke('call-bar:focus-main') as Promise<void>,
+    openContextMenu: () => ipcRenderer.invoke('call-bar:open-context-menu') as Promise<void>,
+    onVisibility: (handler: (visible: boolean) => void) => {
+      const wrapped = (_e: IpcRendererEvent, visible: boolean) => handler(visible)
+      ipcRenderer.on('call-bar:visibility', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:visibility', wrapped)
+    },
+    onAudioLevels: (handler: (payload: { input: number; output: number }) => void) => {
+      const wrapped = (
+        _e: IpcRendererEvent,
+        payload: { input: number; output: number },
+      ) => handler(payload)
+      ipcRenderer.on('call-bar:audio-levels', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:audio-levels', wrapped)
+    },
+  },
   db: {
     createConversation: (title?: string) => ipcRenderer.invoke('db:createConversation', title),
     getLatestConversation: () => ipcRenderer.invoke('db:getLatestConversation'),
