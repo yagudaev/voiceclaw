@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Kill anything listening on the default ports used by `yarn dev`.
-# 8080: relay-server, 4318: tracing-collector (OTLP), 4319: tracing-ui, 3000: website (Next.js)
+# Kill the processes started by `yarn dev`.
+# Ports: 8080 (relay), 4318 (tracing-collector), 4319 (tracing-ui), 3000 (website).
+# The desktop Electron app has no listening port, so we match it by binary path
+# and kill it separately.
 #
 # Sends SIGTERM first so the process can flush sockets, write final logs, and
 # release file handles. Falls back to SIGKILL only if it's still alive after a
@@ -43,3 +45,36 @@ for port in "${PORTS[@]}"; do
     echo "port ${port}: shut down cleanly"
   fi
 done
+
+# Desktop Electron — match by absolute path of the binary inside this repo's
+# desktop/node_modules so we don't touch unrelated Electron apps (Slack,
+# Cursor, Linear, etc.) on the same machine.
+electron_pattern="$(cd "$(dirname "$0")/.." && pwd)/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/"
+electron_pids=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
+if [ -z "${electron_pids}" ]; then
+  echo "desktop electron: not running"
+else
+  electron_pids_csv=$(echo "${electron_pids}" | tr '\n' ' ')
+  echo "desktop electron: SIGTERM → ${electron_pids_csv}"
+  # shellcheck disable=SC2086
+  kill -TERM ${electron_pids} 2>/dev/null || true
+
+  waited=0
+  while [ "${waited}" -lt "${GRACE_SECONDS}" ]; do
+    sleep 1
+    waited=$((waited + 1))
+    still=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
+    if [ -z "${still}" ]; then
+      break
+    fi
+  done
+
+  remaining=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
+  if [ -n "${remaining}" ]; then
+    echo "desktop electron: SIGKILL → $(echo "${remaining}" | tr '\n' ' ')(survived SIGTERM)"
+    # shellcheck disable=SC2086
+    kill -KILL ${remaining} 2>/dev/null || true
+  else
+    echo "desktop electron: shut down cleanly"
+  fi
+fi
