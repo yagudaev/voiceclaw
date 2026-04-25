@@ -80,14 +80,14 @@ export function createCallBar(options: { isDev: boolean; rendererUrl?: string })
   // without the weird focus-stealing dance the higher 'screen-saver'
   // level triggers when the main app comes forward.
   callBar.setAlwaysOnTop(true, 'floating')
-  // visibleOnFullScreen + skipTransformProcessType matter: Electron's
-  // macOS NativeWindow::SetVisibleOnAllWorkspaces calls DockHide() when
-  // visibleOnFullScreen is true (and the process type transform fires),
-  // which switches the app to UIElementApplication and removes
-  // VoiceClaw from Cmd+Tab and the Dock. Skipping the transform keeps
-  // the app in the application switcher; the cost is that the call bar
-  // won't ride along into other apps' native fullscreen Spaces.
-  callBar.setVisibleOnAllWorkspaces(true, { skipTransformProcessType: true })
+  // skipTransformProcessType is load-bearing: without it,
+  // setVisibleOnAllWorkspaces flips the app to UIElementApplication and
+  // removes VoiceClaw from Cmd+Tab and the Dock. visibleOnFullScreen
+  // keeps the bar visible over apps in native-fullscreen Spaces.
+  callBar.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    skipTransformProcessType: true,
+  })
 
   callBar.on('moved', () => {
     persistPosition()
