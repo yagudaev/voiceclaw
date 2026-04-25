@@ -58,6 +58,18 @@ try {
   console.warn(`lsregister -f failed (non-fatal): ${err.message ?? err}`)
 }
 
+// Even after lsregister, the Dock's Cmd+Tab UI keeps a per-running-app
+// label cache that is only invalidated when the Dock process itself
+// restarts. Restarting it here is harmless — launchd respawns it in
+// under a second and no user state is lost.
+if (patched) {
+  try {
+    execFileSync("killall", ["Dock"], { stdio: "ignore" })
+  } catch {
+    // Dock may not be running in CI / non-interactive shells.
+  }
+}
+
 function readKey(key) {
   try {
     return execFileSync("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, plistPath], {
