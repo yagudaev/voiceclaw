@@ -240,7 +240,7 @@ export class OpenAIAdapter implements ProviderAdapter {
 
     log(`[${this.providerName}] Injecting ${this.resumeRecentTurns.length} recent turn(s) via conversation.item.create`)
     for (const turn of this.resumeRecentTurns) {
-      const contentType = turn.role === "user" ? "input_text" : "text"
+      const contentType = turn.role === "user" ? "input_text" : "output_text"
       this.sendUpstream({
         type: "conversation.item.create",
         item: {

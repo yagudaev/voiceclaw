@@ -71,20 +71,25 @@ async function summarize(
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
     .join("\n")
 
-  try {
-    if (provider === "gemini") {
-      const summary = await summarizeWithGemini(transcript)
+  const order: Summarizer[] = provider === "gemini"
+    ? [summarizeWithGemini, summarizeWithOpenAI]
+    : [summarizeWithOpenAI]
+
+  for (const fn of order) {
+    try {
+      const summary = await fn(transcript)
       if (summary) return summary
-      log("[history] Gemini summary returned empty — falling back to OpenAI")
-      return await summarizeWithOpenAI(transcript)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logError(`[history] ${fn.name} failed (${msg}) — trying next fallback`)
     }
-    return await summarizeWithOpenAI(transcript)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    logError(`[history] Summarization failed (${msg}) — falling back to verbatim tail`)
-    return fallbackTruncatedSummary(older)
   }
+
+  log("[history] No summarizer produced output — using truncated raw transcript")
+  return fallbackTruncatedSummary(older)
 }
+
+type Summarizer = (transcript: string) => Promise<string | null>
 
 async function summarizeWithGemini(transcript: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY
