@@ -22,6 +22,11 @@ export function registerScreenCaptureHandlers() {
       id: s.id,
       name: s.name,
       thumbnailDataURL: s.thumbnail.toDataURL(),
+      // display_id is non-empty for screen sources only (window sources
+      // return ''). Parsed downstream into a number so the
+      // screen-share indicator can map back to the correct display via
+      // screen.getAllDisplays().
+      displayId: s.display_id || '',
     }))
   })
 

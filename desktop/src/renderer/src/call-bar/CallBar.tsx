@@ -17,6 +17,11 @@ declare global {
           handler: (payload: { input: number; output: number }) => void,
         ) => () => void
       }
+      screenShare?: {
+        onState?: (
+          handler: (payload: { active: boolean }) => void,
+        ) => () => void
+      }
     }
   }
 }
@@ -31,6 +36,7 @@ export function CallBar() {
   const [visible, setVisible] = useState(previewMode)
   const [speaker, setSpeaker] = useState<Speaker>(previewMode ? 'user' : 'idle')
   const [levels, setLevels] = useState<number[]>([0, 0, 0])
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
 
   // Ref mirror for the IPC handler — React 19 setters can't be read
   // synchronously, and we need the previous levels to feed a small IIR
@@ -88,6 +94,20 @@ export function CallBar() {
     }
   }, [])
 
+  // Screen-share pip — listen on a dedicated channel fanned out from
+  // main whenever the chat renderer toggles a share. Independent of the
+  // call-bar's own visibility so the pip stays in sync even if the bar
+  // is mid-transition.
+  useEffect(() => {
+    const api = window.electronAPI?.screenShare
+    const unsub = api?.onState?.((payload) => {
+      setIsScreenSharing(Boolean(payload?.active))
+    })
+    return () => {
+      unsub?.()
+    }
+  }, [])
+
   const handleMarkClick = () => {
     window.electronAPI?.callBar?.focusMain?.().catch(() => {})
   }
@@ -103,6 +123,7 @@ export function CallBar() {
     speaker === 'user' ? 'is-user-speaking' : '',
     speaker === 'ai' ? 'is-ai-speaking' : '',
     speaker === 'idle' ? 'is-idle' : '',
+    isScreenSharing ? 'is-screen-sharing' : '',
   ]
     .filter(Boolean)
     .join(' ')

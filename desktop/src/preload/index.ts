@@ -48,6 +48,24 @@ const electronAPI = {
     setCallActive: (active: boolean) =>
       ipcRenderer.invoke('tray:setCallActive', active) as Promise<void>,
   },
+  screenShare: {
+    // Main-renderer side: fire when the chat renderer starts or stops
+    // a screen share. Drives both the perimeter capture frame on the
+    // shared display AND the rust dot pip on the call-bar Mark.
+    setActive: (payload: { active: boolean; displayId?: number }) =>
+      ipcRenderer.invoke('screen-share:setActive', payload) as Promise<void>,
+
+    // Screen-frame renderer side ---------------------------------------
+    ready: () => ipcRenderer.invoke('screen-frame:ready') as Promise<void>,
+
+    // Call-bar renderer side -------------------------------------------
+    onState: (handler: (payload: { active: boolean }) => void) => {
+      const wrapped = (_e: IpcRendererEvent, payload: { active: boolean }) =>
+        handler(payload)
+      ipcRenderer.on('call-bar:screen-share', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:screen-share', wrapped)
+    },
+  },
   callBar: {
     // Main-renderer side: stream audio levels to main on a ~30 Hz tick
     // while a session is live. Fire-and-forget (.send, not .invoke).

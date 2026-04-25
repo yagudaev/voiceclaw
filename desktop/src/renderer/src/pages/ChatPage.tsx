@@ -24,6 +24,22 @@ const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
+// Ambient augmentation — producer side of the screen-share IPC. The
+// chat renderer fires this on share start / stop so main can drive
+// both the perimeter capture-frame window and the call-bar pip.
+declare global {
+  interface Window {
+    electronAPI: Window['electronAPI'] & {
+      screenShare?: {
+        setActive?: (payload: {
+          active: boolean
+          displayId?: number
+        }) => Promise<void>
+      }
+    }
+  }
+}
+
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
@@ -47,6 +63,9 @@ export function ChatPage() {
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [screenSourceName, setScreenSourceName] = useState('')
   const screenCaptureRef = useRef<ScreenCapture | null>(null)
+  // Forward-ref for stopScreenShare so the track.onended callback
+  // captured at start() time always sees the latest stop function.
+  const stopScreenShareRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { selectedConversationId, selectConversation } = useConversationContext()
 
@@ -283,11 +302,32 @@ export function ChatPage() {
     capture.setSourceName(source.name)
     screenCaptureRef.current = capture
     try {
-      await capture.start(source.id, (base64Jpeg) => {
-        realtime.sendFrame(base64Jpeg)
-      })
+      await capture.start(
+        source.id,
+        (base64Jpeg) => {
+          realtime.sendFrame(base64Jpeg)
+        },
+        () => {
+          // macOS "Stop sharing" / track revoked. Mirror the user
+          // clicking our own stop button so the indicators clear.
+          stopScreenShareRef.current?.()
+        },
+      )
       setIsScreenSharing(true)
       setScreenSourceName(source.name)
+
+      // Light up the screen-share indicators (perimeter capture frame
+      // on the chosen display + rust dot on the call-bar Mark). Window
+      // sources have no display_id; in that case we fall back to the
+      // primary display in main. Number(NaN) and empty strings are
+      // filtered to undefined so main can take its fallback path.
+      const parsedDisplayId = source.displayId ? Number(source.displayId) : NaN
+      const displayId = Number.isFinite(parsedDisplayId)
+        ? parsedDisplayId
+        : undefined
+      window.electronAPI?.screenShare
+        ?.setActive?.({ active: true, displayId })
+        .catch(() => {})
     } catch (err) {
       console.error('[ChatPage] Screen capture failed:', err)
       screenCaptureRef.current = null
@@ -299,7 +339,17 @@ export function ChatPage() {
     screenCaptureRef.current = null
     setIsScreenSharing(false)
     setScreenSourceName('')
+    window.electronAPI?.screenShare
+      ?.setActive?.({ active: false })
+      .catch(() => {})
   }, [])
+
+  // Keep the forward-ref in sync so track.onended (registered at
+  // capture.start time) always invokes the latest stop closure.
+  // Done in an effect to avoid a side-effect during render.
+  useEffect(() => {
+    stopScreenShareRef.current = stopScreenShare
+  }, [stopScreenShare])
 
   // Clean up screen capture when call ends
   useEffect(() => {

@@ -201,6 +201,15 @@ export function focusMainFromCallBar(): void {
   hooks?.onFocusMain()
 }
 
+// Exposed so other main-process modules (e.g. screen-frame) can fan
+// state into the call-bar window without re-reaching into this file's
+// IPC plumbing. Returns null when the bar hasn't been created yet or
+// has already been destroyed.
+export function getCallBarWindow(): BrowserWindow | null {
+  if (!callBar || callBar.isDestroyed()) return null
+  return callBar
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

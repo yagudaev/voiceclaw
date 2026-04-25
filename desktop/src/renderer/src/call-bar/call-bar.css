@@ -127,6 +127,39 @@ body.call-bar-preview .call-bar {
   color: var(--brand-ink-strong);
   -webkit-app-region: no-drag;
   cursor: pointer;
+  /* Anchor for the screen-share pip overlay below. Position:relative
+   * lets the absolutely-positioned ::after sit at the Mark's top-right
+   * corner without breaking flex-layout of its siblings. */
+  position: relative;
+  display: inline-block;
+}
+
+/* Screen-share rust dot pip — small solid circle in the top-right of
+ * the Mark glyph. Only visible while a share is live (the call-bar
+ * root toggles `is-screen-sharing` in response to the IPC fan-out from
+ * main). The 1 px paper ring keeps the rust legible against the Mark
+ * even when the bar is on hover and the rust dims slightly. */
+.call-bar__mark::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  box-shadow: 0 0 0 1px var(--brand-paper);
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+  pointer-events: none;
+}
+
+.call-bar.is-screen-sharing .call-bar__mark::after {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* Waveform pips ------------------------------------------------------- */

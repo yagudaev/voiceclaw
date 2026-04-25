@@ -1,0 +1,82 @@
+/* Screen-share capture frame — standalone stylesheet for the perimeter
+ * indicator window. Same standalone-bundle pattern as call-bar.css: kept
+ * outside the main Tailwind sheet so the floating window doesn't drag
+ * the design system, and scoped under body.screen-frame-view so the
+ * file is safe to dynamic-import alongside the main app's CSS.
+ *
+ * Brand tokens mirror the warm-editorial Option B direction. Edits to
+ * these values should be mirrored in index.css and call-bar.css until
+ * we unify the three sheets.
+ */
+
+body.screen-frame-view {
+  --brand-paper: #f1e8da;
+  --brand-ink: #191511;
+  --brand-accent: #b4492f;
+}
+
+/* The frame window is fully transparent except for the border + pill.
+ * `pointer-events: none` is belt-and-braces alongside the main process
+ * `setIgnoreMouseEvents(true)` so a frame that somehow steals a click
+ * (Electron has had bugs around this on macOS) still lets the click
+ * pass through. */
+html:has(body.screen-frame-view),
+body.screen-frame-view {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  background-color: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--brand-paper);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+body.screen-frame-view #root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Root container -------------------------------------------------------- */
+
+.screen-frame {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Perimeter border ------------------------------------------------------ */
+
+.screen-frame__border {
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--brand-accent);
+  border-radius: 12px;
+  box-sizing: border-box;
+  /* Slow, calm pulse — never alarmist. 3 s breathe between full opacity
+   * and 55 %. */
+  animation: screen-frame-pulse 3s ease-in-out infinite;
+}
+
+@keyframes screen-frame-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
