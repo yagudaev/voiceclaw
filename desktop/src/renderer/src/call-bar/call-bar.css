@@ -8,7 +8,13 @@
  * two sheets in a follow-up.
  */
 
-:root {
+/* Call-bar token block — scoped to body.call-bar-view so lazy-importing
+ * this stylesheet into the main renderer would not overwrite the
+ * global :root tokens from index.css. A handful of these names also
+ * appear on the main renderer's :root but with slightly different
+ * values (e.g. --brand-line is 10 % ink there and 10 % paper here),
+ * hence the scoping. */
+body.call-bar-view {
   --brand-paper: #f1e8da;
   --brand-ink: #191511;
   --brand-ink-hover: #221d18;
@@ -19,8 +25,12 @@
   --brand-line: rgba(245, 234, 220, 0.1);
 }
 
-html,
-body {
+/* Scoped to the call-bar view only — the main renderer relies on its
+ * own (Tailwind) html/body styling and we must not bleed into it when
+ * the call-bar CSS module is dynamically imported alongside it.
+ * The `call-bar-view` class is added to <body> by CallBar.tsx. */
+html:has(body.call-bar-view),
+body.call-bar-view {
   margin: 0;
   padding: 0;
   background: transparent;
@@ -43,7 +53,11 @@ body {
   cursor: default;
 }
 
-#call-bar-root {
+/* When the call-bar view is mounted, the shared #root from index.html
+ * becomes the call-bar's chrome container. Scoped with
+ * body.call-bar-view so the main app's #root (which relies on Tailwind
+ * layout) isn't affected by these rules. */
+body.call-bar-view #root {
   width: 100%;
   height: 100%;
   display: flex;

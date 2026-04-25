@@ -1,6 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 
+// Ambient augmentation — only the call-bar renderer touches these
+// callBar IPC methods. The main renderer declares the producer-side
+// `sendAudioLevels` shape in use-realtime.ts; these are the
+// consumer-side listeners the CallBar subscribes to.
+declare global {
+  interface Window {
+    electronAPI: Window['electronAPI'] & {
+      callBar?: {
+        ready?: () => Promise<void>
+        focusMain?: () => Promise<void>
+        openContextMenu?: () => Promise<void>
+        onVisibility?: (handler: (visible: boolean) => void) => () => void
+        onAudioLevels?: (
+          handler: (payload: { input: number; output: number }) => void,
+        ) => () => void
+      }
+    }
+  }
+}
+
 // Props are provided entirely via IPC in production; keeping the
 // component prop-driven makes it trivial to render in a visual harness
 // or Storybook later.
@@ -17,36 +37,46 @@ export function CallBar() {
   const levelsRef = useRef(levels)
   levelsRef.current = levels
 
+  // Mark the document so the scoped call-bar styles (transparent bg,
+  // token overrides, no-overflow) apply without clobbering the main
+  // renderer's own rules.
+  useEffect(() => {
+    document.body.classList.add('call-bar-view')
+    return () => {
+      document.body.classList.remove('call-bar-view')
+    }
+  }, [])
+
   useEffect(() => {
     const api = window.electronAPI?.callBar
     if (!api) return
 
-    const unsubVisibility = api.onVisibility((v) => {
+    const unsubVisibility = api.onVisibility?.((v) => {
       setVisible(v)
     })
 
-    const unsubLevels = api.onAudioLevels((payload) => {
+    const unsubLevels = api.onAudioLevels?.((payload) => {
       setSpeaker(resolveSpeaker(payload.input, payload.output))
       setLevels(spreadLevel(levelsRef.current, payload.input, payload.output))
     })
 
     // Tell main we're ready — it may have queued a visibility event
     // while our renderer was still booting.
-    api.ready().catch(() => {})
+    api.ready?.().catch(() => {})
 
     return () => {
-      unsubVisibility()
-      unsubLevels()
+      unsubVisibility?.()
+      unsubLevels?.()
     }
   }, [])
 
   const handleMarkClick = () => {
-    window.electronAPI?.callBar?.focusMain().catch(() => {})
+    window.electronAPI?.callBar?.focusMain?.().catch(() => {})
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    window.electronAPI?.callBar?.openContextMenu().catch(() => {})
+    window.electronAPI?.callBar?.openContextMenu?.().catch(() => {})
   }
 
   const rootClass = [

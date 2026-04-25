@@ -91,14 +91,19 @@ export function createCallBar(options: { isDev: boolean; rendererUrl?: string })
     isReady = false
   })
 
+  // Single-bundle renderer — both the main window and the call-bar
+  // window load the same index.html. The call-bar view is selected via
+  // the `?view=call-bar` query string read in src/renderer/src/main.tsx.
   const rendererUrl = options.isDev && options.rendererUrl
-    ? `${options.rendererUrl.replace(/\/$/, '')}/call-bar.html`
+    ? `${options.rendererUrl.replace(/\/$/, '')}/?view=call-bar`
     : undefined
 
   if (rendererUrl) {
     callBar.loadURL(rendererUrl)
   } else {
-    callBar.loadFile(join(__dirname, '../renderer/call-bar.html'))
+    callBar.loadFile(join(__dirname, '../renderer/index.html'), {
+      search: 'view=call-bar',
+    })
   }
 
   return callBar
