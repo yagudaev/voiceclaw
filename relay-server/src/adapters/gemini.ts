@@ -398,6 +398,12 @@ export class GeminiAdapter implements ProviderAdapter {
             },
           },
         },
+        // Default LOW collapses every video frame to ~64 tokens, which loses
+        // the detail Gemini needs to read terminal text and code. HIGH bumps
+        // it to ~280 tokens/frame on Gemini 3 (~256 on 2.5) so small fonts
+        // stay legible during screen sharing. ~4x more video tokens per
+        // frame, negligible cost vs the continuous audio stream.
+        mediaResolution: "MEDIA_RESOLUTION_HIGH",
       },
       outputAudioTranscription: {},
       inputAudioTranscription: {},
