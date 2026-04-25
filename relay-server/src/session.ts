@@ -374,6 +374,16 @@ export class RelaySession {
       case "client.timing":
         this.tracer.attachClientTiming(event.phase, event.ms, event.turnId)
         break
+      case "text.input":
+        // Text-only user turn. Both adapters' injectContext implementations
+        // accept the text and trigger a model response (Gemini via
+        // realtimeInput.text, OpenAI via conversation.item.create + response.create),
+        // so transcript.delta / transcript.done flow back through the existing
+        // pipeline without needing a separate "go" signal here.
+        if (event.text && event.text.trim().length > 0) {
+          this.adapter?.injectContext(event.text)
+        }
+        break
       default:
         this.sendError(`unknown event type: ${(event as { type: string }).type}`, 400)
     }

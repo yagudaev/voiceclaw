@@ -5,14 +5,14 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, type Message, type LatencyData, type ProviderInfo } from '@/db'
-import { getApiConfig, streamCompletion } from '@/lib/chat'
+import { getApiConfig, streamRealtimeText } from '@/lib/chat'
 import { BRAND } from '@/lib/brand'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
-import { useRealtime, type RmsMetrics } from '@/lib/use-realtime'
+import { useRealtime, getProviderForRealtimeModel, type RmsMetrics } from '@/lib/use-realtime'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
@@ -644,19 +644,38 @@ export default function ChatScreen() {
       return
     }
 
-    const { apiKey, model, apiUrl } = await getApiConfig()
-    if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Text chat over the Brain Gateway is not wired up yet — tap the mic to start a voice call.')
+    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const apiKey = await getSetting('realtime_api_key')
+    if (!apiKey) {
+      await addMessage(conversationId, 'assistant', 'Configure Brain Gateway URL in Settings to start chatting.')
       await loadMessages()
       return
     }
 
-    setIsThinking(true)
-    const allDbMessages = await getMessages(conversationId)
-    const allMessages = await compactMessages(conversationId, allDbMessages, apiKey, model, apiUrl)
-
+    const model = normalizeRealtimeModel(await getSetting('realtime_model'))
+    const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
+    const provider = getProviderForRealtimeModel(model)
     const systemPrompt = (await getSetting('system_prompt')) || ''
-    streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, conversationId, {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale
+
+    const recentMessages = (await getMessages(conversationId))
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-20, -1)
+      .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
+
+    setIsThinking(true)
+    streamRealtimeText(userInput, {
+      serverUrl,
+      apiKey,
+      model,
+      voice,
+      provider,
+      sessionKey: `voiceclaw:${conversationId}`,
+      instructionsOverride: systemPrompt || undefined,
+      conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
+      deviceContext: { timezone, locale },
+    }, {
       onToken: (text) => {
         setIsThinking(false)
         setStreamingRole('assistant')
@@ -664,6 +683,7 @@ export default function ChatScreen() {
       },
       onDone: async (text) => {
         setStreamingText(null)
+        setIsThinking(false)
         await addMessage(conversationId, 'assistant', text || 'No response received.')
         await loadMessages()
         maybeGenerateTitle(conversationId)

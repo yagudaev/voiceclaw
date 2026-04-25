@@ -55,8 +55,6 @@ export default function SettingsScreen() {
   const [vapiPublicKey, setVapiPublicKey] = useState('')
   const [assistantId, setAssistantId] = useState('')
   const [defaultModel, setDefaultModel] = useState('openclaw:voice')
-  const [brainApiKey, setBrainApiKey] = useState('')
-  const [brainApiUrl, setBrainApiUrl] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Keep responses concise. Use markdown for formatting and images when appropriate. Your identity, personality, and capabilities are defined in your system files.')
 
   // Brain agent connection mode
@@ -188,13 +186,9 @@ export default function SettingsScreen() {
       const key = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
       const assistant = await getSetting('assistant_id')
       const model = await getSetting('default_model')
-      const ocKey = (await getSetting('brain_api_key')) || (await getSetting('openclaw_api_key'))
-      const ocUrl = (await getSetting('brain_api_url')) || (await getSetting('openclaw_api_url'))
       if (key) setVapiPublicKey(key)
       if (assistant) setAssistantId(assistant)
       if (model) setDefaultModel(model)
-      if (ocKey) setBrainApiKey(ocKey)
-      if (ocUrl) setBrainApiUrl(ocUrl)
       const cm = (await getSetting('brain_connection_mode')) || (await getSetting('openclaw_connection_mode'))
       if (cm === 'http' || cm === 'plugin') setConnectionMode(cm)
       const gw = (await getSetting('brain_gateway_url')) || (await getSetting('openclaw_gateway_url'))
@@ -382,18 +376,6 @@ export default function SettingsScreen() {
     setDefaultModel(v)
     if (loadedRef.current) saveDebounced('default_model', v)
   }, [saveDebounced])
-
-  const updateBrainApiKey = useCallback((v: string) => {
-    setBrainApiKey(v)
-    resetValidation('brain')
-    if (loadedRef.current) saveDebounced('brain_api_key', v)
-  }, [saveDebounced, resetValidation])
-
-  const updateBrainApiUrl = useCallback((v: string) => {
-    setBrainApiUrl(v)
-    resetValidation('brain')
-    if (loadedRef.current) saveDebounced('brain_api_url', v)
-  }, [saveDebounced, resetValidation])
 
   const updateConnectionMode = useCallback((v: BrainConnectionMode) => {
     setConnectionMode(v)
