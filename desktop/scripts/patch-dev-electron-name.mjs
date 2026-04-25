@@ -1,31 +1,45 @@
 #!/usr/bin/env node
-// Renames the dev Electron.app bundle's display name from "Electron"
-// to "VoiceClaw" so Cmd+Tab, the Dock, and the Application menu show
-// the right product name during `yarn dev`. Packaged builds get this
-// from electron-builder.yml's productName, but the dev binary lives in
-// node_modules and ships with CFBundleName="Electron" by default.
+// Renames the dev Electron.app bundle so Cmd+Tab, the Dock, and the
+// Application menu show "VoiceClaw" instead of "Electron" during
+// `yarn dev`. Packaged builds get this from electron-builder.yml's
+// productName, but the dev binary lives in node_modules and ships
+// branded as "Electron".
 //
-// Patching Info.plist alone isn't enough: macOS LaunchServices caches
-// bundle metadata by CFBundleIdentifier and won't pick up the new
-// name on its own. We also touch the bundle and run lsregister -f to
-// force a refresh.
+// What this patches (all idempotent):
+//   1. Contents/Info.plist — CFBundleName, CFBundleDisplayName, and
+//      CFBundleExecutable set to "VoiceClaw".
+//   2. Contents/MacOS/Electron renamed (or hardlinked) to
+//      Contents/MacOS/VoiceClaw. The binary itself is what argv[0]
+//      becomes when electron-vite spawns it, and the kernel-level
+//      argv[0] is what the Dock actually renders under the Cmd+Tab
+//      icon — patching the Info.plist alone leaves it as "Electron".
+//   3. node_modules/electron/path.txt — points at the renamed binary
+//      so `require('electron')` (used by electron-vite to find the
+//      executable) resolves to the new path.
 //
-// Idempotent: re-running on an already-patched bundle re-registers
-// with LaunchServices but doesn't rewrite the plist.
+// After patching we also touch the bundle, run lsregister -f, and
+// restart the Dock so the metadata caches refresh.
 
 import { execFileSync } from "node:child_process"
-import { existsSync, utimesSync } from "node:fs"
+import {
+  existsSync,
+  readFileSync,
+  renameSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const PRODUCT_NAME = "VoiceClaw"
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const appBundle = resolve(
-  __dirname,
-  "..",
-  "node_modules/electron/dist/Electron.app",
-)
+const electronPkg = resolve(__dirname, "..", "node_modules/electron")
+const appBundle = resolve(electronPkg, "dist/Electron.app")
 const plistPath = resolve(appBundle, "Contents/Info.plist")
+const macosDir = resolve(appBundle, "Contents/MacOS")
+const oldBinary = resolve(macosDir, "Electron")
+const newBinary = resolve(macosDir, PRODUCT_NAME)
+const pathTxt = resolve(electronPkg, "path.txt")
 const lsregister =
   "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
 
@@ -35,7 +49,7 @@ if (!existsSync(plistPath)) {
 }
 
 let patched = false
-for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
+for (const key of ["CFBundleName", "CFBundleDisplayName", "CFBundleExecutable"]) {
   const current = readKey(key)
   if (current === PRODUCT_NAME) continue
   writeKey(key, PRODUCT_NAME)
@@ -43,10 +57,43 @@ for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
   patched = true
 }
 
+// Rename the binary under the product name so the kernel-level
+// argv[0] becomes "VoiceClaw". `ps -o ucomm` and the Dock's Cmd+Tab
+// label both come from this — patching only Info.plist leaves them
+// as "Electron".
+if (existsSync(oldBinary) && !existsSync(newBinary)) {
+  renameSync(oldBinary, newBinary)
+  console.log(`renamed binary: Electron → ${PRODUCT_NAME}`)
+  patched = true
+}
+
+// Point the electron npm package's path.txt at the renamed binary so
+// electron-vite spawns it instead of the "Electron" name.
+if (existsSync(pathTxt)) {
+  const desired = `Electron.app/Contents/MacOS/${PRODUCT_NAME}`
+  const current = readFileSync(pathTxt, "utf8").trim()
+  if (current !== desired) {
+    writeFileSync(pathTxt, desired)
+    console.log(`patched path.txt: ${current} → ${desired}`)
+    patched = true
+  }
+}
+
 if (patched) {
   // Bump the bundle's mtime so LaunchServices treats it as changed.
   const now = new Date()
   utimesSync(appBundle, now, now)
+
+  // Renaming a binary in an ad-hoc-signed bundle usually keeps the
+  // signature valid (the signature is keyed on content, not name) but
+  // re-signing ad-hoc is cheap insurance.
+  try {
+    execFileSync("codesign", ["--force", "--sign", "-", appBundle], {
+      stdio: "ignore",
+    })
+  } catch (err) {
+    console.warn(`codesign refresh failed (non-fatal): ${err.message ?? err}`)
+  }
 }
 
 // Always re-register with LaunchServices. Cheap, and covers the case
