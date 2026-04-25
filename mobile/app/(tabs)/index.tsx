@@ -963,11 +963,14 @@ export default function ChatScreen() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const locale = Intl.DateTimeFormat().resolvedOptions().locale
 
-    // Load recent messages for conversation continuity
     const allMessages = await getMessages(conversationId)
+    // Send the full message history — the relay splits it into recent
+    // verbatim turns + a summary of older messages. Cap at 200 messages
+    // (~100 turns) so a runaway conversation can't inflate the session.config
+    // payload past a reasonable wire-size budget.
     const recentMessages = allMessages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-20)
+      .slice(-200)
       .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
 
     console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length, echoGateEnabled, echoGateThreshold })
