@@ -70,7 +70,8 @@ export function VolumeControl({
       if (disabled) return
       e.preventDefault()
       draggingRef.current = true
-      ;(e.target as Element).setPointerCapture?.(e.pointerId)
+      const target = e.currentTarget
+      target.setPointerCapture?.(e.pointerId)
       updateFromClientY(e.clientY)
     },
     [disabled, updateFromClientY],
@@ -86,33 +87,36 @@ export function VolumeControl({
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     draggingRef.current = false
-    ;(e.target as Element).releasePointerCapture?.(e.pointerId)
+    const target = e.currentTarget
+    target.releasePointerCapture?.(e.pointerId)
   }, [])
 
   const handleSliderKey = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (disabled) return
       const step = e.shiftKey ? 0.1 : 0.05
+      const adjust = (next: number) => {
+        onVolumeChange(next)
+        if (muted) onMutedChange(false)
+      }
       switch (e.key) {
         case 'ArrowUp':
         case 'ArrowRight':
           e.preventDefault()
-          onVolumeChange(Math.min(1, volume + step))
-          if (muted) onMutedChange(false)
+          adjust(Math.min(1, volume + step))
           break
         case 'ArrowDown':
         case 'ArrowLeft':
           e.preventDefault()
-          onVolumeChange(Math.max(0, volume - step))
+          adjust(Math.max(0, volume - step))
           break
         case 'Home':
           e.preventDefault()
-          onVolumeChange(0)
+          adjust(0)
           break
         case 'End':
           e.preventDefault()
-          onVolumeChange(1)
-          if (muted) onMutedChange(false)
+          adjust(1)
           break
       }
     },
@@ -126,11 +130,13 @@ export function VolumeControl({
       <button
         type="button"
         aria-label={
-          muted
-            ? 'Agent audio muted. Click to unmute or open volume slider.'
-            : open
-              ? 'Mute agent audio'
-              : 'Open volume slider'
+          open
+            ? muted
+              ? 'Unmute agent audio'
+              : 'Mute agent audio'
+            : muted
+              ? 'Agent audio muted. Open volume slider.'
+              : 'Open agent volume slider'
         }
         aria-pressed={muted}
         aria-expanded={open}

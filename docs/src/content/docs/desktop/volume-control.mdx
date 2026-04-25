@@ -20,10 +20,13 @@ The icon glyph follows the level: `Volume2` at high levels, `Volume1` mid, `Volu
 
 The slider drives the gain stage in `AudioEngine` — the same `GainNode` that all assistant playback flows through. It does **not** touch the system output volume, the microphone, or any other desktop audio. Other apps on your machine stay at whatever level your OS has them at.
 
+The slider sits *on top of* the boost multiplier in **Settings → Speaker Volume**. Settings sets the base level (0.5x – 3.0x); the in-call slider then attenuates that base from 0% – 100%. So `Settings = 2.0x` and `slider = 50%` gives an effective playback gain of 1.0x.
+
 ## What persists
 
-- The **volume level** persists across reloads via the SQLite `settings` table (key: `realtime_volume`). Your last setting is restored when the chat window mounts.
-- The **mute state** does not persist. We assume mute is a deliberate, in-the-moment choice — every fresh call starts unmuted at your saved volume.
+- The **slider position** persists across reloads via the SQLite `settings` table (key: `realtime_output_gain`). Your last setting is restored when the chat window mounts.
+- The **base speaker volume** stays where you put it in Settings (key: `realtime_volume`).
+- The **mute state** does not persist. We assume mute is a deliberate, in-the-moment choice — every fresh call starts unmuted at your saved gain.
 
 ## Keyboard
 

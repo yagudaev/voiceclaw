@@ -33,15 +33,15 @@ export function ChatPage() {
   const titleGeneratedRef = useRef(false)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
-  const [outputVolume, setOutputVolume] = useState(1)
+  const [outputGain, setOutputGain] = useState(1)
+  const [baseVolume, setBaseVolume] = useState(1)
   const [outputMuted, setOutputMuted] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
-  // Synchronously-readable mirror of streamingRole. Event callbacks must
-  // decide reset-vs-append without a setState updater — StrictMode invokes
-  // updaters twice in dev, so any side effect inside one runs twice.
+  // Synchronous mirror of streamingRole — IPC callbacks need to read the
+  // current role outside of a setState updater since updaters must stay pure.
   const streamingRoleRef = useRef<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
   const [connectionError, setConnectionError] = useState('')
@@ -81,7 +81,11 @@ export function ChatPage() {
     getSetting('show_latency').then((v) => setShowLatency(v === 'true'))
     getSetting('realtime_volume').then((v) => {
       const parsed = parseFloat(v ?? '')
-      if (!Number.isNaN(parsed)) setOutputVolume(Math.max(0, Math.min(1, parsed)))
+      if (!Number.isNaN(parsed)) setBaseVolume(Math.max(0, parsed))
+    })
+    getSetting('realtime_output_gain').then((v) => {
+      const parsed = parseFloat(v ?? '')
+      if (!Number.isNaN(parsed)) setOutputGain(Math.max(0, Math.min(1, parsed)))
     })
   }, [])
 
@@ -118,9 +122,6 @@ export function ChatPage() {
       setIsCallActive(true)
     },
     onTranscriptDelta: (text, role) => {
-      // Read the current role from the ref so reset-vs-append stays out of
-      // a setState updater. StrictMode double-invokes updaters in dev, so
-      // any side effect (setStreamingText) inside one would fire twice.
       if (streamingRoleRef.current !== role) {
         streamingRoleRef.current = role
         setStreamingRole(role)
@@ -199,8 +200,8 @@ export function ChatPage() {
   realtimeRef.current = realtime
 
   useEffect(() => {
-    realtime.setOutputVolume(outputVolume)
-  }, [outputVolume, realtime])
+    realtime.setOutputVolume(baseVolume * outputGain)
+  }, [baseVolume, outputGain, realtime])
 
   useEffect(() => {
     realtime.setOutputMuted(outputMuted)
@@ -220,7 +221,7 @@ export function ChatPage() {
     const tavilyApiKey = tavilyEnabled
       ? ((await getSetting('tavily_api_key')) || undefined)
       : undefined
-    const volume = outputVolume
+    const volume = baseVolume * outputGain
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
@@ -252,7 +253,7 @@ export function ChatPage() {
       conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       tracingEnabled,
     })
-  }, [realtime, outputVolume])
+  }, [realtime, baseVolume, outputGain])
 
   const endCall = useCallback(() => {
     realtime.stop()
@@ -270,9 +271,9 @@ export function ChatPage() {
     realtime.setMuted(next)
   }, [isMuted, realtime])
 
-  const handleOutputVolumeChange = useCallback((next: number) => {
-    setOutputVolume(next)
-    setSetting('realtime_volume', next.toString()).catch(() => {})
+  const handleOutputGainChange = useCallback((next: number) => {
+    setOutputGain(next)
+    setSetting('realtime_output_gain', next.toString()).catch(() => {})
   }, [])
 
   const handleOutputMutedChange = useCallback((next: boolean) => {
@@ -494,9 +495,9 @@ export function ChatPage() {
               </Button>
             </span>
             <VolumeControl
-              volume={outputVolume}
+              volume={outputGain}
               muted={outputMuted}
-              onVolumeChange={handleOutputVolumeChange}
+              onVolumeChange={handleOutputGainChange}
               onMutedChange={handleOutputMutedChange}
             />
 

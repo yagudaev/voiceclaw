@@ -115,7 +115,7 @@ export class AudioEngine {
   }
 
   setVolume(volume: number) {
-    this.outputVolume = Math.max(0, Math.min(1, volume))
+    this.outputVolume = Math.max(0, volume)
     this.applyOutputGain()
   }
 
