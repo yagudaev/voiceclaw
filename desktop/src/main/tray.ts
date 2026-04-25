@@ -1,4 +1,5 @@
 import { app, Menu, nativeImage, Tray, type NativeImage } from 'electron'
+import { join } from 'node:path'
 import { serviceManager, type ServiceStatus } from './services/service-manager'
 
 // Menu bar presence. The tray icon lives in the system menu bar (top-right
@@ -143,28 +144,29 @@ function prettyServiceName(name: string): string {
   }
 }
 
-// Programmatically drawn 1-bit icons so we don't need to ship asset files
-// in this first pass. macOS automatically inverts template images on dark
-// menu bar backgrounds.
-function buildIcon(state: TrayState): NativeImage {
-  const svg = iconSvg(state)
-  const image = nativeImage.createFromBuffer(Buffer.from(svg), { scaleFactor: 2 })
-  // Mark as a template image so macOS handles light/dark appropriately.
-  image.setTemplateImage(state === 'error' || state === 'warn' ? false : true)
-  return image.resize({ width: 18, height: 18 })
+// Tray glyph: a simplified VoiceClaw Mark — opposing brackets with a
+// short center pip. Pre-rendered to PNG by `yarn build:tray-icon` and
+// shipped under resources/tray/. The earlier in-process SVG rendering
+// did not work because Electron's nativeImage.createFromBuffer cannot
+// decode raw SVG — it expects PNG/JPEG bytes — so the tray ended up
+// invisible instead of showing the glyph.
+//
+// State is conveyed through the menu title and submenu (see stateLabel
+// + serviceMenuItems), not through the icon, because monochrome tinting
+// on a 18 px glyph is too subtle to read at a glance.
+function buildIcon(_state: TrayState): NativeImage {
+  const image = nativeImage.createFromPath(trayIconPath())
+  image.setTemplateImage(true)
+  return image
 }
 
-function iconSvg(state: TrayState): string {
-  // The VoiceClaw mark, simplified for 16px menu bar rendering. Rust-colored
-  // center bar for error/warn states so they're glanceable.
-  const accent = state === 'error' ? '#c14d33' : state === 'warn' ? '#d7a65a' : 'currentColor'
-  const centerStrokeColor = state === 'ready' ? '#c14d33' : accent
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 64 64" fill="none">
-  <path d="M20 10 H14 V54 H20 M20 10 L27 17 M20 54 L27 47" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M44 10 H50 V54 H44 M44 10 L37 17 M44 54 L37 47" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M29 40 V24" stroke="${centerStrokeColor}" stroke-width="4.5" stroke-linecap="round"/>
-  <path d="M35 46 V18" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
-  <path d="M41 37 V27" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
-</svg>`
+function trayIconPath(): string {
+  // Packaged: copied to <Resources>/tray/ via electron-builder
+  // extraResources. Dev: read straight out of the desktop/resources
+  // checkout so a tweaked PNG shows up on the next reload without a
+  // rebuild.
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'tray', 'trayTemplate.png')
+  }
+  return join(app.getAppPath(), 'resources', 'tray', 'trayTemplate.png')
 }

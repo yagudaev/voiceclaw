@@ -1,4 +1,5 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
+import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
 import { closeDb } from './db'
@@ -38,6 +39,18 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
+  // electron-builder bakes the .icns into the packaged .app, so the OS
+  // uses the right icon in the dock / Finder / Spotlight automatically
+  // for installed builds. In dev (`yarn dev`) Electron starts with its
+  // own default atom icon — set the dock icon explicitly so the dev
+  // dock matches what users will see in production.
+  if (isDev) {
+    const devDockIcon = nativeImage.createFromPath(
+      join(app.getAppPath(), 'resources', 'dock', 'icon.png'),
+    )
+    if (!devDockIcon.isEmpty()) app.dock?.setIcon(devDockIcon)
+  }
+
   ensureOnboardingSchema()
   // Dev escape hatch: VOICECLAW_RESET_ONBOARDING=1 yarn dev wipes the
   // wizard cursor before window creation so the wizard reappears at

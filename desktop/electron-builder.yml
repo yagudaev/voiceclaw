@@ -11,6 +11,15 @@ files:
   - "package.json"
   - "!node_modules/**/{README.md,LICENSE*,*.map,*.ts}"
 
+# Anything under desktop/resources/ ships into <App>/Contents/Resources/
+# at the same relative path. The main process reads tray glyphs and
+# similar runtime assets via process.resourcesPath in packaged builds.
+extraResources:
+  - from: "resources"
+    to: "."
+    filter:
+      - "**/*"
+
 # Ship a universal DMG so one download covers both Apple Silicon and
 # Intel Macs. Slightly larger file in exchange for zero "which one do I
 # download?" confusion at install time.
