@@ -10,13 +10,14 @@ import type {
 } from "./types.js"
 import type { ProviderAdapter, SendToClient } from "./adapters/types.js"
 import { createAdapter } from "./adapters/index.js"
-import { handleToolCall } from "./tools/index.js"
+import { handleToolCall, resolveTavilyKey } from "./tools/index.js"
 import { askBrain } from "./tools/brain.js"
+import { webSearch } from "./tools/web-search.js"
 import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
 import { MediaCapture } from "./media/capture.js"
-const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain"])
+const SERVER_SIDE_TOOLS = new Set(["echo_tool", "ask_brain", "web_search"])
 
 export class RelaySession {
   readonly id = randomUUID()
@@ -147,6 +148,83 @@ export class RelaySession {
       return
     }
 
+    if (name === "web_search") {
+      this.handleWebSearch(callId, args)
+      return
+    }
+
+  }
+
+  private handleWebSearch(callId: string, args: string) {
+    if (!this.config) return
+
+    // Resolve the Tavily key with the same precedence the tool registry used
+    // (config first, env fallback). The model only sees web_search advertised
+    // when this resolves, so a missing key here is a guard against stale
+    // tool calls (e.g., the user cleared the key mid-session).
+    const tavilyKey = resolveTavilyKey(this.config)
+    if (!tavilyKey) {
+      const errorPayload = JSON.stringify({ error: "Tavily API key not configured" })
+      this.tracer.endToolCall(callId, errorPayload, "no tavily key")
+      this.adapter?.sendToolResult(callId, errorPayload)
+      return
+    }
+
+    let query: string
+    try {
+      const parsed = JSON.parse(args)
+      query = parsed.query
+      if (typeof query !== "string" || query.trim() === "") {
+        throw new Error("missing or empty query")
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "invalid arguments"
+      const errorPayload = JSON.stringify({ error: msg })
+      this.tracer.endToolCall(callId, errorPayload, msg)
+      this.adapter?.sendToolResult(callId, errorPayload)
+      return
+    }
+
+    const controller = new AbortController()
+    this.inFlightTools.set(callId, controller)
+
+    const start = Date.now()
+    log(`[session:${this.id}] web_search → tavily`)
+
+    // Run inside the tool span's OTel context so any future child spans (e.g.
+    // if we add per-result tracing) attach to the right parent. Same pattern
+    // as handleAskBrain — never use context.active() as a fallback.
+    const ctx = this.tracer.getToolSpanContext(callId) ?? ROOT_CONTEXT
+    const run = () => webSearch(query, { apiKey: tavilyKey }, controller.signal)
+
+    context.with(ctx, run).then((result) => {
+      const ms = Date.now() - start
+      log(`[session:${this.id}] web_search completed in ${ms}ms`)
+
+      if (controller.signal.aborted) {
+        log(`[session:${this.id}] web_search (${callId}) was cancelled — discarding result`)
+        this.tracer.endToolCall(callId, JSON.stringify({ status: "cancelled" }), "cancelled")
+        return
+      }
+
+      this.tracer.endToolCall(callId, result)
+      // web_search is short enough to send directly as the tool result rather
+      // than the inject-context dance ask_brain does. The model sees structured
+      // {answer, results[]} and can speak it naturally on the same turn.
+      this.adapter?.sendToolResult(callId, result)
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : "web search failed"
+      logError(`[session:${this.id}] web_search error:`, message)
+
+      const errorPayload = JSON.stringify({ error: message })
+      this.tracer.endToolCall(callId, errorPayload, message)
+
+      if (!controller.signal.aborted) {
+        this.adapter?.sendToolResult(callId, errorPayload)
+      }
+    }).finally(() => {
+      this.inFlightTools.delete(callId)
+    })
   }
 
   private handleAskBrain(callId: string, args: string) {

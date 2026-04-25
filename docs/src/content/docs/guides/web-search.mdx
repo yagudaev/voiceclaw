@@ -1,0 +1,119 @@
+---
+title: Web Search (Tavily)
+description: Fast public-web lookups for the realtime model, alongside ask_brain.
+---
+
+VoiceClaw can give the realtime model a `web_search` tool backed by
+[Tavily](https://tavily.com) for fast public-web lookups. It complements
+`ask_brain`: the brain handles anything personal (memory, calendar, tasks,
+files); `web_search` handles "what / when / who" questions where the answer
+lives on the open web — typically returning in 1-3 seconds rather than the
+multi-second exec the brain agent runs.
+
+The tool is only registered when a Tavily API key is configured. With no key,
+the model only sees `ask_brain` and `echo_tool`, and behaviour is unchanged.
+
+## Why two tools
+
+`ask_brain` is powerful but heavy. Each call hits the brain gateway, which can
+spawn a multi-step agent run, hit local exec gates, and stream back tokens. Per
+the [Brain Agent](/voiceclaw/relay-server#brain-agent) section, a `searching`
+status comes back immediately so the model can verbally bridge ("Let me check
+on that..."), and the result is injected into the next turn. This is the right
+shape for things like "create a task" or "what did I decide about X" — but it's
+overkill for "what's the current Bitcoin price" or "when does the Apple keynote
+start". `web_search` short-circuits those: a single Tavily call, structured
+JSON back to the model, spoken on the same turn.
+
+The model decides which to use from the tool descriptions. The split is:
+
+- **`web_search`** — public web facts, current events, definitions, prices,
+  scores, schedules, breaking news.
+- **`ask_brain`** — anything that needs the user's own context, history, or
+  long-running multi-step work.
+
+Both can coexist; the realtime model picks per query.
+
+## Configuration
+
+The Tavily key can be supplied two ways. Session config wins; env is the
+fallback. If neither is present, `web_search` is not registered.
+
+### Per-session (recommended for desktop / mobile)
+
+Pass `tavilyApiKey` on the `session.config` event when opening a relay
+WebSocket:
+
+```json
+{
+  "type": "session.config",
+  "provider": "gemini",
+  "voice": "Zephyr",
+  "brainAgent": "enabled",
+  "apiKey": "...",
+  "tavilyApiKey": "tvly-..."
+}
+```
+
+The desktop app sets this from the **Settings → Web Search** card. The setting
+is persisted in the local SQLite database under the `tavily_api_key` key.
+
+### Relay-wide env (for self-hosted relay deployments)
+
+Set `TAVILY_API_KEY=...` in the relay's environment. Every session connecting
+to that relay will get `web_search` regardless of what the client sends. Useful
+for shared deployments where the operator wants to provide search out of the
+box.
+
+```bash
+# relay-server/.env
+TAVILY_API_KEY=tvly-...
+```
+
+## Tool contract
+
+The realtime model sees this declaration:
+
+```json
+{
+  "type": "function",
+  "name": "web_search",
+  "description": "Fast public web lookup via Tavily. Use this for quick factual questions...",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+The relay calls Tavily's `/search` endpoint with `search_depth: "basic"`,
+`max_results: 5`, and `include_answer: true`. The model receives a JSON result:
+
+```json
+{
+  "query": "...",
+  "answer": "Short synthesized answer, or null.",
+  "results": [
+    { "title": "...", "url": "...", "snippet": "..." }
+  ]
+}
+```
+
+Snippets are capped at 600 characters each so the tool output stays small
+enough not to bloat the model's context.
+
+## Failure modes
+
+- **Bad key (401/403)** — relay returns `{"error": "Tavily API key rejected.
+  Check the key in Settings."}` so the model can apologise gracefully.
+- **Rate limit (429)** — relay returns `{"error": "Tavily rate limit hit. Try
+  again in a moment."}`.
+- **Timeout** — the relay aborts at 15 seconds and returns
+  `{"error": "Web search aborted"}`. Most calls land in 1-3 seconds; a 15s
+  timeout means the network is wedged.
+- **Cancelled mid-call** — if the upstream voice provider cancels the tool
+  call (e.g., user starts speaking again), the in-flight Tavily fetch is
+  aborted via `AbortController` so the slot is released.

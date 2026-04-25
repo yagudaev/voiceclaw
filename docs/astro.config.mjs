@@ -96,6 +96,12 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Tools',
+          items: [
+            { slug: 'guides/web-search', label: 'Web Search (Tavily)' },
+          ],
+        },
+        {
           label: 'Observability',
           items: [
             { slug: 'guides/tracing' },

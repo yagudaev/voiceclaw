@@ -188,6 +188,7 @@ export function ChatPage() {
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
     const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
     const apiKey = (await getSetting('realtime_api_key')) || ''
+    const tavilyApiKey = (await getSetting('tavily_api_key')) || undefined
     const volume = parseFloat((await getSetting('realtime_volume')) || '1.0')
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
@@ -200,6 +201,7 @@ export function ChatPage() {
       model,
       brainAgent: 'enabled',
       apiKey,
+      tavilyApiKey,
       volume,
       inputDeviceId,
       outputDeviceId,

@@ -48,6 +48,12 @@ export function SettingsPage() {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [testError, setTestError] = useState('')
 
+  // Web Search (Tavily) — when set, the realtime model gets a fast web_search
+  // tool alongside ask_brain. Stored as a plain settings KV like the relay
+  // api key — it's user-supplied and lives only in the local SQLite DB.
+  const [tavilyKey, setTavilyKey] = useState('')
+  const [showTavilyKey, setShowTavilyKey] = useState(false)
+
   // Model + Voice
   const [model, setModel] = useState<RealtimeModel>('gemini-3.1-flash-live-preview')
   const [voice, setVoice] = useState<string>('Zephyr')
@@ -75,6 +81,8 @@ export function SettingsPage() {
       if (url) setServerUrl(url)
       const key = await getSetting('realtime_api_key')
       if (key) setApiKey(key)
+      const tk = await getSetting('tavily_api_key')
+      if (tk) setTavilyKey(tk)
       const m = await getSetting('realtime_model')
       const loadedModel = normalizeRealtimeModel(m)
       setModel(loadedModel)
@@ -127,6 +135,16 @@ export function SettingsPage() {
       }
     }
   }, [save, apiKey, model])
+
+  const updateTavilyKey = useCallback((v: string) => {
+    setTavilyKey(v)
+    if (loadedRef.current) {
+      save('tavily_api_key', v)
+      if (v && !tavilyKey) {
+        captureRenderer('provider_key_saved', { provider: 'tavily' })
+      }
+    }
+  }, [save, tavilyKey])
 
   const updateModel = useCallback((v: RealtimeModel) => {
     setModel(v)
@@ -260,6 +278,45 @@ export function SettingsPage() {
             error={testError}
             onTest={testConnection}
           />
+        </Card>
+
+        {/* Web Search */}
+        <Card className="p-4 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Web Search</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Optional Tavily API key. When set, the assistant gets a fast{' '}
+              <code className="rounded bg-muted px-1 py-0.5">web_search</code> tool for
+              quick public-web lookups (typically 1-3s) — much faster than going through
+              the brain. Get a key at <span className="text-foreground">tavily.com</span>.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">Tavily API Key</label>
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <Input
+                  type={showTavilyKey ? 'text' : 'password'}
+                  value={tavilyKey}
+                  onChange={(e) => updateTavilyKey(e.target.value)}
+                  placeholder="tvly-..."
+                  className="pr-10"
+                />
+                <button
+                  onClick={() => setShowTavilyKey(!showTavilyKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showTavilyKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {tavilyKey
+                ? 'web_search tool will be available next call.'
+                : 'Leave blank to disable web_search; the assistant will fall back to ask_brain for lookups.'}
+            </p>
+          </div>
         </Card>
 
         {/* Model */}

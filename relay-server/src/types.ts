@@ -19,6 +19,10 @@ export interface SessionConfigEvent {
   model?: string
   brainAgent: "enabled" | "none"
   apiKey: string
+  // Tavily API key for the web_search tool. When present (either here or via
+  // TAVILY_API_KEY env on the relay), web_search is registered as a tool the
+  // realtime model can call for fast lookups that don't need the brain agent.
+  tavilyApiKey?: string
   sessionKey?: string
   // Stable identifier for the human behind this session (telegram chat id,
   // app user id, etc.). Propagated to Langfuse so traces group per-user.

@@ -10,6 +10,9 @@ export interface RealtimeConfig {
   model?: string
   brainAgent: 'enabled' | 'none'
   apiKey: string
+  // Tavily API key. Optional — when set, the relay registers the web_search
+  // tool for fast public-web lookups in addition to ask_brain.
+  tavilyApiKey?: string
   sessionKey?: string
   volume?: number
   inputDeviceId?: string
@@ -218,6 +221,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             model: config.model,
             brainAgent: config.brainAgent,
             apiKey: config.apiKey,
+            tavilyApiKey: config.tavilyApiKey,
             sessionKey: config.sessionKey,
             deviceContext: config.deviceContext,
             instructionsOverride: config.instructionsOverride,

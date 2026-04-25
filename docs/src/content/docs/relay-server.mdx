@@ -226,7 +226,7 @@ Final transcript for a complete utterance.
 
 #### `tool.call`
 
-The AI model wants to call a tool. Server-side tools (`echo_tool`, `ask_brain`) are handled by the relay automatically and not forwarded to the client.
+The AI model wants to call a tool. Server-side tools (`echo_tool`, `ask_brain`, `web_search`) are handled by the relay automatically and not forwarded to the client.
 
 ```json
 {
@@ -375,10 +375,11 @@ On disconnect, the relay syncs the full conversation transcript to the brain for
 
 ## Server-Side Tools
 
-Two tools are handled server-side (never forwarded to the client):
+These tools are handled server-side (never forwarded to the client):
 
 - `echo_tool` -- test tool that echoes back input (useful for verifying the tool pipeline)
 - `ask_brain` -- async brain agent call (described above)
+- `web_search` -- fast public-web lookup via [Tavily](https://tavily.com). Only registered when a Tavily API key is available (session config `tavilyApiKey` or `TAVILY_API_KEY` env). See the [Web Search](/voiceclaw/guides/web-search) guide.
 
 ## Watchdog
 
