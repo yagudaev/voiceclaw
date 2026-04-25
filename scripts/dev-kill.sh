@@ -46,35 +46,11 @@ for port in "${PORTS[@]}"; do
   fi
 done
 
-# Desktop Electron — match by absolute path of the binary inside this repo's
-# desktop/node_modules so we don't touch unrelated Electron apps (Slack,
-# Cursor, Linear, etc.) on the same machine.
+# Desktop Electron — no listening port, match by absolute path of the binary
+# in this repo's node_modules so we don't touch Slack/Cursor/Linear/etc.
 electron_pattern="$(cd "$(dirname "$0")/.." && pwd)/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/"
-electron_pids=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
-if [ -z "${electron_pids}" ]; then
-  echo "desktop electron: not running"
+if pkill -f "${electron_pattern}" 2>/dev/null; then
+  echo "desktop electron: killed"
 else
-  electron_pids_csv=$(echo "${electron_pids}" | tr '\n' ' ')
-  echo "desktop electron: SIGTERM → ${electron_pids_csv}"
-  # shellcheck disable=SC2086
-  kill -TERM ${electron_pids} 2>/dev/null || true
-
-  waited=0
-  while [ "${waited}" -lt "${GRACE_SECONDS}" ]; do
-    sleep 1
-    waited=$((waited + 1))
-    still=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
-    if [ -z "${still}" ]; then
-      break
-    fi
-  done
-
-  remaining=$(pgrep -f "${electron_pattern}" 2>/dev/null || true)
-  if [ -n "${remaining}" ]; then
-    echo "desktop electron: SIGKILL → $(echo "${remaining}" | tr '\n' ' ')(survived SIGTERM)"
-    # shellcheck disable=SC2086
-    kill -KILL ${remaining} 2>/dev/null || true
-  else
-    echo "desktop electron: shut down cleanly"
-  fi
+  echo "desktop electron: not running"
 fi
