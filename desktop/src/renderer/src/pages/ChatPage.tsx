@@ -221,7 +221,11 @@ export function ChatPage() {
     const tavilyApiKey = tavilyEnabled
       ? ((await getSetting('tavily_api_key')) || undefined)
       : undefined
-    const volume = baseVolume * outputGain
+    const baseRaw = await getSetting('realtime_volume')
+    const baseParsed = parseFloat(baseRaw ?? '')
+    const freshBaseVolume = Number.isNaN(baseParsed) ? 1 : Math.max(0, baseParsed)
+    setBaseVolume(freshBaseVolume)
+    const volume = freshBaseVolume * outputGain
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
@@ -253,7 +257,7 @@ export function ChatPage() {
       conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       tracingEnabled,
     })
-  }, [realtime, baseVolume, outputGain])
+  }, [realtime, outputGain])
 
   const endCall = useCallback(() => {
     realtime.stop()
@@ -262,6 +266,7 @@ export function ChatPage() {
     setIsThinking(false)
     setStreamingText('')
     setIsMuted(false)
+    setOutputMuted(false)
     setActiveRealtimeModel('')
   }, [realtime])
 
