@@ -171,12 +171,14 @@ export function ChatPage() {
       setIsCallActive(false)
       setIsThinking(false)
       setStreamingText('')
+      streamingRoleRef.current = 'assistant'
     },
     onDisconnect: () => {
       setIsCallActive(false)
       setIsConnecting(false)
       setIsThinking(false)
       setStreamingText('')
+      streamingRoleRef.current = 'assistant'
     },
     onError: (message) => {
       console.error('[ChatPage] Relay error:', message)
