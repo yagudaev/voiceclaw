@@ -81,15 +81,13 @@ app.whenReady().then(async () => {
     rendererUrl: process.env.ELECTRON_RENDERER_URL,
   })
 
-  // Launched via login-items with openAsHidden? Stay in the menu bar
-  // until the user opens the window themselves. On any other launch,
-  // show the window normally.
+  // Launched via login-items with openAsHidden? Suppress the window so
+  // we never steal focus on login, but leave the dock icon visible so
+  // the user can still find VoiceClaw in Cmd+Tab and the Dock — same
+  // pattern Slack, Linear, etc. use for "open at login, hidden".
   if (wasOpenedAsHidden) {
-    // ready-to-show will fire and try to show; suppress by hiding ASAP
-    // after it shows so we never steal focus.
     mainWindow.once('show', () => {
       mainWindow.hide()
-      app.dock?.hide()
     })
   }
 
@@ -186,7 +184,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
-  // On darwin: hide the dock but keep the tray + services running.
+  // On darwin: hide the window but keep the dock icon, tray, and
+  // services running so the user can still bring VoiceClaw back via
+  // Cmd+Tab, the Dock, or the tray menu.
   hideMainWindow()
 })
 

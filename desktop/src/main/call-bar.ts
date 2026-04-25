@@ -80,7 +80,14 @@ export function createCallBar(options: { isDev: boolean; rendererUrl?: string })
   // without the weird focus-stealing dance the higher 'screen-saver'
   // level triggers when the main app comes forward.
   callBar.setAlwaysOnTop(true, 'floating')
-  callBar.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // skipTransformProcessType is load-bearing: without it,
+  // setVisibleOnAllWorkspaces flips the app to UIElementApplication and
+  // removes VoiceClaw from Cmd+Tab and the Dock. visibleOnFullScreen
+  // keeps the bar visible over apps in native-fullscreen Spaces.
+  callBar.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    skipTransformProcessType: true,
+  })
 
   callBar.on('moved', () => {
     persistPosition()

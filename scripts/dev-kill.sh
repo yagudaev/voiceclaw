@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Kill anything listening on the default ports used by `yarn dev`.
-# 8080: relay-server, 4318: tracing-collector (OTLP), 4319: tracing-ui, 3000: website (Next.js)
+# Kill the processes started by `yarn dev`.
+# Ports: 8080 (relay), 4318 (tracing-collector), 4319 (tracing-ui), 3000 (website).
+# The desktop Electron app has no listening port, so we match it by binary path
+# and kill it separately.
 #
 # Sends SIGTERM first so the process can flush sockets, write final logs, and
 # release file handles. Falls back to SIGKILL only if it's still alive after a
@@ -43,3 +45,12 @@ for port in "${PORTS[@]}"; do
     echo "port ${port}: shut down cleanly"
   fi
 done
+
+# Desktop Electron — no listening port, match by absolute path of the binary
+# in this repo's node_modules so we don't touch Slack/Cursor/Linear/etc.
+electron_pattern="$(cd "$(dirname "$0")/.." && pwd)/desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/"
+if pkill -f "${electron_pattern}" 2>/dev/null; then
+  echo "desktop electron: killed"
+else
+  echo "desktop electron: not running"
+fi

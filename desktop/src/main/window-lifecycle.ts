@@ -95,7 +95,4 @@ export function showMainWindow(): void {
 export function hideMainWindow(): void {
   if (!mainWindow) return
   mainWindow.hide()
-  // Hide dock icon so the app lives quietly in the menu bar. The user
-  // can still open a window via the tray at any time.
-  app.dock?.hide()
 }
