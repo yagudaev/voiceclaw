@@ -63,6 +63,24 @@ body.call-bar-view #root {
   display: flex;
 }
 
+/* Preview mode (`?preview=1` in the browser): paint a desktop-ish
+ * backdrop and center the pill so we can iterate on its styling
+ * without spinning up Electron. Has no effect in the actual floating
+ * window because that body never gets the .call-bar-preview class. */
+body.call-bar-preview {
+  background: linear-gradient(135deg, #2a2520 0%, #1a1714 100%) !important;
+  min-height: 100vh;
+}
+
+body.call-bar-preview #root {
+  align-items: center;
+  justify-content: center;
+}
+
+body.call-bar-preview .call-bar {
+  position: relative !important;
+}
+
 /* Root pill ----------------------------------------------------------- */
 
 .call-bar {
@@ -114,11 +132,12 @@ body.call-bar-view #root {
 /* Waveform pips ------------------------------------------------------- */
 
 .call-bar__waveform {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 6px 0 4px;
+  padding: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -159,11 +178,14 @@ body.call-bar-view #root {
 /* Drag grip (hover only) --------------------------------------------- */
 
 .call-bar__grip {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
   display: grid;
   grid-template-columns: repeat(3, 2px);
   grid-template-rows: repeat(2, 2px);
   gap: 3px;
-  padding: 6px 8px 4px;
   opacity: 0;
   transition: opacity 200ms ease;
   -webkit-app-region: drag;

@@ -27,8 +27,9 @@ declare global {
 type Speaker = 'user' | 'ai' | 'idle'
 
 export function CallBar() {
-  const [visible, setVisible] = useState(false)
-  const [speaker, setSpeaker] = useState<Speaker>('idle')
+  const previewMode = isPreview()
+  const [visible, setVisible] = useState(previewMode)
+  const [speaker, setSpeaker] = useState<Speaker>(previewMode ? 'user' : 'idle')
   const [levels, setLevels] = useState<number[]>([0, 0, 0])
 
   // Ref mirror for the IPC handler — React 19 setters can't be read
@@ -42,10 +43,27 @@ export function CallBar() {
   // renderer's own rules.
   useEffect(() => {
     document.body.classList.add('call-bar-view')
+    if (previewMode) document.body.classList.add('call-bar-preview')
     return () => {
       document.body.classList.remove('call-bar-view')
+      document.body.classList.remove('call-bar-preview')
     }
-  }, [])
+  }, [previewMode])
+
+  // In preview mode (browser tab, no Electron IPC) drive a synthetic
+  // level signal so the waveform animates and the styling iteration
+  // loop is faster than firing up Electron + a real call.
+  useEffect(() => {
+    if (!previewMode) return
+    const id = setInterval(() => {
+      const t = performance.now() / 1000
+      const fakeInput = 0.18 + 0.12 * Math.abs(Math.sin(t * 2.4))
+      const fakeOutput = 0.05
+      setSpeaker(resolveSpeaker(fakeInput, fakeOutput))
+      setLevels((prev) => spreadLevel(prev, fakeInput, fakeOutput))
+    }, 60)
+    return () => clearInterval(id)
+  }, [previewMode])
 
   useEffect(() => {
     const api = window.electronAPI?.callBar
@@ -166,4 +184,9 @@ function spreadLevel(prev: number[], input: number, output: number): number[] {
 function clampHeight(level: number): number {
   const h = MIN_BAR + level * (MAX_BAR - MIN_BAR)
   return Math.max(MIN_BAR, Math.min(MAX_BAR, h))
+}
+
+function isPreview(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('preview') === '1'
 }
