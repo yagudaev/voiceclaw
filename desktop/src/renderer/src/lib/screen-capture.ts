@@ -1,5 +1,5 @@
 // Screen capture utility for Electron's desktopCapturer.
-// Captures frames at 1 FPS, resizes to ~768px, and emits JPEG base64.
+// Captures frames at 1 FPS, resizes to ~1536px, and emits JPEG base64.
 
 export type ScreenSource = {
   id: string
@@ -17,9 +17,22 @@ declare global {
   }
 }
 
-const MAX_DIMENSION = 768
+// 1536 keeps small terminal text legible on Retina captures while staying within
+// Gemini's HIGH-resolution video tokenizer envelope. 768 was too aggressive —
+// 11pt monospace fonts blurred to the point Gemini misread "warp" as "warn",
+// command output as garbled glyphs, etc.
+const MAX_DIMENSION = 1536
 const CAPTURE_INTERVAL_MS = 1000 // 1 FPS
-const JPEG_QUALITY = 0.7
+// 0.85 preserves anti-aliased text edges through chroma subsampling. 0.7 was
+// dropping enough high-frequency luma detail that ligatures and thin glyph
+// strokes (i, l, |, /) became unreadable after JPEG.
+const JPEG_QUALITY = 0.85
+// Upper bound for the source stream so Chromium doesn't silently cap the
+// desktop capture at its 1280x720 default. We downscale to MAX_DIMENSION
+// after the fact — this just prevents pre-canvas downsampling. 4K covers
+// nearly every Retina/HiDPI display we care about.
+const SOURCE_MAX_WIDTH = 3840
+const SOURCE_MAX_HEIGHT = 2160
 
 export class ScreenCapture {
   private stream: MediaStream | null = null
@@ -30,7 +43,10 @@ export class ScreenCapture {
   private sourceName = ''
 
   async start(sourceId: string, onFrame: (base64Jpeg: string) => void) {
-    // Request screen capture stream using Electron's chromeMediaSource
+    // Request screen capture stream using Electron's chromeMediaSource.
+    // The legacy `mandatory` constraint shape is required when combining
+    // chromeMediaSource: 'desktop' with size hints — modern width/height
+    // constraints are ignored on this path in Chromium.
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
@@ -38,6 +54,8 @@ export class ScreenCapture {
         mandatory: {
           chromeMediaSource: 'desktop',
           chromeMediaSourceId: sourceId,
+          maxWidth: SOURCE_MAX_WIDTH,
+          maxHeight: SOURCE_MAX_HEIGHT,
         },
       } as any,
     })
