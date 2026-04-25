@@ -5,6 +5,7 @@ import type { SessionConfigEvent } from "../types.js"
 import type { ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getTools } from "../tools/index.js"
+import { buildHistorySplit, formatSummaryPreamble, type HistoryMessage } from "../history.js"
 import { log, error as logError } from "../log.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
@@ -54,6 +55,11 @@ export class OpenAIAdapter implements ProviderAdapter {
   private lastUpstreamAudioAtMs: number | null = null
   private firstAudioDeltaAtMs: number | null = null
   private turnWasInterrupted = false
+  // Conversation history populated on connect() and consumed once after the
+  // first session.update. Cleared after injection so rotations don't replay
+  // (they have their own summarizeTranscript() path).
+  private resumeRecentTurns: HistoryMessage[] = []
+  private resumeSummary: string | null = null
 
   constructor(options: OpenAICompatibleAdapterOptions = {}) {
     this.providerName = options.providerName ?? "openai"
@@ -69,6 +75,13 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.sendToClient = sendToClient
     this.config = config
     this.watchdogEnabled = config.watchdog === "enabled"
+
+    const split = await buildHistorySplit(config.conversationHistory, "openai")
+    this.resumeRecentTurns = split.recent
+    this.resumeSummary = split.summary
+    if (split.recent.length > 0 || split.summary) {
+      log(`[${this.providerName}] Resume context: recent=${split.recent.length} msgs, summary=${split.summary ? `${split.summary.length} chars` : "none"}`)
+    }
 
     await this.openUpstream(config)
     this.startRotationTimer()
@@ -204,17 +217,10 @@ export class OpenAIAdapter implements ProviderAdapter {
   private configureSession(config: SessionConfigEvent, contextSummary?: string) {
     let instructions = buildInstructions(config)
 
-    // Inject conversation history from prior messages in this conversation
-    if (config.conversationHistory && config.conversationHistory.length > 0) {
-      const lines = config.conversationHistory.map(
-        (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`
-      ).join("\n")
-      // Keep last ~3000 chars to stay within instruction limits
-      const trimmed = lines.length > 3000 ? "...\n" + lines.slice(-3000) : lines
-      instructions += `\n\n## Prior Conversation (this session continues an ongoing chat)\n${trimmed}`
+    if (this.resumeSummary) {
+      instructions += `\n\n${formatSummaryPreamble(this.resumeSummary)}`
     }
 
-    // Inject context summary from previous session rotation
     if (contextSummary) {
       instructions += `\n\n## Conversation Context (from previous session)\n${contextSummary}`
     }
@@ -225,6 +231,28 @@ export class OpenAIAdapter implements ProviderAdapter {
       type: "session.update",
       session: this.buildSessionConfig(config, instructions, tools),
     })
+
+    this.injectResumeTurns()
+  }
+
+  private injectResumeTurns() {
+    if (this.resumeRecentTurns.length === 0) return
+
+    log(`[${this.providerName}] Injecting ${this.resumeRecentTurns.length} recent turn(s) via conversation.item.create`)
+    for (const turn of this.resumeRecentTurns) {
+      const contentType = turn.role === "user" ? "input_text" : "text"
+      this.sendUpstream({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: turn.role,
+          content: [{ type: contentType, text: turn.text }],
+        },
+      })
+    }
+
+    this.resumeRecentTurns = []
+    this.resumeSummary = null
   }
 
   // Session rotation — seamlessly swap the upstream OpenAI session

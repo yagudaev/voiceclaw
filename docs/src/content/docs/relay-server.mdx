@@ -88,7 +88,21 @@ Fields:
 - `model` -- model identifier (default: `gemini-3.1-flash-live-preview` for Gemini, `grok-voice-think-fast-1.0` for xAI, `gpt-realtime-mini` for OpenAI)
 - `brainAgent` -- `"enabled"` or `"none"`
 - `apiKey` -- must match `RELAY_API_KEY` if set on the server
-- `conversationHistory` -- prior messages to inject as context (for continuing conversations)
+- `conversationHistory` -- prior messages to inject as context (for continuing conversations). The relay automatically splits history into the last 8 turns verbatim and a summarized preamble of older messages — see [Conversation Resume](#conversation-resume) below
+
+## Conversation Resume
+
+When a client sends `conversationHistory` on `session.config`, the relay reconstructs continuity for the model without flooding its context window:
+
+- The last 8 turns (16 messages: 8 user + 8 assistant) are replayed verbatim. Voice turns are typically 100–200 tokens each, so this is ~2–4k tokens — well under any provider's context window.
+- Anything older is summarized into a short bullet preamble (≤200 tokens) and appended to the system instruction under `## Earlier in this conversation`. Summarization runs on the active provider's text endpoint (`gemini-2.5-flash` for Gemini sessions, `gpt-4o-mini` for OpenAI / xAI). If the provider call fails, the relay falls back to the OpenAI text endpoint, then to a truncated raw transcript so the session never blocks.
+
+How the recent turns are injected:
+
+- **OpenAI Realtime / xAI:** one `conversation.item.create` per turn (role `user` or `assistant`, content type `input_text` / `text`). No `response.create` is sent — the next user audio drives the first response.
+- **Gemini Live:** a single `clientContent` message with `turnComplete: false` containing all turns (roles mapped `assistant` → `model`). Sent immediately after `setupComplete`, before the audio stream begins.
+
+History is injected only on the initial connect. Reconnects that use Gemini's resumption handle, and OpenAI's timer-based rotation, both have their own continuity paths and do not replay history.
 
 #### `audio.append`
 

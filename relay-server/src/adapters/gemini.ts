@@ -5,6 +5,7 @@ import type { SessionConfigEvent } from "../types.js"
 import type { ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getGeminiTools } from "../tools/index.js"
+import { buildHistorySplit, formatSummaryPreamble, type HistoryMessage } from "../history.js"
 import { log, error as logError } from "../log.js"
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
@@ -67,6 +68,11 @@ export class GeminiAdapter implements ProviderAdapter {
   private isReconnecting = false
   private disconnected = false
   private wsUrlOverride: string | null = null // for tests to point at a mock server
+  // Conversation history injected on the initial connect only. Reconnects rely
+  // on Gemini's resumption handle (or on the next initial connect) — replaying
+  // turns into a resumed session would duplicate context the model already has.
+  private resumeRecentTurns: HistoryMessage[] = []
+  private resumeSummary: string | null = null
   // Bounded queues for messages written during the reconnect window.
   // Flushed on the resumed connection's setupComplete.
   private pendingAudio: string[] = []
@@ -90,6 +96,13 @@ export class GeminiAdapter implements ProviderAdapter {
     this.config = config
     this.disconnected = false
     this.watchdogEnabled = config.watchdog === "enabled"
+
+    const split = await buildHistorySplit(config.conversationHistory, "gemini")
+    this.resumeRecentTurns = split.recent
+    this.resumeSummary = split.summary
+    if (split.recent.length > 0 || split.summary) {
+      log(`[gemini] Resume context: recent=${split.recent.length} msgs, summary=${split.summary ? `${split.summary.length} chars` : "none"}`)
+    }
 
     await this.openUpstream()
   }
@@ -130,6 +143,7 @@ export class GeminiAdapter implements ProviderAdapter {
             log("[gemini] Setup complete")
             this.resetWatchdog()
             finish()
+            this.injectResumeTurns()
             // Flush AFTER finish() so any waiters see a fully-established
             // connection before queued sends begin landing on the wire.
             this.flushPending()
@@ -378,7 +392,10 @@ export class GeminiAdapter implements ProviderAdapter {
   // --- setup ---
 
   private sendSetup(config: SessionConfigEvent, model: string) {
-    const instructions = buildInstructions(config)
+    const baseInstructions = buildInstructions(config)
+    const instructions = this.resumeSummary
+      ? `${baseInstructions}\n\n${formatSummaryPreamble(this.resumeSummary)}`
+      : baseInstructions
     const tools = getGeminiTools(config)
     const voice = resolveVoice(config.voice)
 
@@ -707,6 +724,27 @@ export class GeminiAdapter implements ProviderAdapter {
     if (this.upstream?.readyState === WebSocket.OPEN) {
       this.upstream.send(payload)
     }
+  }
+
+  private injectResumeTurns() {
+    if (this.resumeRecentTurns.length === 0) return
+    if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return
+
+    const turns = this.resumeRecentTurns.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.text }],
+    }))
+
+    log(`[gemini] Injecting ${turns.length} recent turn(s) via clientContent`)
+    this.upstream.send(JSON.stringify({
+      clientContent: {
+        turns,
+        turnComplete: false,
+      },
+    }))
+
+    this.resumeRecentTurns = []
+    this.resumeSummary = null
   }
 
   private flushPending() {
