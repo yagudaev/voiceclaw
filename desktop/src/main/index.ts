@@ -113,7 +113,12 @@ app.whenReady().then(async () => {
   createCallBar({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
 
   registerCallBarHooks({
-    onFocusMain: () => showMainWindow(),
+    onFocusMain: () => {
+      if (!getMainWindow()) {
+        createMainWindow({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+      }
+      showMainWindow()
+    },
     onMuteToggle: () => {
       getMainWindow()?.webContents.send('call-bar:request-mute-toggle')
     },
