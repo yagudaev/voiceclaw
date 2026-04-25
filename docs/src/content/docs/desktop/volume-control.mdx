@@ -1,0 +1,43 @@
+---
+title: Agent volume control
+description: A small speaker icon in the active-call control row that opens a vertical slider for adjusting the agent's playback volume — and toggles mute when the slider is already open.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+While you're on a call in the desktop app, the row of icon buttons under the transcript includes a small speaker icon next to the screen-share button. It controls only the agent's voice — your microphone mute and call-end controls live alongside it but are unrelated.
+
+## What it does
+
+- **Click the icon when nothing's open.** A small vertical slider pops up above the icon. Drag the thumb up to raise the agent's voice, down to lower it. The level meter below the transcript still reflects your mic input — this slider only affects what the agent sounds like to you.
+- **Click the icon again while the slider is open.** Mutes the agent. Click once more to unmute. The slider stays visible the whole time so the toggle feels deliberate, like a native volume picker.
+- **Drag while muted.** Touching the slider unmutes automatically and snaps the level to wherever you dragged.
+- **Click outside the slider.** Closes it. The icon goes back to its idle state until the next click.
+
+The icon glyph follows the level: `Volume2` at high levels, `Volume1` mid, `Volume` near silent, and `VolumeX` (with a red tint) when muted.
+
+## Where the volume actually applies
+
+The slider drives the gain stage in `AudioEngine` — the same `GainNode` that all assistant playback flows through. It does **not** touch the system output volume, the microphone, or any other desktop audio. Other apps on your machine stay at whatever level your OS has them at.
+
+The slider sits *on top of* the boost multiplier in **Settings → Speaker Volume**. Settings sets the base level (0.5x – 3.0x); the in-call slider then attenuates that base from 0% – 100%. So `Settings = 2.0x` and `slider = 50%` gives an effective playback gain of 1.0x.
+
+## What persists
+
+- The **slider position** persists across reloads via the SQLite `settings` table (key: `realtime_output_gain`). Your last setting is restored when the chat window mounts.
+- The **base speaker volume** stays where you put it in Settings (key: `realtime_volume`).
+- The **mute state** does not persist. We assume mute is a deliberate, in-the-moment choice — every fresh call starts unmuted at your saved gain.
+
+## Keyboard
+
+The slider track is keyboard-focusable when open:
+
+- `ArrowUp` / `ArrowRight` — raise volume by 5% (10% with Shift)
+- `ArrowDown` / `ArrowLeft` — lower volume by 5% (10% with Shift)
+- `Home` — set to 0
+- `End` — set to 100
+- `Escape` — close the slider
+
+<Aside type="tip">
+  If you want to silence the agent without touching the slider, just click the icon twice while the slider is open: first click opens it, second click mutes. Click the icon a third time to unmute and keep going.
+</Aside>

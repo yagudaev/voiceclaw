@@ -84,6 +84,7 @@ export default defineConfig({
             { slug: 'desktop-app' },
             { slug: 'desktop/onboarding', label: 'Desktop: onboarding wizard' },
             { slug: 'desktop/call-bar', label: 'Desktop: floating call bar' },
+            { slug: 'desktop/volume-control', label: 'Desktop: agent volume control' },
             { slug: 'desktop/releasing', label: 'Desktop: releasing' },
             { slug: 'mobile-app' },
           ],

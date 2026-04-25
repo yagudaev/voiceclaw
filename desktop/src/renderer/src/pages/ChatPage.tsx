@@ -6,6 +6,7 @@ import { ThinkingDots } from '../components/ThinkingDots'
 import { AudioLevelMeter } from '../components/AudioLevelMeter'
 import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 import { ScreenSharePicker } from '../components/ScreenSharePicker'
+import { VolumeControl } from '../components/VolumeControl'
 import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
 import { useConversationContext } from '../lib/conversation-context'
@@ -15,6 +16,7 @@ import {
   getLatestConversation,
   getMessages,
   getSetting,
+  setSetting,
   updateConversationTitle,
   type Message,
 } from '../lib/db'
@@ -31,13 +33,15 @@ export function ChatPage() {
   const titleGeneratedRef = useRef(false)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [outputGain, setOutputGain] = useState(1)
+  const [baseVolume, setBaseVolume] = useState(1)
+  const [outputMuted, setOutputMuted] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [streamingRole, setStreamingRole] = useState<'user' | 'assistant'>('assistant')
-  // Synchronously-readable mirror of streamingRole. Event callbacks must
-  // decide reset-vs-append without a setState updater — StrictMode invokes
-  // updaters twice in dev, so any side effect inside one runs twice.
+  // Synchronous mirror of streamingRole — IPC callbacks need to read the
+  // current role outside of a setState updater since updaters must stay pure.
   const streamingRoleRef = useRef<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
   const [connectionError, setConnectionError] = useState('')
@@ -75,6 +79,14 @@ export function ChatPage() {
   useEffect(() => {
     loadLatestConversation()
     getSetting('show_latency').then((v) => setShowLatency(v === 'true'))
+    getSetting('realtime_volume').then((v) => {
+      const parsed = parseFloat(v ?? '')
+      if (!Number.isNaN(parsed)) setBaseVolume(Math.max(0, parsed))
+    })
+    getSetting('realtime_output_gain').then((v) => {
+      const parsed = parseFloat(v ?? '')
+      if (!Number.isNaN(parsed)) setOutputGain(Math.max(0, Math.min(1, parsed)))
+    })
   }, [])
 
   const loadLatestConversation = async () => {
@@ -110,9 +122,6 @@ export function ChatPage() {
       setIsCallActive(true)
     },
     onTranscriptDelta: (text, role) => {
-      // Read the current role from the ref so reset-vs-append stays out of
-      // a setState updater. StrictMode double-invokes updaters in dev, so
-      // any side effect (setStreamingText) inside one would fire twice.
       if (streamingRoleRef.current !== role) {
         streamingRoleRef.current = role
         setStreamingRole(role)
@@ -190,9 +199,18 @@ export function ChatPage() {
   const realtimeRef = useRef(realtime)
   realtimeRef.current = realtime
 
+  useEffect(() => {
+    realtime.setOutputVolume(baseVolume * outputGain)
+  }, [baseVolume, outputGain, realtime])
+
+  useEffect(() => {
+    realtime.setOutputMuted(outputMuted)
+  }, [outputMuted, realtime])
+
   const startCall = useCallback(async () => {
     setConnectionError('')
     setIsConnecting(true)
+    setOutputMuted(false)
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
     const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
@@ -204,7 +222,11 @@ export function ChatPage() {
     const tavilyApiKey = tavilyEnabled
       ? ((await getSetting('tavily_api_key')) || undefined)
       : undefined
-    const volume = parseFloat((await getSetting('realtime_volume')) || '1.0')
+    const baseRaw = await getSetting('realtime_volume')
+    const baseParsed = parseFloat(baseRaw ?? '')
+    const freshBaseVolume = Number.isNaN(baseParsed) ? 1 : Math.max(0, baseParsed)
+    setBaseVolume(freshBaseVolume)
+    const volume = freshBaseVolume * outputGain
     const tracingEnabled = (await getSetting('tracing_enabled')) === 'true'
     const inputDeviceId = (await getSetting('input_device_id')) || undefined
     const outputDeviceId = (await getSetting('output_device_id')) || undefined
@@ -236,7 +258,7 @@ export function ChatPage() {
       conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
       tracingEnabled,
     })
-  }, [realtime])
+  }, [realtime, outputGain])
 
   const endCall = useCallback(() => {
     realtime.stop()
@@ -245,6 +267,7 @@ export function ChatPage() {
     setIsThinking(false)
     setStreamingText('')
     setIsMuted(false)
+    setOutputMuted(false)
     setActiveRealtimeModel('')
   }, [realtime])
 
@@ -253,6 +276,15 @@ export function ChatPage() {
     setIsMuted(next)
     realtime.setMuted(next)
   }, [isMuted, realtime])
+
+  const handleOutputGainChange = useCallback((next: number) => {
+    setOutputGain(next)
+    setSetting('realtime_output_gain', next.toString()).catch(() => {})
+  }, [])
+
+  const handleOutputMutedChange = useCallback((next: boolean) => {
+    setOutputMuted(next)
+  }, [])
 
   // The floating call bar's context menu forwards mute / end-call
   // requests through main. Wire them to the chat UI's existing actions.
@@ -468,6 +500,13 @@ export function ChatPage() {
                 {isScreenSharing ? <MonitorOff size={20} /> : <Monitor size={20} />}
               </Button>
             </span>
+            <VolumeControl
+              volume={outputGain}
+              muted={outputMuted}
+              onVolumeChange={handleOutputGainChange}
+              onMutedChange={handleOutputMutedChange}
+            />
+
             <Button
               variant="destructive"
               size="icon"
