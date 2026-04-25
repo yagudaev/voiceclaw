@@ -154,7 +154,15 @@ const electronAPI = {
       }>,
   },
   screen: {
-    getSources: () => ipcRenderer.invoke('screen:getSources'),
+    getSources: () =>
+      ipcRenderer.invoke('screen:getSources') as Promise<
+        Array<{
+          id: string
+          name: string
+          thumbnailDataURL: string | null
+          appIconDataURL: string | null
+        }>
+      >,
   },
   net: {
     healthCheck: (url: string) => ipcRenderer.invoke('net:healthCheck', url) as Promise<{ ok: boolean, error?: string }>,

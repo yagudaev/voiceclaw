@@ -4,7 +4,8 @@
 export type ScreenSource = {
   id: string
   name: string
-  thumbnailDataURL: string
+  thumbnailDataURL: string | null
+  appIconDataURL: string | null
 }
 
 declare global {
