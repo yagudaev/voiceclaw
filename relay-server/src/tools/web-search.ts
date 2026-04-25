@@ -64,67 +64,76 @@ export async function webSearch(
 
   log(`[web_search] Query: ${query.substring(0, 80)}...`)
 
-  let response: Response
+  // Single try/finally wrapping the entire fetch lifecycle. Cleanup must NOT
+  // run after headers but before the body is read — Tavily can stall mid-body
+  // and we'd lose the timeout/external-abort protection. Keep the timer and
+  // the abort listener live until response.json() / response.text() resolves
+  // or throws.
   try {
-    response = await fetch(TAVILY_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        query,
-        search_depth: "basic",
-        max_results: MAX_RESULTS,
-        include_answer: true,
-      }),
-      signal: controller.signal,
+    let response: Response
+    try {
+      response = await fetch(TAVILY_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          search_depth: "basic",
+          max_results: MAX_RESULTS,
+          include_answer: true,
+        }),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      if (controller.signal.aborted) {
+        return JSON.stringify({ error: "Web search aborted" })
+      }
+      const message = err instanceof Error ? err.message : "fetch failed"
+      logError(`[web_search] fetch threw:`, message)
+      return JSON.stringify({ error: `Web search failed: ${message}` })
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "")
+      logError(`[web_search] Tavily ${response.status}: ${text.substring(0, 200)}`)
+      if (response.status === 401 || response.status === 403) {
+        return JSON.stringify({ error: "Tavily API key rejected. Check the key in Settings." })
+      }
+      if (response.status === 429) {
+        return JSON.stringify({ error: "Tavily rate limit hit. Try again in a moment." })
+      }
+      return JSON.stringify({ error: `Tavily returned ${response.status}` })
+    }
+
+    let body: TavilyResponse
+    try {
+      body = await response.json() as TavilyResponse
+    } catch (err) {
+      if (controller.signal.aborted) {
+        return JSON.stringify({ error: "Web search aborted" })
+      }
+      logError(`[web_search] failed to parse Tavily response:`, err)
+      return JSON.stringify({ error: "Tavily returned malformed JSON" })
+    }
+
+    const results = (body.results ?? []).slice(0, MAX_RESULTS).map((r) => ({
+      title: r.title ?? "",
+      url: r.url ?? "",
+      snippet: truncate(r.content ?? "", MAX_SNIPPET_CHARS),
+    }))
+
+    log(`[web_search] ${results.length} results, answer=${body.answer ? "yes" : "no"}`)
+
+    return JSON.stringify({
+      query: body.query ?? query,
+      answer: body.answer ?? null,
+      results,
     })
-  } catch (err) {
+  } finally {
     cleanup()
-    if (controller.signal.aborted) {
-      return JSON.stringify({ error: "Web search aborted" })
-    }
-    const message = err instanceof Error ? err.message : "fetch failed"
-    logError(`[web_search] fetch threw:`, message)
-    return JSON.stringify({ error: `Web search failed: ${message}` })
   }
-
-  cleanup()
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "")
-    logError(`[web_search] Tavily ${response.status}: ${text.substring(0, 200)}`)
-    if (response.status === 401 || response.status === 403) {
-      return JSON.stringify({ error: "Tavily API key rejected. Check the key in Settings." })
-    }
-    if (response.status === 429) {
-      return JSON.stringify({ error: "Tavily rate limit hit. Try again in a moment." })
-    }
-    return JSON.stringify({ error: `Tavily returned ${response.status}` })
-  }
-
-  let body: TavilyResponse
-  try {
-    body = await response.json() as TavilyResponse
-  } catch (err) {
-    logError(`[web_search] failed to parse Tavily response:`, err)
-    return JSON.stringify({ error: "Tavily returned malformed JSON" })
-  }
-
-  const results = (body.results ?? []).slice(0, MAX_RESULTS).map((r) => ({
-    title: r.title ?? "",
-    url: r.url ?? "",
-    snippet: truncate(r.content ?? "", MAX_SNIPPET_CHARS),
-  }))
-
-  log(`[web_search] ${results.length} results, answer=${body.answer ? "yes" : "no"}`)
-
-  return JSON.stringify({
-    query: body.query ?? query,
-    answer: body.answer ?? null,
-    results,
-  })
 }
 
 // ---------------------------------------------------------------------------

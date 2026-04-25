@@ -58,6 +58,12 @@ WebSocket:
 The desktop app sets this from the **Settings → Web Search** card. The setting
 is persisted in the local SQLite database under the `tavily_api_key` key.
 
+The card also has an **Enable** toggle (`tavily_enabled` setting). When off,
+the desktop won't forward the key on `session.config` even if one is saved —
+useful for pausing `web_search` without losing the stored key. The toggle is
+desktop-only; the relay-wide env path always registers `web_search` if
+`TAVILY_API_KEY` is set.
+
 ### Relay-wide env (for self-hosted relay deployments)
 
 Set `TAVILY_API_KEY=...` in the relay's environment. Every session connecting

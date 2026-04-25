@@ -48,10 +48,12 @@ export function SettingsPage() {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [testError, setTestError] = useState('')
 
-  // Web Search (Tavily) — when set, the realtime model gets a fast web_search
-  // tool alongside ask_brain. Stored as a plain settings KV like the relay
-  // api key — it's user-supplied and lives only in the local SQLite DB.
+  // Web Search (Tavily) — when enabled AND a key is set, the realtime model
+  // gets a fast web_search tool alongside ask_brain. Stored as plain settings
+  // KV like the relay api key. The enabled flag is independent of the key so
+  // the user can pause web_search without losing their saved key.
   const [tavilyKey, setTavilyKey] = useState('')
+  const [tavilyEnabled, setTavilyEnabled] = useState(true)
   const [showTavilyKey, setShowTavilyKey] = useState(false)
 
   // Model + Voice
@@ -83,6 +85,10 @@ export function SettingsPage() {
       if (key) setApiKey(key)
       const tk = await getSetting('tavily_api_key')
       if (tk) setTavilyKey(tk)
+      // Default to enabled. Only treat the explicit string 'false' as off so
+      // a missing setting (first-run) starts in the on state.
+      const te = await getSetting('tavily_enabled')
+      setTavilyEnabled(te !== 'false')
       const m = await getSetting('realtime_model')
       const loadedModel = normalizeRealtimeModel(m)
       setModel(loadedModel)
@@ -145,6 +151,11 @@ export function SettingsPage() {
       }
     }
   }, [save, tavilyKey])
+
+  const toggleTavilyEnabled = useCallback((v: boolean) => {
+    setTavilyEnabled(v)
+    setSetting('tavily_enabled', v ? 'true' : 'false')
+  }, [])
 
   const updateModel = useCallback((v: RealtimeModel) => {
     setModel(v)
@@ -282,17 +293,21 @@ export function SettingsPage() {
 
         {/* Web Search */}
         <Card className="p-4 space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Web Search</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Optional Tavily API key. When set, the assistant gets a fast{' '}
-              <code className="rounded bg-muted px-1 py-0.5">web_search</code> tool for
-              quick public-web lookups (typically 1-3s) — much faster than going through
-              the brain. Get a key at <span className="text-foreground">tavily.com</span>.
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Web Search</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                When enabled, the assistant gets a fast{' '}
+                <code className="rounded bg-muted px-1 py-0.5">web_search</code> tool
+                (Tavily) for quick public-web lookups (typically 1-3s) — much faster
+                than going through the brain. Get a key at{' '}
+                <span className="text-foreground">tavily.com</span>.
+              </p>
+            </div>
+            <Toggle checked={tavilyEnabled} onChange={toggleTavilyEnabled} />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`space-y-1.5 ${tavilyEnabled ? '' : 'opacity-50'}`}>
             <label className="text-xs text-muted-foreground">Tavily API Key</label>
             <div className="flex gap-2">
               <div className="flex-1 relative">
@@ -302,6 +317,7 @@ export function SettingsPage() {
                   onChange={(e) => updateTavilyKey(e.target.value)}
                   placeholder="tvly-..."
                   className="pr-10"
+                  disabled={!tavilyEnabled}
                 />
                 <button
                   onClick={() => setShowTavilyKey(!showTavilyKey)}
@@ -312,9 +328,11 @@ export function SettingsPage() {
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              {tavilyKey
-                ? 'web_search tool will be available next call.'
-                : 'Leave blank to disable web_search; the assistant will fall back to ask_brain for lookups.'}
+              {!tavilyEnabled
+                ? 'web_search disabled. Key is kept for when you re-enable.'
+                : tavilyKey
+                  ? 'web_search tool will be available next call.'
+                  : 'Add a key to enable web_search; the assistant falls back to ask_brain otherwise.'}
             </p>
           </div>
         </Card>
