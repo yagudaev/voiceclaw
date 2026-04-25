@@ -25,21 +25,21 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
+    "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.12",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.21",
-    "electron": "^41.2.1",
+    "electron": "^41.3.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^5.0.0",
-    "lucide-react": "^1.8.0",
+    "lucide-react": "^1.11.0",
     "postcss": "^8.5.3",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3",
-    "vite": "^8.0.8"
+    "vite": "^8.0.10"
   }
 }
