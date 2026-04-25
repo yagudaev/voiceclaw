@@ -68,6 +68,15 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
 
+  useEffect(() => {
+    window.electronAPI?.tray?.setCallActive(isConnected).catch(() => {})
+    if (isConnected) {
+      return () => {
+        window.electronAPI?.tray?.setCallActive(false).catch(() => {})
+      }
+    }
+  }, [isConnected])
+
   const sendTiming = useCallback((phase: string, ms: number, turnId: string | null) => {
     if (!configRef.current?.tracingEnabled) return
     if (wsRef.current?.readyState !== WebSocket.OPEN) return

@@ -1,4 +1,5 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
+import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
 import { closeDb } from './db'
@@ -38,6 +39,14 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
+  // Packaged builds get their dock icon from the bundled .icns; dev needs it set explicitly.
+  if (isDev) {
+    const devDockIcon = nativeImage.createFromPath(
+      join(app.getAppPath(), 'resources', 'dock', 'icon.png'),
+    )
+    if (!devDockIcon.isEmpty()) app.dock?.setIcon(devDockIcon)
+  }
+
   ensureOnboardingSchema()
   // Dev escape hatch: VOICECLAW_RESET_ONBOARDING=1 yarn dev wipes the
   // wizard cursor before window creation so the wizard reappears at
@@ -80,8 +89,11 @@ app.whenReady().then(async () => {
     },
   })
 
-  // Reflect service state in the tray icon.
   serviceManager.on('change', () => refreshTrayState())
+
+  ipcMain.handle('tray:setCallActive', (_e, active: boolean) => {
+    setCallActive(Boolean(active))
+  })
 
   // First-run: default launch-at-login to ON so mobile devices can
   // reach this Mac without the user opening the app first. User can
@@ -157,7 +169,18 @@ if (process.env.VOICECLAW_TEST_ERROR === '1') {
 // Helpers
 // ---------------------------------------------------------------------------
 
+let callActive = false
+
+export function setCallActive(active: boolean): void {
+  callActive = active
+  refreshTrayState()
+}
+
 function refreshTrayState() {
+  if (callActive) {
+    setTrayState('on-call')
+    return
+  }
   const statuses = serviceManager.getAllStatuses()
   const values = Object.values(statuses)
   if (values.length === 0) {
