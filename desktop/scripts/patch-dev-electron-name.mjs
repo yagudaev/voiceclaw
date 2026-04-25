@@ -1,115 +1,95 @@
 #!/usr/bin/env node
-// Renames the dev Electron.app bundle so Cmd+Tab, the Dock, and the
-// Application menu show "VoiceClaw" instead of "Electron" during
-// `yarn dev`. Packaged builds get this from electron-builder.yml's
-// productName, but the dev binary lives in node_modules and ships
-// branded as "Electron".
+// In dev (`yarn dev`), Electron runs from node_modules/electron and
+// shows up in macOS Cmd+Tab as "Electron" with a generic icon. The
+// label that Cmd+Tab renders comes from the .app directory's
+// filesystem name (Apple QA1544 — `FileManager.displayName(atPath:)`
+// uses the bundle folder name in preference to CFBundleName when they
+// disagree), so patching only the Info.plist or renaming the binary
+// inside the bundle does NOT change what Cmd+Tab displays.
 //
-// What this patches (all idempotent):
-//   1. Contents/Info.plist — CFBundleName, CFBundleDisplayName, and
-//      CFBundleExecutable set to "VoiceClaw".
-//   2. Contents/MacOS/Electron renamed (or hardlinked) to
-//      Contents/MacOS/VoiceClaw. The binary itself is what argv[0]
-//      becomes when electron-vite spawns it, and the kernel-level
-//      argv[0] is what the Dock actually renders under the Cmd+Tab
-//      icon — patching the Info.plist alone leaves it as "Electron".
-//   3. node_modules/electron/path.txt — points at the renamed binary
-//      so `require('electron')` (used by electron-vite to find the
-//      executable) resolves to the new path.
+// What does work: ship a sibling .app whose folder name is
+// "VoiceClaw.app". This script rsyncs node_modules/electron's
+// Electron.app into a sibling VoiceClaw.app and points the electron
+// npm package's path.txt at the copy so electron-vite spawns the
+// renamed bundle. The original Electron.app is left untouched —
+// electron-rebuild and any other consumer that hardcodes that path
+// keeps working.
 //
-// After patching we also touch the bundle, run lsregister -f, and
-// restart the Dock so the metadata caches refresh.
+// Idempotent: re-running on an already-prepared copy refreshes
+// LaunchServices but doesn't re-rsync.
 
 import { execFileSync } from "node:child_process"
-import {
-  existsSync,
-  readFileSync,
-  renameSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const PRODUCT_NAME = "VoiceClaw"
+// Distinct from production (com.getvoiceclaw.desktop) and from the
+// shared "com.github.Electron" id every other dev Electron uses, so
+// LaunchServices doesn't conflate this bundle's metadata with theirs.
+const DEV_BUNDLE_ID = "com.getvoiceclaw.desktop.dev"
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const electronPkg = resolve(__dirname, "..", "node_modules/electron")
-const appBundle = resolve(electronPkg, "dist/Electron.app")
-const plistPath = resolve(appBundle, "Contents/Info.plist")
-const macosDir = resolve(appBundle, "Contents/MacOS")
-const oldBinary = resolve(macosDir, "Electron")
-const newBinary = resolve(macosDir, PRODUCT_NAME)
+const sourceApp = resolve(electronPkg, "dist/Electron.app")
+const targetApp = resolve(electronPkg, `dist/${PRODUCT_NAME}.app`)
+const targetPlist = resolve(targetApp, "Contents/Info.plist")
 const pathTxt = resolve(electronPkg, "path.txt")
 const lsregister =
   "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
 
-if (!existsSync(plistPath)) {
+if (!existsSync(sourceApp)) {
   // Hoisted install or non-mac platform — nothing to patch.
   process.exit(0)
 }
 
-let patched = false
-for (const key of ["CFBundleName", "CFBundleDisplayName", "CFBundleExecutable"]) {
-  const current = readKey(key)
-  if (current === PRODUCT_NAME) continue
-  writeKey(key, PRODUCT_NAME)
-  console.log(`patched ${key}: ${current} → ${PRODUCT_NAME}`)
-  patched = true
+let changed = false
+
+if (!existsSync(targetApp)) {
+  execFileSync("rsync", ["-a", `${sourceApp}/`, `${targetApp}/`])
+  console.log(`copied ${sourceApp} → ${targetApp}`)
+  changed = true
 }
 
-// Rename the binary under the product name so the kernel-level
-// argv[0] becomes "VoiceClaw". `ps -o ucomm` and the Dock's Cmd+Tab
-// label both come from this — patching only Info.plist leaves them
-// as "Electron".
-if (existsSync(oldBinary) && !existsSync(newBinary)) {
-  renameSync(oldBinary, newBinary)
-  console.log(`renamed binary: Electron → ${PRODUCT_NAME}`)
-  patched = true
+for (const [key, value] of [
+  ["CFBundleName", PRODUCT_NAME],
+  ["CFBundleDisplayName", PRODUCT_NAME],
+  ["CFBundleIdentifier", DEV_BUNDLE_ID],
+]) {
+  const current = readPlistKey(targetPlist, key)
+  if (current === value) continue
+  writePlistKey(targetPlist, key, value)
+  console.log(`patched ${key}: ${current} → ${value}`)
+  changed = true
 }
 
-// Point the electron npm package's path.txt at the renamed binary so
-// electron-vite spawns it instead of the "Electron" name.
+const desiredPath = `${PRODUCT_NAME}.app/Contents/MacOS/Electron`
 if (existsSync(pathTxt)) {
-  const desired = `Electron.app/Contents/MacOS/${PRODUCT_NAME}`
   const current = readFileSync(pathTxt, "utf8").trim()
-  if (current !== desired) {
-    writeFileSync(pathTxt, desired)
-    console.log(`patched path.txt: ${current} → ${desired}`)
-    patched = true
+  if (current !== desiredPath) {
+    writeFileSync(pathTxt, desiredPath)
+    console.log(`patched path.txt: ${current} → ${desiredPath}`)
+    changed = true
   }
 }
 
-if (patched) {
-  // Bump the bundle's mtime so LaunchServices treats it as changed.
-  const now = new Date()
-  utimesSync(appBundle, now, now)
-
-  // Renaming a binary in an ad-hoc-signed bundle usually keeps the
-  // signature valid (the signature is keyed on content, not name) but
-  // re-signing ad-hoc is cheap insurance.
+if (changed) {
+  // Re-sign ad-hoc — Info.plist is not bound to the original
+  // signature, but re-signing is cheap and keeps the bundle clean.
   try {
-    execFileSync("codesign", ["--force", "--sign", "-", appBundle], {
+    execFileSync("codesign", ["--force", "--sign", "-", targetApp], {
       stdio: "ignore",
     })
   } catch (err) {
     console.warn(`codesign refresh failed (non-fatal): ${err.message ?? err}`)
   }
-}
-
-// Always re-register with LaunchServices. Cheap, and covers the case
-// where the plist is already correct but the LS cache still has stale
-// metadata from a prior run.
-try {
-  execFileSync(lsregister, ["-f", appBundle], { stdio: "ignore" })
-} catch (err) {
-  console.warn(`lsregister -f failed (non-fatal): ${err.message ?? err}`)
-}
-
-// Even after lsregister, the Dock's Cmd+Tab UI keeps a per-running-app
-// label cache that is only invalidated when the Dock process itself
-// restarts. Restarting it here is harmless — launchd respawns it in
-// under a second and no user state is lost.
-if (patched) {
+  try {
+    execFileSync(lsregister, ["-f", targetApp], { stdio: "ignore" })
+  } catch (err) {
+    console.warn(`lsregister -f failed (non-fatal): ${err.message ?? err}`)
+  }
+  // Restart the Dock so Cmd+Tab picks up the new bundle name on its
+  // next render. launchd respawns it in under a second.
   try {
     execFileSync("killall", ["Dock"], { stdio: "ignore" })
   } catch {
@@ -117,7 +97,7 @@ if (patched) {
   }
 }
 
-function readKey(key) {
+function readPlistKey(plistPath, key) {
   try {
     return execFileSync("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, plistPath], {
       encoding: "utf8",
@@ -127,7 +107,7 @@ function readKey(key) {
   }
 }
 
-function writeKey(key, value) {
+function writePlistKey(plistPath, key, value) {
   execFileSync("/usr/libexec/PlistBuddy", [
     "-c",
     `Set :${key} ${value}`,
