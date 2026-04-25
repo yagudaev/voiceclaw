@@ -481,11 +481,16 @@ export default function SettingsScreen() {
       keyboardVerticalOffset={90}>
       <ScrollView testID="settings-scroll" contentContainerStyle={{ padding: 16, gap: 16 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
         <Card testID="voice-pipeline-card" className="gap-4 p-4">
-          <Text className="text-lg font-semibold text-foreground">Voice Pipeline</Text>
+          <View className="gap-1">
+            <Text className="text-lg font-semibold text-foreground">Brain Gateway</Text>
+            <Text className="text-xs text-muted-foreground">
+              The brain gateway URL and key are the only setup VoiceClaw needs. Point this at your relay server (the one that talks to your brain agent) and the rest of the app will use it.
+            </Text>
+          </View>
 
           <>
               <View className="gap-2">
-                <Text className="text-sm text-muted-foreground">Relay Server URL</Text>
+                <Text className="text-sm text-muted-foreground">Brain Gateway URL</Text>
                 <Input
                   placeholder="ws://localhost:8080/ws"
                   value={realtimeServerUrl}
@@ -554,9 +559,9 @@ export default function SettingsScreen() {
               <View className="rounded-lg border border-input bg-background/50 p-3 dark:bg-input/20">
                 <Text className="mb-1 text-xs font-medium text-muted-foreground">Setup</Text>
                 <Text className="text-xs leading-5 text-muted-foreground">
-                  1. Run the relay server: cd relay-server && yarn dev{'\n'}
-                  2. Enter the relay server URL shown on startup{'\n'}
-                  3. Enter your API key for authentication
+                  1. Run your brain gateway (relay-server): cd relay-server && yarn dev{'\n'}
+                  2. Paste the gateway URL shown on startup into "Brain Gateway URL"{'\n'}
+                  3. Paste the matching API key
                 </Text>
               </View>
 
@@ -780,7 +785,7 @@ export default function SettingsScreen() {
             </View>
           ) : (
             <Text className="text-sm text-muted-foreground">
-              No latency data yet. Use Custom Pipeline or Vapi mode to collect stats.
+              No latency data yet. Start a call to collect stats.
             </Text>
           )}
         </Card>

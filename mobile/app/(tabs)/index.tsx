@@ -660,7 +660,7 @@ export default function ChatScreen() {
 
     const { apiKey, model, apiUrl } = await getApiConfig()
     if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
+      await addMessage(conversationId, 'assistant', 'Text chat needs a brain gateway URL. Open Settings and complete the Brain Gateway setup, or start a voice call instead.')
       await loadMessages()
       return
     }
@@ -721,26 +721,13 @@ export default function ChatScreen() {
     let callStarted = false
 
     try {
-      const storedVoiceMode = await getSetting('voice_mode')
-      const voiceMode = storedVoiceMode === 'custom' || storedVoiceMode === 'vapi'
-        ? 'realtime'
-        : (storedVoiceMode || 'realtime')
-
       if (!conversationId) {
         console.warn('[Chat] No active conversation, cannot start call')
         return
       }
 
-      if (voiceMode === 'realtime') {
-        activeVoiceModeRef.current = 'realtime'
-        callStarted = await startRealtimeCall()
-      } else if (voiceMode === 'custom') {
-        activeVoiceModeRef.current = 'custom'
-        callStarted = await startCustomPipelineCall()
-      } else {
-        activeVoiceModeRef.current = 'vapi'
-        callStarted = await startVapiCall()
-      }
+      activeVoiceModeRef.current = 'realtime'
+      callStarted = await startRealtimeCall()
     } catch (e: any) {
       const errorMsg = e?.message || String(e)
       console.error('Failed to start call:', errorMsg)
@@ -757,13 +744,13 @@ export default function ChatScreen() {
         }
       }
     }
-  }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
+  }, [isCallActive, conversationId, loadMessages])
 
   const startVapiCall = useCallback(async (): Promise<boolean> => {
     const assistantId = await getSetting('assistant_id')
     if (!assistantId) {
       if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
+        await addMessage(conversationId, 'assistant', 'The Vapi voice mode is no longer supported. Open Settings and finish your Brain Gateway URL setup to start a call.')
         await loadMessages()
       }
       return false
@@ -772,7 +759,7 @@ export default function ChatScreen() {
     const ready = await ensureVapiReady()
     if (!ready) {
       if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
+        await addMessage(conversationId, 'assistant', 'The Vapi voice mode is no longer supported. Open Settings and finish your Brain Gateway URL setup to start a call.')
         await loadMessages()
       }
       return false
