@@ -16,7 +16,7 @@ const tabs: { id: TabId, label: string, icon: typeof MessageCircle }[] = [
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-card/90 backdrop-blur">
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-background">
       {/* macOS traffic light spacer */}
       <div className="w-16 drag-region" />
 

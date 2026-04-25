@@ -35,6 +35,9 @@ export function createMainWindow(options: { isDev: boolean; rendererUrl?: string
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
+    // Brand paper. Paints behind any renderer transparency (e.g. tailwind v4
+    // slash-opacity utilities like bg-card/90, which v3 silently ignored).
+    backgroundColor: '#f1e8da',
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
