@@ -29,7 +29,7 @@ type Speaker = 'user' | 'ai' | 'idle'
 export function CallBar() {
   const [visible, setVisible] = useState(false)
   const [speaker, setSpeaker] = useState<Speaker>('idle')
-  const [levels, setLevels] = useState<number[]>([0, 0, 0, 0, 0])
+  const [levels, setLevels] = useState<number[]>([0, 0, 0])
 
   // Ref mirror for the IPC handler — React 19 setters can't be read
   // synchronously, and we need the previous levels to feed a small IIR
@@ -128,8 +128,8 @@ export function CallBar() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const MIN_BAR = 6
-const MAX_BAR = 88
+const MIN_BAR = 3
+const MAX_BAR = 12
 
 // Gain the raw RMS into something visually useful. RMS tops out around
 // 0.3 for typical speaking voices; multiplying by ~3 puts a normal
@@ -152,9 +152,7 @@ function spreadLevel(prev: number[], input: number, output: number): number[] {
   const active = Math.max(input, output)
   const target = Math.min(1, active * LEVEL_GAIN)
 
-  // Give each bar a slight per-index offset so the wave isn't five
-  // identical clones. Offsets mirror around the center bar for symmetry.
-  const offsets = [0.75, 0.9, 1.0, 0.9, 0.75]
+  const offsets = [0.85, 1.0, 0.85]
 
   return prev.map((current, i) => {
     const wanted = target * offsets[i]

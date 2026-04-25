@@ -10,8 +10,8 @@ import { getDb } from './db'
 // The window is created once per app launch and reused — show/hide
 // is cheap, full teardown happens on app quit.
 
-const BAR_WIDTH = 68
-const BAR_HEIGHT = 168
+const BAR_WIDTH = 34
+const BAR_HEIGHT = 85
 const SCREEN_MARGIN = 24
 const HIDE_FADE_MS = 300
 
@@ -75,9 +75,11 @@ export function createCallBar(options: { isDev: boolean; rendererUrl?: string })
     },
   })
 
-  // Sit above fullscreen apps too — the user might be on a call while
-  // watching a fullscreen video / presentation.
-  callBar.setAlwaysOnTop(true, 'screen-saver')
+  // 'floating' is the standard NSFloatingWindowLevel that stays above
+  // every regular window — including a focused window of our own app —
+  // without the weird focus-stealing dance the higher 'screen-saver'
+  // level triggers when the main app comes forward.
+  callBar.setAlwaysOnTop(true, 'floating')
   callBar.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   callBar.on('moved', () => {
