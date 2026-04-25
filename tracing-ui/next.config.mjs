@@ -1,6 +1,5 @@
 import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { NextConfig } from "next"
 
 // better-sqlite3 is a native module. Next.js's server-components bundler needs
 // to treat it as external so it isn't re-bundled for the server runtime.
@@ -10,7 +9,8 @@ import type { NextConfig } from "next"
 // root (e.g. `~/code/yarn.lock` in a monorepo parent).
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   serverExternalPackages: ["better-sqlite3"],
   outputFileTracingRoot: __dirname,
 }
