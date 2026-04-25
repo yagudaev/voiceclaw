@@ -45,6 +45,9 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
+      # nativewind 4.x targets tailwind v3 only; revisit when nativewind ships v4 support.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   # Relay server (Node)
   - package-ecosystem: "npm"
