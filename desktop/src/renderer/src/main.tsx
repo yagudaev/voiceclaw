@@ -27,6 +27,19 @@ void (async () => {
     return
   }
 
+  if (view === 'screen-frame') {
+    const [{ ScreenFrame }] = await Promise.all([
+      import('./screen-frame/ScreenFrame'),
+      import('./screen-frame/screen-frame.css'),
+    ])
+    root.render(
+      <StrictMode>
+        <ScreenFrame />
+      </StrictMode>,
+    )
+    return
+  }
+
   const [{ App }, { initTelemetry }] = await Promise.all([
     import('./App'),
     import('./lib/telemetry'),

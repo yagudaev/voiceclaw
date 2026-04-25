@@ -69,6 +69,9 @@ export function SettingsPage() {
   // Call bar (floating window during sessions)
   const [callBarEnabled, setCallBarEnabled] = useState(true)
 
+  // Screen-share capture frame (rust border around shared display)
+  const [screenFrameEnabled, setScreenFrameEnabled] = useState(true)
+
   // Debug
   const [debugMode, setDebugMode] = useState(false)
   const [showLatency, setShowLatency] = useState(false)
@@ -109,6 +112,8 @@ export function SettingsPage() {
       const cb = await getSetting('call_bar_enabled')
       // Default ON — only explicit 'false' disables. Missing row = on.
       setCallBarEnabled(cb !== 'false')
+      const sf = await getSetting('screen_frame_enabled')
+      setScreenFrameEnabled(sf !== 'false')
       const dm = await getSetting('debug_mode')
       if (dm === 'true') setDebugMode(true)
       const sl = await getSetting('show_latency')
@@ -203,6 +208,11 @@ export function SettingsPage() {
   const toggleCallBar = useCallback((v: boolean) => {
     setCallBarEnabled(v)
     setSetting('call_bar_enabled', v ? 'true' : 'false')
+  }, [])
+
+  const toggleScreenFrame = useCallback((v: boolean) => {
+    setScreenFrameEnabled(v)
+    setSetting('screen_frame_enabled', v ? 'true' : 'false')
   }, [])
 
   const toggleDebugMode = useCallback((v: boolean) => {
@@ -482,6 +492,16 @@ export function SettingsPage() {
               </p>
             </div>
             <Toggle checked={callBarEnabled} onChange={toggleCallBar} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="pr-4">
+              <p className="text-sm text-foreground">Show screen-share indicator on the captured display</p>
+              <p className="text-xs text-muted-foreground">
+                A thin rust border around the screen you&apos;re sharing, so it&apos;s obvious which monitor is going out. Stays visible above fullscreen apps where the macOS menu-bar dot disappears.
+              </p>
+            </div>
+            <Toggle checked={screenFrameEnabled} onChange={toggleScreenFrame} />
           </div>
         </Card>
 

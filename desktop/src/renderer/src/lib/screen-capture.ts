@@ -5,6 +5,11 @@ export type ScreenSource = {
   id: string
   name: string
   thumbnailDataURL: string
+  // display_id from Electron's desktopCapturer — non-empty string for
+  // 'screen' sources (e.g. "69733382"), empty string for 'window'
+  // sources. Parse to a number when present so we can address the
+  // chosen display via Electron's screen.getAllDisplays() in main.
+  displayId?: string
 }
 
 declare global {
@@ -34,15 +39,22 @@ const JPEG_QUALITY = 0.85
 const SOURCE_MAX_WIDTH = 3840
 const SOURCE_MAX_HEIGHT = 2160
 
+type EndedBinding = { track: MediaStreamTrack; handler: () => void }
+
 export class ScreenCapture {
   private stream: MediaStream | null = null
   private video: HTMLVideoElement | null = null
   private canvas: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null
   private intervalId: ReturnType<typeof setInterval> | null = null
+  private endedBindings: EndedBinding[] = []
   private sourceName = ''
 
-  async start(sourceId: string, onFrame: (base64Jpeg: string) => void) {
+  async start(
+    sourceId: string,
+    onFrame: (base64Jpeg: string) => void,
+    onEnded?: () => void,
+  ) {
     // Request screen capture stream using Electron's chromeMediaSource.
     // The legacy `mandatory` constraint shape is required when combining
     // chromeMediaSource: 'desktop' with size hints — modern width/height
@@ -59,6 +71,19 @@ export class ScreenCapture {
         },
       } as any,
     })
+
+    // When the user clicks macOS's "Stop Sharing" affordance (or the
+    // OS otherwise revokes the share), the video track fires `ended`.
+    // Bubble that up so callers can clear UI state and turn off the
+    // screen-share indicator. Track each binding so a normal stop()
+    // can detach the handlers before stopping the tracks — otherwise
+    // the listeners hang on closures over stale page state until GC.
+    if (onEnded) {
+      this.stream.getVideoTracks().forEach((track) => {
+        track.addEventListener('ended', onEnded, { once: true })
+        this.endedBindings.push({ track, handler: onEnded })
+      })
+    }
 
     // Set up hidden video element to receive stream
     this.video = document.createElement('video')
@@ -82,6 +107,10 @@ export class ScreenCapture {
       clearInterval(this.intervalId)
       this.intervalId = null
     }
+    for (const { track, handler } of this.endedBindings) {
+      track.removeEventListener('ended', handler)
+    }
+    this.endedBindings = []
     if (this.stream) {
       this.stream.getTracks().forEach((t) => t.stop())
       this.stream = null

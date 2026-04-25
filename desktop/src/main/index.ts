@@ -16,6 +16,7 @@ import {
   createCallBar,
   destroyCallBar,
   focusMainFromCallBar,
+  getCallBarWindow,
   hideCallBar,
   markCallBarReady,
   registerCallBarHooks,
@@ -23,6 +24,14 @@ import {
   showCallBar,
   showCallBarContextMenu,
 } from './call-bar'
+import {
+  createScreenFrame,
+  destroyScreenFrame,
+  getScreenFrameWindow,
+  hideScreenFrame,
+  markScreenFrameReady,
+  showScreenFrame,
+} from './screen-frame'
 import { serviceManager } from './services/service-manager'
 import { startBundledOpenClaw } from './services/openclaw-gateway'
 import { ensureDefault as ensureLaunchAtLoginDefault } from './login-items'
@@ -133,6 +142,58 @@ app.whenReady().then(async () => {
     markCallBarReady()
   })
 
+  // Screen-share indicator -------------------------------------------------
+  // Capture-frame BrowserWindow + the rust pip on the call-bar Mark are
+  // both driven by a single signal: when the chat renderer starts a
+  // share, it fires `screen-share:setActive`; when the share ends (user
+  // clicks Stop, track.onended, or session ends), it fires it again
+  // with active=false. The handler:
+  //   1. shows / hides the perimeter frame on the chosen display
+  //   2. forwards the same state to the call-bar window so its CSS pip
+  //      lights up live (no DB / settings round-trip needed)
+  createScreenFrame({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+
+  // Lifecycle signal owned by the screen-frame renderer only — reject
+  // anything coming from the main app or any other webContents so a
+  // compromised renderer can't flush a queued show on our behalf.
+  ipcMain.handle('screen-frame:ready', (event) => {
+    const frame = getScreenFrameWindow()
+    if (!frame || event.sender !== frame.webContents) return
+    markScreenFrameReady()
+  })
+
+  // Privileged: this handler controls an alwaysOnTop screen-saver-level
+  // BrowserWindow plus call-bar pip state. Only the main chat window
+  // is allowed to call it, and the payload shape must be exact.
+  ipcMain.handle(
+    'screen-share:setActive',
+    (event, payload: unknown) => {
+      const main = getMainWindow()
+      if (!main || event.sender !== main.webContents) return
+      if (!payload || typeof payload !== 'object') return
+
+      const p = payload as { active?: unknown; displayId?: unknown }
+      if (typeof p.active !== 'boolean') return
+      const displayId =
+        typeof p.displayId === 'number' && Number.isFinite(p.displayId)
+          ? p.displayId
+          : undefined
+
+      if (p.active && isScreenFrameEnabled()) {
+        showScreenFrame(displayId)
+      } else {
+        hideScreenFrame()
+      }
+
+      // Mirror state into the call-bar so its rust pip can react in
+      // real time. Use .send (not the queued visibility broadcaster)
+      // because the bar may be hidden — we still want it to remember
+      // the latest state the next time it shows.
+      const bar = getCallBarWindow()
+      bar?.webContents.send('call-bar:screen-share', { active: p.active })
+    },
+  )
+
   ipcMain.handle('call-bar:focus-main', () => {
     focusMainFromCallBar()
   })
@@ -209,6 +270,7 @@ app.on('before-quit', async (event) => {
 app.on('will-quit', () => {
   serviceManager.stopAll()
   destroyCallBar()
+  destroyScreenFrame()
   destroyTray()
   closeDb()
 })
@@ -252,6 +314,19 @@ function isCallBarEnabled(): boolean {
     const row = db
       .prepare('SELECT value FROM settings WHERE key = ?')
       .get('call_bar_enabled') as { value: string } | undefined
+    // Default ON — explicit opt-out only.
+    return row?.value !== 'false'
+  } catch {
+    return true
+  }
+}
+
+function isScreenFrameEnabled(): boolean {
+  try {
+    const db = getDb()
+    const row = db
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get('screen_frame_enabled') as { value: string } | undefined
     // Default ON — explicit opt-out only.
     return row?.value !== 'false'
   } catch {

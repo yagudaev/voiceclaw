@@ -51,6 +51,46 @@ If you don't want the bar at all:
 
 The setting is stored per-install in the same settings table (`call_bar_enabled`). Turning it back on takes effect on the next call.
 
+## Screen-share indicators
+
+When you start a screen share mid-call, two extra things appear so it's never ambiguous which monitor is going out the wire:
+
+- **Capture frame.** A thin rust border (the brand accent, `#b4492f`) is drawn around the perimeter of the display you're sharing — full-bleed, always-on-top, click-through. The border rides above fullscreen apps like Keynote, fullscreen video, and immersive demos, and breathes slowly (a 3-second pulse between full and 55 % opacity) so it stays present without becoming alarmist. The corners are rounded to follow the macOS display-corner mask on built-in MacBook Pro screens.
+- **Call-bar pip.** A small solid rust dot appears in the top-right corner of the brand mark on the floating call bar. It's only visible while a share is active, and disappears the instant you stop.
+
+### Why we ship our own indicator
+
+macOS already shows an orange dot in the menu bar when the screen is being recorded. That dot is **hidden in fullscreen apps**: when Keynote or a fullscreen video takes over the menu bar, the orange dot goes with it — exactly the moment a "you are live" signal matters most. The capture frame and the pip live on the `screen-saver` window level with `visibleOnFullScreen: true`, so they ride above the fullscreen surface and the user always knows what's being shared.
+
+### When the indicators appear and disappear
+
+The signal flows from the chat renderer through main:
+
+1. **Start.** When you pick a source from the share picker, the renderer fires `screenShare.setActive({ active: true, displayId })`. Main looks up the display in `screen.getAllDisplays()`, repositions the screen-frame window over its full bounds, and broadcasts the same state to the call-bar window so the pip lights up.
+2. **Stop.** When you click stop in the chat UI, click macOS's own "Stop Sharing" affordance (which fires `track.onended` on the video track), or end the call, the renderer fires `setActive({ active: false })`. Main hides the frame and clears the pip.
+
+Window sources (sharing a single window instead of a whole monitor) don't carry a `display_id` — when that happens, main falls back to the primary display so the indicator still fires.
+
+### Disabling the screen-share indicators
+
+Same Settings card as the call bar:
+
+<Steps>
+
+1. Open **Settings**.
+
+2. Scroll to the **Call Bar** card.
+
+3. Toggle off **Show screen-share indicator on the captured display**.
+
+</Steps>
+
+The setting is stored as `screen_frame_enabled`. The call-bar pip stays wired up regardless — that's a tiny dot on a window you opted into, so disabling it lives with the call-bar toggle.
+
+<Aside type="caution" title="V1 scope">
+The capture frame is read-only in v1: clicking it does not stop the share (the entire window is `setIgnoreMouseEvents(true)` so clicks pass through to whatever's underneath). To stop sharing, use the chat UI button, the call-bar context menu, or macOS's own Stop Sharing affordance.
+</Aside>
+
 <Aside type="note" title="Under the hood">
 The bar is a separate `BrowserWindow` with `frame: false`, `transparent: true`, `alwaysOnTop: 'screen-saver'`, `focusable: false`. It loads the same `desktop/src/renderer/index.html` as the main window but with `?view=call-bar` in the URL — the renderer entry (`desktop/src/renderer/src/main.tsx`) reads the query string and dynamically imports the `CallBar` component instead of the main `App`. Audio levels flow renderer → main → call-bar via `ipcRenderer.send('call-bar:audio-levels', …)` at ~30 Hz — RMS for the mic comes from the existing `AudioEngine.getInputLevel()`, and output level comes from a new `AnalyserNode` tap on the playback gain.
 </Aside>
