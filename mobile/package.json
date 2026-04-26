@@ -1,7 +1,7 @@
 {
   "name": "voiceclaw-mobile",
   "main": "expo-router/entry",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "scripts": {
     "dev": "expo start -c",
     "ios": "APP_VARIANT=development expo run:ios",

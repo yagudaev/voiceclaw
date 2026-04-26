@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.1.0...mobile-v1.1.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* **mobile:** make deploy reproducible from any fresh checkout ([#249](https://github.com/yagudaev/voiceclaw/issues/249)) ([c6ac10a](https://github.com/yagudaev/voiceclaw/commit/c6ac10a99a4e9a8317862239005588b9cc1f7244))
+* **mobile:** pin react-native to expo 55 recommended 0.83.6 ([#251](https://github.com/yagudaev/voiceclaw/issues/251)) ([df9d663](https://github.com/yagudaev/voiceclaw/commit/df9d663fc901367d921ac34c6945a254b6a2ea3f))
+* **NAN-641:** make brain gateway URL primary, hide legacy Vapi setup ([#222](https://github.com/yagudaev/voiceclaw/issues/222)) ([69a66a7](https://github.com/yagudaev/voiceclaw/commit/69a66a7858a98648540b817194d10b0df094989d))
+
 ## [1.1.0](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.0.0...mobile-v1.1.0) (2026-04-26)
 
 
