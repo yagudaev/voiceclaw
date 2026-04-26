@@ -447,6 +447,14 @@ export class GeminiAdapter implements ProviderAdapter {
       setup.tools = [{ functionDeclarations: tools }]
     }
 
+    // gemini-3.1-flash-live-preview only accepts a post-setup clientContent
+    // history seed when this flag is set; absent it, sendClientContent is
+    // unsupported on this model. Only set when we actually have turns to
+    // inject so audio-only sessions don't opt into the seeding path.
+    if (this.resumeRecentTurns.length > 0) {
+      setup.historyConfig = { initialHistoryInClientContent: true }
+    }
+
     // Enable context window compression unconditionally. hasVideoInput is only
     // set when sendFrame() is called, which happens after setup, so gating on
     // it here would miss sessions that share screen immediately after connecting.
@@ -730,18 +738,22 @@ export class GeminiAdapter implements ProviderAdapter {
     if (this.resumeRecentTurns.length === 0) return
     if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return
 
-    const turns = this.resumeRecentTurns.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.text }],
-    }))
+    const turns = buildClientContentTurns(this.resumeRecentTurns)
+    if (turns.length === 0) {
+      this.resumeRecentTurns = []
+      this.resumeSummary = null
+      return
+    }
 
-    log(`[gemini] Injecting ${turns.length} recent turn(s) via clientContent`)
-    this.upstream.send(JSON.stringify({
+    const payload = JSON.stringify({
       clientContent: {
         turns,
         turnComplete: false,
       },
-    }))
+    })
+
+    log(`[gemini] Injecting ${turns.length} recent turn(s) via clientContent (${payload.length} bytes)`)
+    this.upstream.send(payload)
 
     this.resumeRecentTurns = []
     this.resumeSummary = null
@@ -974,4 +986,25 @@ function findModalityTokens(
   modality: string,
 ): number | undefined {
   return details?.find((d) => d.modality === modality)?.tokenCount
+}
+
+// Map the relay's history shape onto Gemini's clientContent.turns. Drops
+// empty-text entries and coalesces consecutive same-role turns so the wire
+// payload always alternates user/model — Gemini Live requires alternation.
+function buildClientContentTurns(
+  history: { role: "user" | "assistant", text: string }[],
+): { role: "user" | "model", parts: { text: string }[] }[] {
+  const out: { role: "user" | "model", parts: { text: string }[] }[] = []
+  for (const m of history) {
+    const text = typeof m.text === "string" ? m.text.trim() : ""
+    if (!text) continue
+    const role: "user" | "model" = m.role === "assistant" ? "model" : "user"
+    const last = out[out.length - 1]
+    if (last && last.role === role) {
+      last.parts.push({ text })
+    } else {
+      out.push({ role, parts: [{ text }] })
+    }
+  }
+  return out
 }
