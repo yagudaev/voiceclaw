@@ -1,10 +1,14 @@
 // Verifies that the Gemini adapter, when given a conversationHistory on connect,
-// (a) sets historyConfig.initialHistoryInClientContent on the setup message and
-// (b) sends a clientContent { turns, turnComplete: true } message after
-// setupComplete with alternating user/model roles and non-empty parts.
-// turnComplete is true because this is the terminating message of the initial
-// history seed; the next user audio drives the first model turn. Uses a
-// local mock WS server. Run: yarn workspace relay-server tsx test/test-gemini-history-inject.ts
+// (a) folds the recent turns and any summary into systemInstruction.parts[0].text
+// (b) does NOT set historyConfig on the setup message
+// (c) does NOT send a post-setup clientContent message
+//
+// Background: gemini-3.1-flash-live-preview closes the upstream socket with
+// 1007 ("invalid argument") on the post-setup clientContent + historyConfig
+// path even when we match the documented contract. Baking the recent turns
+// into the system prompt is the durable workaround.
+//
+// Run: yarn workspace relay-server tsx test/test-gemini-history-inject.ts
 
 import { WebSocketServer, WebSocket as WsSocket } from "ws"
 import { GeminiAdapter } from "../src/adapters/gemini.js"
@@ -30,7 +34,7 @@ async function main() {
   console.log("=============================================")
 
   process.env.GEMINI_API_KEY = "test-key"
-  process.env.OPENAI_API_KEY = "" // force fallback path on summarizer if it runs
+  process.env.OPENAI_API_KEY = ""
 
   const MOCK_PORT = 19899
   const receivedSetups: Record<string, unknown>[] = []
@@ -62,7 +66,7 @@ async function main() {
     conversationHistory: [
       { role: "user", text: "Hi" },
       { role: "assistant", text: "Hello! How can I help?" },
-      { role: "user", text: "" }, // should be filtered
+      { role: "user", text: "" },
       { role: "user", text: "What's the weather?" },
       { role: "assistant", text: "Sunny." },
     ],
@@ -77,44 +81,26 @@ async function main() {
 
   await new Promise((r) => setTimeout(r, 200))
 
-  console.log("[3] Analyzing setup + clientContent...")
-  const setup = receivedSetups[0] as { historyConfig?: { initialHistoryInClientContent?: boolean } }
+  console.log("[3] Analyzing setup payload...")
+  const setup = receivedSetups[0] as {
+    historyConfig?: unknown
+    systemInstruction?: { parts?: { text?: string }[] }
+  }
   assert(receivedSetups.length === 1, "exactly one setup message received")
-  assert(
-    setup?.historyConfig?.initialHistoryInClientContent === true,
-    "setup includes historyConfig.initialHistoryInClientContent=true",
-  )
+  assert(setup?.historyConfig === undefined, "setup does NOT include historyConfig (avoids 1007 path)")
+  assert(receivedClientContent.length === 0, "no post-setup clientContent sent (avoids 1007 path)")
 
-  assert(receivedClientContent.length === 1, "exactly one clientContent message received")
-  const cc = receivedClientContent[0] as {
-    turns?: { role: string, parts: { text: string }[] }[]
-    turnComplete?: boolean
-  }
-  assert(cc?.turnComplete === true, "clientContent.turnComplete is true (terminating message of initial history seed)")
+  const sysText = setup?.systemInstruction?.parts?.[0]?.text || ""
+  assert(sysText.includes("Most recent turns (verbatim)"), "systemInstruction has recent-turns section header")
+  assert(sysText.includes("User: Hi"), "systemInstruction includes user 'Hi'")
+  assert(sysText.includes("Assistant: Hello! How can I help?"), "systemInstruction includes assistant greeting")
+  assert(sysText.includes("User: What's the weather?"), "systemInstruction includes weather question")
+  assert(sysText.includes("Assistant: Sunny."), "systemInstruction includes assistant 'Sunny.'")
+  assert(!/^User:\s*$/m.test(sysText) && !/^Assistant:\s*$/m.test(sysText), "empty-text turn is filtered out")
 
-  const turns = cc?.turns || []
-  // Empty user turn was filtered. Two consecutive user turns ("Hi", "What's the weather?")
-  // separated by an assistant in the original input remain alternating after filter:
-  //   user "Hi" → model "Hello! How can I help?" → user "What's the weather?" → model "Sunny."
-  assert(turns.length === 4, `expected 4 turns after empty filter (got ${turns.length})`)
-  assert(turns.every((t) => t.role === "user" || t.role === "model"), "all roles are user|model")
-  assert(turns.every((t) => Array.isArray(t.parts) && t.parts.length > 0 && t.parts.every((p) => typeof p.text === "string" && p.text.length > 0)), "all turns have non-empty parts[].text")
-
-  // Verify alternation
-  let alternates = true
-  for (let i = 1; i < turns.length; i++) {
-    if (turns[i].role === turns[i - 1].role) alternates = false
-  }
-  assert(alternates, "roles strictly alternate user/model")
-
-  // Verify the assistant→model role mapping
-  assert(turns[0].role === "user" && turns[0].parts[0].text === "Hi", "turn[0] is user 'Hi'")
-  assert(turns[1].role === "model" && turns[1].parts[0].text.startsWith("Hello!"), "turn[1] is model")
-  assert(turns[2].role === "user" && turns[2].parts[0].text.includes("weather"), "turn[2] is user 'weather'")
-  assert(turns[3].role === "model" && turns[3].parts[0].text === "Sunny.", "turn[3] is model 'Sunny.'")
-
-  // Coalescing: if input has consecutive same-role messages, they merge into one turn.
-  console.log("[4] Coalescing test (consecutive same-role)...")
+  // Same-role consecutive turns are preserved verbatim (no coalescing needed
+  // for plain-text rendering — every line is its own speaker line).
+  console.log("[4] Consecutive same-role rendering...")
   receivedSetups.length = 0
   receivedClientContent.length = 0
   const adapter2 = new GeminiAdapter()
@@ -129,12 +115,13 @@ async function main() {
   }
   await adapter2.connect(config2, () => { /* ignore */ })
   await new Promise((r) => setTimeout(r, 200))
-  const cc2 = receivedClientContent[0] as { turns: { role: string, parts: { text: string }[] }[] }
-  assert(cc2.turns.length === 2, `coalesced consecutive user turns: expected 2 turns, got ${cc2.turns.length}`)
-  assert(cc2.turns[0].role === "user" && cc2.turns[0].parts.length === 2, "coalesced user turn has 2 parts")
-  assert(cc2.turns[1].role === "model", "trailing model turn preserved")
+  const sys2 = (receivedSetups[0] as { systemInstruction?: { parts?: { text?: string }[] } })
+    ?.systemInstruction?.parts?.[0]?.text || ""
+  assert(sys2.includes("User: first") && sys2.includes("User: second"), "both consecutive user lines present")
+  assert(sys2.indexOf("User: first") < sys2.indexOf("User: second"), "lines preserve order")
+  assert(sys2.indexOf("User: second") < sys2.indexOf("Assistant: ok"), "trailing assistant after both user lines")
+  assert(receivedClientContent.length === 0, "no clientContent for consecutive-role case either")
 
-  // No history → no historyConfig, no clientContent.
   console.log("[5] No-history test...")
   receivedSetups.length = 0
   receivedClientContent.length = 0
@@ -143,12 +130,13 @@ async function main() {
   const config3: SessionConfigEvent = { ...config, conversationHistory: undefined }
   await adapter3.connect(config3, () => { /* ignore */ })
   await new Promise((r) => setTimeout(r, 150))
-  const setup3 = receivedSetups[0] as { historyConfig?: unknown }
-  assert(setup3?.historyConfig === undefined, "no historyConfig when no history")
-  assert(receivedClientContent.length === 0, "no clientContent sent when no history")
+  const sys3 = (receivedSetups[0] as { systemInstruction?: { parts?: { text?: string }[] } })
+    ?.systemInstruction?.parts?.[0]?.text || ""
+  assert(!sys3.includes("Most recent turns"), "no recent-turns section when history absent")
+  assert(!sys3.includes("Earlier in this conversation"), "no summary section when history absent")
+  assert(receivedClientContent.length === 0, "no clientContent when history absent")
 
-  // Malformed roles dropped, valid history still injected.
-  console.log("[6] Invalid-role filtering...")
+  console.log("[6] All-empty history is a no-op preamble...")
   receivedSetups.length = 0
   receivedClientContent.length = 0
   const adapter4 = new GeminiAdapter()
@@ -156,47 +144,21 @@ async function main() {
   const config4: SessionConfigEvent = {
     ...config,
     conversationHistory: [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { role: "system" as any, text: "ignore me" },
-      { role: "user", text: "real question" },
-      { role: "assistant", text: "real answer" },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { role: "tool" as any, text: "ignore me too" },
-    ],
-  }
-  await adapter4.connect(config4, () => { /* ignore */ })
-  await new Promise((r) => setTimeout(r, 200))
-  const cc4 = receivedClientContent[0] as { turns: { role: string, parts: { text: string }[] }[] }
-  assert(cc4?.turns.length === 2, `invalid roles dropped: expected 2 turns, got ${cc4?.turns.length}`)
-  assert(cc4?.turns.every((t) => t.role === "user" || t.role === "model"), "no system/tool roles in payload")
-  assert(cc4?.turns.every((t) => !t.parts.some((p) => p.text === "ignore me" || p.text === "ignore me too")), "ignored entries' text not in payload")
-
-  // Every turn invalid → no flag, no clientContent.
-  console.log("[7] All-filtered history...")
-  receivedSetups.length = 0
-  receivedClientContent.length = 0
-  const adapter5 = new GeminiAdapter()
-  ;(adapter5 as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
-  const config5: SessionConfigEvent = {
-    ...config,
-    conversationHistory: [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { role: "system" as any, text: "x" },
       { role: "user", text: "" },
       { role: "assistant", text: "   " },
     ],
   }
-  await adapter5.connect(config5, () => { /* ignore */ })
-  await new Promise((r) => setTimeout(r, 200))
-  const setup5 = receivedSetups[0] as { historyConfig?: unknown }
-  assert(setup5?.historyConfig === undefined, "no historyConfig when all turns filter out")
-  assert(receivedClientContent.length === 0, "no clientContent when all turns filter out")
+  await adapter4.connect(config4, () => { /* ignore */ })
+  await new Promise((r) => setTimeout(r, 150))
+  const sys4 = (receivedSetups[0] as { systemInstruction?: { parts?: { text?: string }[] } })
+    ?.systemInstruction?.parts?.[0]?.text || ""
+  assert(!sys4.includes("Most recent turns"), "no recent-turns section when every entry is whitespace/empty")
+  assert(receivedClientContent.length === 0, "still no clientContent when every entry filters out")
 
   adapter.disconnect()
   adapter2.disconnect()
   adapter3.disconnect()
   adapter4.disconnect()
-  adapter5.disconnect()
   wss.close()
 
   console.log("")

@@ -48,6 +48,24 @@ export function formatSummaryPreamble(summary: string): string {
   return `## Earlier in this conversation\n${summary.trim()}`
 }
 
+export function formatRecentTurnsPreamble(recent: HistoryMessage[]): string {
+  const lines = recent
+    .map((m) => {
+      const text = typeof m.text === "string" ? m.text.trim() : ""
+      if (!text) return null
+      const speaker = m.role === "assistant" ? "Assistant" : "User"
+      return `${speaker}: ${text}`
+    })
+    .filter((l): l is string => l !== null)
+  if (lines.length === 0) return ""
+  return [
+    "## Most recent turns (verbatim)",
+    "Treat these as already-spoken context. Do not re-greet or restate them; pick up naturally where the conversation left off.",
+    "",
+    ...lines,
+  ].join("\n")
+}
+
 // --- helpers ---
 
 const SUMMARY_PROMPT = [
