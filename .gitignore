@@ -29,8 +29,5 @@ desktop/build/icon-master.png
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 
-# Yarn local config
-.yarnrc.yml
-
 # Dev logs
 logs/
