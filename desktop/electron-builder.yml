@@ -48,8 +48,7 @@ mac:
     NSCameraUsageDescription: "VoiceClaw only uses your camera when you explicitly start a video-enabled session. It is otherwise idle."
     NSScreenCaptureUsageDescription: "VoiceClaw can share your screen with the AI on demand, so it can see what you're looking at when you ask it to. Sharing is off until you start it."
 
-  notarize:
-    teamId: HN6T5KD4ND
+  notarize: true
 
 dmg:
   title: "VoiceClaw ${version}"
