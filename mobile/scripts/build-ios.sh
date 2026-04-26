@@ -15,8 +15,12 @@ ASC_KEY_ID="${ASC_API_KEY_ID:-SG645CPQP8}"
 ASC_ISSUER_ID="${ASC_API_ISSUER_ID:-69a6de83-015f-47e3-e053-5b8c7c11a4d1}"
 
 echo "==> Building VoiceClaw ($VARIANT)"
-echo "==> Step 1: Prebuild with APP_VARIANT=$VARIANT"
 cd "$MOBILE_DIR"
+
+echo "==> Step 0: Download Daily.co iOS SDK (vendored, gitignored)"
+./scripts/download-daily-sdk.sh
+
+echo "==> Step 1: Prebuild with APP_VARIANT=$VARIANT"
 APP_VARIANT="$VARIANT" npx expo prebuild --clean
 
 echo "==> Step 2: Resolve SPM packages"
