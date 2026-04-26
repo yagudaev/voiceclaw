@@ -2548,7 +2548,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/node-server@npm:^1.19.13, @hono/node-server@npm:^1.19.9":
+"@hono/node-server@npm:^1.19.13":
   version: 1.19.14
   resolution: "@hono/node-server@npm:1.19.14"
   peerDependencies:
@@ -17534,7 +17534,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"postcss@npm:^8.4.38, postcss@npm:^8.4.47, postcss@npm:^8.5.1, postcss@npm:^8.5.10, postcss@npm:^8.5.3, postcss@npm:^8.5.6":
+"postcss@npm:^8.5.10":
   version: 8.5.10
   resolution: "postcss@npm:8.5.10"
   dependencies:

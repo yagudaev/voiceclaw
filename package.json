@@ -47,8 +47,7 @@
     "prettier": "^3.8.3"
   },
   "resolutions": {
-    "@hono/node-server@1.19.11": "^1.19.13",
-    "postcss@8.4.31": "^8.5.10",
-    "postcss@~8.4.32": "^8.5.10"
+    "@hono/node-server": "^1.19.13",
+    "postcss": "^8.5.10"
   }
 }
