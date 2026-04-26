@@ -11,6 +11,7 @@ export type ClientEvent =
   | ResponseCancelEvent
   | ToolResultEvent
   | ClientTimingEvent
+  | TextInputEvent
 
 export interface SessionConfigEvent {
   type: "session.config"
@@ -70,6 +71,15 @@ export interface ToolResultEvent {
   type: "tool.result"
   callId: string
   output: string
+}
+
+// Text-only user turn — used by mobile text-chat to send a message through the
+// same realtime session voice uses. The relay forwards it to the active adapter
+// via injectContext, which on both Gemini and OpenAI triggers a model response
+// that streams back as transcript.delta / transcript.done (role=assistant).
+export interface TextInputEvent {
+  type: "text.input"
+  text: string
 }
 
 // Emitted by the mobile client to attribute latency across the pipeline

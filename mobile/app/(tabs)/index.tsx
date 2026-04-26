@@ -5,14 +5,14 @@ import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Text } from '@/components/ui/text'
 import { addMessage, createConversation, getLatestConversation, getMessages, getSetting, type Message, type LatencyData, type ProviderInfo } from '@/db'
-import { getApiConfig, streamCompletion } from '@/lib/chat'
+import { getApiConfig, streamRealtimeText } from '@/lib/chat'
 import { BRAND } from '@/lib/brand'
 import { compactMessages } from '@/lib/compact'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
-import { useRealtime, type RmsMetrics } from '@/lib/use-realtime'
+import { useRealtime, getProviderForRealtimeModel, type RmsMetrics } from '@/lib/use-realtime'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
@@ -109,7 +109,6 @@ export default function ChatScreen() {
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
-  const [vapiReady, setVapiReady] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
@@ -417,20 +416,6 @@ export default function ChatScreen() {
   cancelReconnectRef.current = cancelReconnect
   triggerReconnectRef.current = triggerReconnect
 
-  const ensureVapiReady = useCallback(async (): Promise<boolean> => {
-    if (vapiReady) return true
-    const apiKey = (await getSetting('vapi_public_key')) || (await getSetting('vapi_api_key'))
-    if (!apiKey) return false
-    try {
-      await ExpoVapiModule.initialize(apiKey)
-      setVapiReady(true)
-      return true
-    } catch (e) {
-      console.warn('Vapi init failed:', e)
-      return false
-    }
-  }, [vapiReady])
-
   useEffect(() => {
     const subs = [
       ExpoVapiModule.addListener('onCallStart', () => {
@@ -652,25 +637,38 @@ export default function ChatScreen() {
     await addMessage(conversationId, 'user', userInput)
     await loadMessages()
 
-    if (isCallActive && vapiReady) {
-      try { await ExpoVapiModule.sendMessage(userInput) }
-      catch (e) { console.warn('Failed to send via Vapi:', e) }
-      return
-    }
-
-    const { apiKey, model, apiUrl } = await getApiConfig()
-    if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
+    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const apiKey = await getSetting('realtime_api_key')
+    if (!apiKey) {
+      await addMessage(conversationId, 'assistant', 'Configure Brain Gateway URL in Settings to start chatting.')
       await loadMessages()
       return
     }
 
-    setIsThinking(true)
-    const allDbMessages = await getMessages(conversationId)
-    const allMessages = await compactMessages(conversationId, allDbMessages, apiKey, model, apiUrl)
-
+    const model = normalizeRealtimeModel(await getSetting('realtime_model'))
+    const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
+    const provider = getProviderForRealtimeModel(model)
     const systemPrompt = (await getSetting('system_prompt')) || ''
-    streamCompletion(allMessages, apiKey, model, apiUrl, systemPrompt, conversationId, {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale
+
+    const recentMessages = (await getMessages(conversationId))
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-20, -1)
+      .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
+
+    setIsThinking(true)
+    streamRealtimeText(userInput, {
+      serverUrl,
+      apiKey,
+      model,
+      voice,
+      provider,
+      sessionKey: `voiceclaw:${conversationId}`,
+      instructionsOverride: systemPrompt || undefined,
+      conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
+      deviceContext: { timezone, locale },
+    }, {
       onToken: (text) => {
         setIsThinking(false)
         setStreamingRole('assistant')
@@ -678,6 +676,7 @@ export default function ChatScreen() {
       },
       onDone: async (text) => {
         setStreamingText(null)
+        setIsThinking(false)
         await addMessage(conversationId, 'assistant', text || 'No response received.')
         await loadMessages()
         maybeGenerateTitle(conversationId)
@@ -689,7 +688,7 @@ export default function ChatScreen() {
         await loadMessages()
       },
     })
-  }, [inputText, conversationId, loadMessages, isCallActive, vapiReady])
+  }, [inputText, conversationId, loadMessages])
 
   const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -721,26 +720,13 @@ export default function ChatScreen() {
     let callStarted = false
 
     try {
-      const storedVoiceMode = await getSetting('voice_mode')
-      const voiceMode = storedVoiceMode === 'custom' || storedVoiceMode === 'vapi'
-        ? 'realtime'
-        : (storedVoiceMode || 'realtime')
-
       if (!conversationId) {
         console.warn('[Chat] No active conversation, cannot start call')
         return
       }
 
-      if (voiceMode === 'realtime') {
-        activeVoiceModeRef.current = 'realtime'
-        callStarted = await startRealtimeCall()
-      } else if (voiceMode === 'custom') {
-        activeVoiceModeRef.current = 'custom'
-        callStarted = await startCustomPipelineCall()
-      } else {
-        activeVoiceModeRef.current = 'vapi'
-        callStarted = await startVapiCall()
-      }
+      activeVoiceModeRef.current = 'realtime'
+      callStarted = await startRealtimeCall()
     } catch (e: any) {
       const errorMsg = e?.message || String(e)
       console.error('Failed to start call:', errorMsg)
@@ -757,161 +743,7 @@ export default function ChatScreen() {
         }
       }
     }
-  }, [isCallActive, ensureVapiReady, conversationId, loadMessages])
-
-  const startVapiCall = useCallback(async (): Promise<boolean> => {
-    const assistantId = await getSetting('assistant_id')
-    if (!assistantId) {
-      if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
-        await loadMessages()
-      }
-      return false
-    }
-
-    const ready = await ensureVapiReady()
-    if (!ready) {
-      if (conversationId) {
-        await addMessage(conversationId, 'assistant', 'Please configure your Vapi Public Key and Assistant ID in Settings first.')
-        await loadMessages()
-      }
-      return false
-    }
-
-    if (!conversationId) return false
-
-    const { apiKey, apiUrl, model } = await getApiConfig()
-    const modelMessages: Array<{ role: string, content: string }> = [
-      { role: 'system', content: VOICE_SYSTEM_PROMPT },
-    ]
-
-    const prevMessages = await getMessages(conversationId)
-    if (prevMessages.length > 0) {
-      const compacted = apiKey && apiUrl
-        ? await compactMessages(conversationId, prevMessages, apiKey, model, apiUrl)
-        : prevMessages.map((m) => ({ role: m.role, content: m.content }))
-
-      const summaryMsg = compacted.find((m) => m.role === 'system' && m.content.startsWith('Previous conversation summary:'))
-      const historyMsgs = compacted.filter((m) => m.role !== 'system')
-
-      const history = historyMsgs
-        .map((m) => `${m.role}: ${m.content}`)
-        .join('\n')
-      const contextParts = []
-      if (summaryMsg) contextParts.push(summaryMsg.content)
-      if (history) contextParts.push(`Recent messages:\n${history}`)
-      contextParts.push('Continue the conversation naturally from where we left off.')
-
-      modelMessages.push({
-        role: 'system',
-        content: contextParts.join('\n\n'),
-      })
-    }
-
-    const overrides: Record<string, unknown> = {
-      server: { timeoutSeconds: 45 },
-      silenceTimeoutSeconds: 120,
-      endCallPhrases: [],
-      clientMessages: [
-        'transcript',
-        'hang',
-        'function-call',
-        'speech-update',
-        'status-update',
-        'conversation-update',
-        'model-output',
-      ],
-      firstMessage: modelMessages.length > 1 ? 'Welcome back :)' : undefined,
-      model: {
-        url: apiUrl,
-        provider: 'custom-llm',
-        model,
-        messages: modelMessages,
-        functions: [DISPLAY_TEXT_FUNCTION],
-      },
-      metadata: { conversationId: `voiceclaw:${conversationId}` },
-    }
-
-    const callOverrides = Object.keys(overrides).length > 0 ? overrides : undefined
-    lastAssistantIdRef.current = assistantId
-    lastCallOverridesRef.current = callOverrides ?? null
-
-    // Store active providers for message tagging
-    activeProvidersRef.current = {
-      sttProvider: 'vapi',
-      llmProvider: model || 'vapi',
-      ttsProvider: 'vapi',
-    }
-
-    // Safety timeout: reset isConnecting if onCallStart never fires
-    if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current)
-    connectingTimeoutRef.current = setTimeout(() => {
-      setIsConnecting((current) => {
-        if (current) console.warn('[Chat] Connecting timed out after 15s, resetting state')
-        return false
-      })
-    }, 15_000)
-
-    await ExpoVapiModule.startCall(assistantId, callOverrides)
-    return true
-  }, [ensureVapiReady, conversationId, loadMessages])
-
-  const startCustomPipelineCall = useCallback(async (): Promise<boolean> => {
-    if (!conversationId) return false
-
-    const { apiKey, apiUrl, model } = await getApiConfig()
-    if (!apiKey || !apiUrl) {
-      await addMessage(conversationId, 'assistant', 'Please configure your brain agent API URL and key in Settings first.')
-      await loadMessages()
-      return false
-    }
-
-    // Read STT/TTS provider settings
-    const sttProvider = (await getSetting('stt_provider')) || 'apple'
-    const ttsProvider = (await getSetting('tts_provider')) || 'apple'
-
-    // Store active providers for message tagging
-    activeProvidersRef.current = {
-      sttProvider,
-      llmProvider: model,
-      ttsProvider,
-    }
-
-    // Configure STT provider
-    const sttConfig: Record<string, string> = {}
-    if (sttProvider === 'deepgram') {
-      const deepgramKey = await getSetting('deepgram_api_key')
-      if (deepgramKey) sttConfig.apiKey = deepgramKey
-    }
-
-    ExpoCustomPipelineModule.setSTTProvider(sttProvider, sttConfig)
-
-    // Configure TTS provider
-    const ttsConfig: Record<string, string> = {}
-    if (ttsProvider === 'elevenlabs') {
-      const elKey = await getSetting('elevenlabs_api_key')
-      const elVoice = await getSetting('elevenlabs_voice_id')
-      console.log('[CustomPipeline] ElevenLabs config — key:', elKey ? `${elKey.substring(0, 8)}...` : 'MISSING', 'voice:', elVoice || 'default')
-      if (elKey) ttsConfig.apiKey = elKey
-      if (elVoice) ttsConfig.voiceId = elVoice
-    } else if (ttsProvider === 'openai') {
-      const oaiKey = await getSetting('openai_tts_api_key')
-      const oaiVoice = await getSetting('openai_tts_voice')
-      if (oaiKey) ttsConfig.apiKey = oaiKey
-      if (oaiVoice) ttsConfig.voice = oaiVoice
-    }
-    ExpoCustomPipelineModule.setTTSProvider(ttsProvider, ttsConfig)
-
-    console.log('[CustomPipeline] Starting pipeline with', { apiUrl, sttProvider, ttsProvider })
-    resetPipelineDebugState()
-    setPipelineDebugState((current) => ({ ...current, ttsProvider }))
-    pipeline.start()
-    setIsCallActive(true)
-    setIsConnecting(false)
-    setPipelineDebugPhase('listening')
-    soundsRef.current.playJoin()
-    return true
-  }, [conversationId, loadMessages, pipeline, resetPipelineDebugState, setPipelineDebugPhase])
+  }, [isCallActive, conversationId, loadMessages])
 
   const stopCustomPipeline = useCallback(() => {
     pipeline.stop()
@@ -946,7 +778,7 @@ export default function ChatScreen() {
     const isDebug = debugPref === 'true'
 
     if (!apiKey) {
-      await addMessage(conversationId, 'assistant', 'Please configure your API key in the Realtime settings first.')
+      await addMessage(conversationId, 'assistant', 'Please configure your API key in Brain Gateway settings first.')
       await loadMessages()
       return false
     }

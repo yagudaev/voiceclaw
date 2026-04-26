@@ -284,7 +284,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
   return { start, stop, setMuted, isConnected, sessionId }
 }
 
-function getProviderForRealtimeModel(model?: string): 'gemini' | 'openai' | 'xai' {
+export function getProviderForRealtimeModel(model?: string): 'gemini' | 'openai' | 'xai' {
   if (model?.startsWith('gemini-')) return 'gemini'
   if (model?.startsWith('grok-voice-')) return 'xai'
   return 'openai'

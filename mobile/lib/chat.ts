@@ -150,10 +150,124 @@ export function streamCompletion(
 
 export async function getApiConfig() {
   const connectionMode = ((await getSetting('brain_connection_mode')) || (await getSetting('openclaw_connection_mode')) || 'http') as BrainConnectionMode
-  const apiKey = (await getSetting('brain_api_key')) || (await getSetting('openclaw_api_key'))
+  const apiKey = await getSetting('openclaw_api_key')
   const model = (await getSetting('default_model')) || 'openclaw:voice'
-  const apiUrl = (await getSetting('brain_api_url')) || (await getSetting('openclaw_api_url'))
+  const apiUrl = await getSetting('openclaw_api_url')
   return { apiKey, model, apiUrl, connectionMode }
+}
+
+export interface StreamRealtimeTextOptions {
+  serverUrl: string
+  apiKey: string
+  model: string
+  voice: string
+  provider: 'gemini' | 'openai' | 'xai'
+  sessionKey?: string
+  instructionsOverride?: string
+  conversationHistory?: { role: 'user' | 'assistant', text: string }[]
+  deviceContext?: { timezone?: string, locale?: string }
+}
+
+export interface StreamRealtimeTextCallbacks {
+  onToken: (fullText: string) => void
+  onDone: (fullText: string) => void
+  onError: (error: string) => void
+}
+
+// One-shot text turn over the realtime relay: opens a fresh WebSocket, sends
+// session.config + text.input, accumulates assistant transcript deltas, closes
+// on transcript.done. We never call ExpoRealtimeAudioModule.playAudio here, so
+// any audio.delta the relay emits is silently dropped — text chat stays text.
+export function streamRealtimeText(
+  text: string,
+  opts: StreamRealtimeTextOptions,
+  callbacks: StreamRealtimeTextCallbacks,
+): () => void {
+  let didFinish = false
+  let fullText = ''
+  let ws: WebSocket | null = null
+  let sawDone = false
+
+  const finish = (kind: 'done' | 'error', payload: string) => {
+    if (didFinish) return
+    didFinish = true
+    try { ws?.close() } catch {}
+    if (kind === 'done') callbacks.onDone(payload)
+    else callbacks.onError(payload)
+  }
+
+  try {
+    ws = new WebSocket(opts.serverUrl)
+  } catch (e) {
+    callbacks.onError(e instanceof Error ? e.message : 'failed to open realtime websocket')
+    return () => {}
+  }
+
+  ws.onopen = () => {
+    ws?.send(JSON.stringify({
+      type: 'session.config',
+      provider: opts.provider,
+      voice: opts.voice,
+      model: opts.model,
+      brainAgent: 'enabled',
+      apiKey: opts.apiKey,
+      sessionKey: opts.sessionKey,
+      deviceContext: opts.deviceContext,
+      instructionsOverride: opts.instructionsOverride,
+      conversationHistory: opts.conversationHistory,
+    }))
+  }
+
+  ws.onmessage = (event: MessageEvent) => {
+    let data: any
+    try {
+      data = JSON.parse(event.data as string)
+    } catch {
+      return
+    }
+
+    switch (data.type) {
+      case 'session.ready':
+        ws?.send(JSON.stringify({ type: 'text.input', text }))
+        break
+      case 'transcript.delta':
+        if (data.role === 'assistant' && typeof data.text === 'string') {
+          fullText += data.text
+          callbacks.onToken(fullText)
+        }
+        break
+      case 'transcript.done':
+        if (data.role === 'assistant' && typeof data.text === 'string') {
+          // Prefer the final consolidated text from the relay over our
+          // accumulator — keeps us aligned even if a delta got dropped.
+          fullText = data.text
+          sawDone = true
+          finish('done', fullText)
+        }
+        break
+      case 'turn.ended':
+        // Some adapters may not emit a final transcript.done if no text was
+        // produced. Fall back to whatever we accumulated.
+        if (!sawDone) finish('done', fullText)
+        break
+      case 'error':
+        finish('error', data.message || `relay error ${data.code ?? ''}`.trim())
+        break
+    }
+  }
+
+  ws.onerror = () => {
+    finish('error', 'WebSocket error')
+  }
+
+  ws.onclose = () => {
+    if (!didFinish) finish('error', 'WebSocket closed before response')
+  }
+
+  return () => {
+    didFinish = true
+    try { ws?.close() } catch {}
+  }
 }
 
 /**
