@@ -1,6 +1,6 @@
 # Auto-generate a "release PR" each time conventional-commit changes land on
 # main. Merging the release PR bumps version files + CHANGELOG.md and pushes
-# the matching tag. The desktop tag (`v*.*.*`) then triggers
+# the matching tag. The desktop tag (`desktop-v*.*.*`) then triggers
 # `release-desktop.yml` which builds + publishes the signed DMG.
 #
 # Docs: https://github.com/googleapis/release-please-action
@@ -13,10 +13,8 @@
 #   - .release-please-manifest.json — source of truth for current versions
 #
 # Tag scheme (from release-please-config.json):
-#   desktop → v0.1.0, v0.1.1, …   (triggers release-desktop.yml)
+#   desktop → desktop-v0.1.0, …   (triggers release-desktop.yml)
 #   mobile  → mobile-v0.1.0, …
-#   website → website-v0.1.0, …
-#   docs    → docs-v0.1.0, …
 
 name: Release please
 

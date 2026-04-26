@@ -1,6 +1,6 @@
 # Build, sign, notarize, and publish the macOS desktop DMG on tag push.
 #
-# Trigger: push of a tag matching `v*.*.*` (e.g. `v0.1.0`).
+# Trigger: push of a tag matching `desktop-v*.*.*` (e.g. `desktop-v0.1.0`).
 # Output: a GitHub Release matching the tag, containing the universal
 #         DMG, its `.blockmap`, and `latest-mac.yml` for electron-updater.
 #
@@ -29,7 +29,7 @@ name: Release desktop
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "desktop-v*.*.*"
   workflow_dispatch:
     inputs:
       tag:

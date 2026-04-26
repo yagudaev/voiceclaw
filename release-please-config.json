@@ -24,24 +24,12 @@
     "desktop": {
       "package-name": "voiceclaw-desktop",
       "component": "desktop",
-      "include-component-in-tag": false,
+      "include-component-in-tag": true,
       "changelog-path": "CHANGELOG.md"
     },
     "mobile": {
       "package-name": "voiceclaw-mobile",
       "component": "mobile",
-      "include-component-in-tag": true,
-      "changelog-path": "CHANGELOG.md"
-    },
-    "website": {
-      "package-name": "voiceclaw-web",
-      "component": "website",
-      "include-component-in-tag": true,
-      "changelog-path": "CHANGELOG.md"
-    },
-    "docs": {
-      "package-name": "voiceclaw-docs",
-      "component": "docs",
       "include-component-in-tag": true,
       "changelog-path": "CHANGELOG.md"
     }
