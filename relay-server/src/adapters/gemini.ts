@@ -5,7 +5,7 @@ import type { SessionConfigEvent } from "../types.js"
 import type { ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getGeminiTools } from "../tools/index.js"
-import { buildHistorySplit, formatSummaryPreamble, type HistoryMessage } from "../history.js"
+import { buildHistorySplit, formatSummaryPreamble } from "../history.js"
 import { log, error as logError } from "../log.js"
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
@@ -71,7 +71,10 @@ export class GeminiAdapter implements ProviderAdapter {
   // Conversation history injected on the initial connect only. Reconnects rely
   // on Gemini's resumption handle (or on the next initial connect) — replaying
   // turns into a resumed session would duplicate context the model already has.
-  private resumeRecentTurns: HistoryMessage[] = []
+  // Stored already in Gemini wire shape so the setup flag and the post-setupComplete
+  // clientContent stay consistent: setting historyConfig.initialHistoryInClientContent
+  // without a follow-up clientContent leaves the model waiting for the seed.
+  private resumeTurns: GeminiClientTurn[] = []
   private resumeSummary: string | null = null
   // Bounded queues for messages written during the reconnect window.
   // Flushed on the resumed connection's setupComplete.
@@ -98,10 +101,10 @@ export class GeminiAdapter implements ProviderAdapter {
     this.watchdogEnabled = config.watchdog === "enabled"
 
     const split = await buildHistorySplit(config.conversationHistory, "gemini")
-    this.resumeRecentTurns = split.recent
+    this.resumeTurns = buildClientContentTurns(split.recent)
     this.resumeSummary = split.summary
-    if (split.recent.length > 0 || split.summary) {
-      log(`[gemini] Resume context: recent=${split.recent.length} msgs, summary=${split.summary ? `${split.summary.length} chars` : "none"}`)
+    if (this.resumeTurns.length > 0 || split.summary) {
+      log(`[gemini] Resume context: recent=${this.resumeTurns.length} turns, summary=${split.summary ? `${split.summary.length} chars` : "none"}`)
     }
 
     await this.openUpstream()
@@ -449,9 +452,10 @@ export class GeminiAdapter implements ProviderAdapter {
 
     // gemini-3.1-flash-live-preview only accepts a post-setup clientContent
     // history seed when this flag is set; absent it, sendClientContent is
-    // unsupported on this model. Only set when we actually have turns to
-    // inject so audio-only sessions don't opt into the seeding path.
-    if (this.resumeRecentTurns.length > 0) {
+    // unsupported on this model. Only set when we actually have wire-ready
+    // turns to inject — opting into the seeding path without sending the
+    // terminating clientContent leaves the model waiting for the seed.
+    if (this.resumeTurns.length > 0) {
       setup.historyConfig = { initialHistoryInClientContent: true }
     }
 
@@ -735,27 +739,23 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   private injectResumeTurns() {
-    if (this.resumeRecentTurns.length === 0) return
+    if (this.resumeTurns.length === 0) return
     if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return
 
-    const turns = buildClientContentTurns(this.resumeRecentTurns)
-    if (turns.length === 0) {
-      this.resumeRecentTurns = []
-      this.resumeSummary = null
-      return
-    }
-
+    // turnComplete: true marks this as the terminating message of the initial
+    // history seed. After this, the next user audio drives the first model turn
+    // via realtimeInput.audio — sendClientContent is no longer used on this model.
     const payload = JSON.stringify({
       clientContent: {
-        turns,
-        turnComplete: false,
+        turns: this.resumeTurns,
+        turnComplete: true,
       },
     })
 
-    log(`[gemini] Injecting ${turns.length} recent turn(s) via clientContent (${payload.length} bytes)`)
+    log(`[gemini] Injecting ${this.resumeTurns.length} recent turn(s) via clientContent (${payload.length} bytes)`)
     this.upstream.send(payload)
 
-    this.resumeRecentTurns = []
+    this.resumeTurns = []
     this.resumeSummary = null
   }
 
@@ -988,13 +988,15 @@ function findModalityTokens(
   return details?.find((d) => d.modality === modality)?.tokenCount
 }
 
+type GeminiClientTurn = { role: "user" | "model", parts: { text: string }[] }
+
 // Map the relay's history shape onto Gemini's clientContent.turns. Drops
 // empty-text entries and coalesces consecutive same-role turns so the wire
 // payload always alternates user/model — Gemini Live requires alternation.
 function buildClientContentTurns(
   history: { role: "user" | "assistant", text: string }[],
-): { role: "user" | "model", parts: { text: string }[] }[] {
-  const out: { role: "user" | "model", parts: { text: string }[] }[] = []
+): GeminiClientTurn[] {
+  const out: GeminiClientTurn[] = []
   for (const m of history) {
     const text = typeof m.text === "string" ? m.text.trim() : ""
     if (!text) continue

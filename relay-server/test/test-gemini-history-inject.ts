@@ -1,7 +1,9 @@
 // Verifies that the Gemini adapter, when given a conversationHistory on connect,
 // (a) sets historyConfig.initialHistoryInClientContent on the setup message and
-// (b) sends a clientContent { turns, turnComplete: false } message after
-// setupComplete with alternating user/model roles and non-empty parts. Uses a
+// (b) sends a clientContent { turns, turnComplete: true } message after
+// setupComplete with alternating user/model roles and non-empty parts.
+// turnComplete is true because this is the terminating message of the initial
+// history seed; the next user audio drives the first model turn. Uses a
 // local mock WS server. Run: npx tsx test/test-gemini-history-inject.ts
 
 import { WebSocketServer, WebSocket as WsSocket } from "ws"
@@ -88,7 +90,7 @@ async function main() {
     turns?: { role: string, parts: { text: string }[] }[]
     turnComplete?: boolean
   }
-  assert(cc?.turnComplete === false, "clientContent.turnComplete is false (history seed, not user turn)")
+  assert(cc?.turnComplete === true, "clientContent.turnComplete is true (terminating message of initial history seed)")
 
   const turns = cc?.turns || []
   // Empty user turn was filtered. Two consecutive user turns ("Hi", "What's the weather?")
