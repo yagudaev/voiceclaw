@@ -68,3 +68,7 @@ publish:
   owner: yagudaev
   repo: voiceclaw
   releaseType: release
+  # Match the release-please tag scheme so electron-builder publishes to
+  # the existing `desktop-v<version>` release instead of creating a new
+  # `v<version>` one (the default).
+  tagNamePrefix: desktop-v
