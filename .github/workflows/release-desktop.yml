@@ -82,18 +82,19 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
           chmod 600 ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
 
-      - name: Import Developer ID certificate
-        uses: apple-actions/import-codesign-certs@v7
-        with:
-          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
-          p12-password: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
-
       - name: Build, sign, notarize, and publish
         working-directory: desktop
         env:
-          # electron-builder reads these from the environment to sign +
-          # notarize. APPLE_API_KEY points at the .p8 written above; the
-          # id/issuer pair lets notarytool auth without username/password.
+          # CSC_LINK + CSC_KEY_PASSWORD let electron-builder import the
+          # Developer ID cert into its own temporary keychain. More
+          # reliable than apple-actions/import-codesign-certs on macos-14,
+          # which sometimes leaves the imported identity invisible to
+          # electron-builder's `security find-identity` lookup, causing
+          # an ad-hoc-signed app that Apple notarytool then rejects.
+          CSC_LINK: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          # APPLE_API_KEY points at the .p8 written above; the id/issuer
+          # pair lets notarytool auth without username/password.
           APPLE_API_KEY: ${{ format('/Users/runner/.appstore/AuthKey_{0}.p8', secrets.APPLE_API_KEY_ID) }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
