@@ -991,16 +991,18 @@ function findModalityTokens(
 type GeminiClientTurn = { role: "user" | "model", parts: { text: string }[] }
 
 // Map the relay's history shape onto Gemini's clientContent.turns. Drops
-// empty-text entries and coalesces consecutive same-role turns so the wire
-// payload always alternates user/model — Gemini Live requires alternation.
+// entries with unknown roles or empty text and coalesces consecutive same-role
+// turns so the wire payload always alternates user/model — Gemini Live
+// requires alternation.
 function buildClientContentTurns(
   history: { role: "user" | "assistant", text: string }[],
 ): GeminiClientTurn[] {
   const out: GeminiClientTurn[] = []
   for (const m of history) {
+    const role = mapRole(m.role)
+    if (!role) continue
     const text = typeof m.text === "string" ? m.text.trim() : ""
     if (!text) continue
-    const role: "user" | "model" = m.role === "assistant" ? "model" : "user"
     const last = out[out.length - 1]
     if (last && last.role === role) {
       last.parts.push({ text })
@@ -1009,4 +1011,10 @@ function buildClientContentTurns(
     }
   }
   return out
+}
+
+function mapRole(role: unknown): "user" | "model" | null {
+  if (role === "user") return "user"
+  if (role === "assistant") return "model"
+  return null
 }

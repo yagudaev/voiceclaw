@@ -4,7 +4,7 @@
 // setupComplete with alternating user/model roles and non-empty parts.
 // turnComplete is true because this is the terminating message of the initial
 // history seed; the next user audio drives the first model turn. Uses a
-// local mock WS server. Run: npx tsx test/test-gemini-history-inject.ts
+// local mock WS server. Run: yarn workspace relay-server tsx test/test-gemini-history-inject.ts
 
 import { WebSocketServer, WebSocket as WsSocket } from "ws"
 import { GeminiAdapter } from "../src/adapters/gemini.js"
@@ -147,9 +147,56 @@ async function main() {
   assert(setup3?.historyConfig === undefined, "no historyConfig when no history")
   assert(receivedClientContent.length === 0, "no clientContent sent when no history")
 
+  // Malformed roles dropped, valid history still injected.
+  console.log("[6] Invalid-role filtering...")
+  receivedSetups.length = 0
+  receivedClientContent.length = 0
+  const adapter4 = new GeminiAdapter()
+  ;(adapter4 as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+  const config4: SessionConfigEvent = {
+    ...config,
+    conversationHistory: [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { role: "system" as any, text: "ignore me" },
+      { role: "user", text: "real question" },
+      { role: "assistant", text: "real answer" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { role: "tool" as any, text: "ignore me too" },
+    ],
+  }
+  await adapter4.connect(config4, () => { /* ignore */ })
+  await new Promise((r) => setTimeout(r, 200))
+  const cc4 = receivedClientContent[0] as { turns: { role: string, parts: { text: string }[] }[] }
+  assert(cc4?.turns.length === 2, `invalid roles dropped: expected 2 turns, got ${cc4?.turns.length}`)
+  assert(cc4?.turns.every((t) => t.role === "user" || t.role === "model"), "no system/tool roles in payload")
+  assert(cc4?.turns.every((t) => !t.parts.some((p) => p.text === "ignore me" || p.text === "ignore me too")), "ignored entries' text not in payload")
+
+  // Every turn invalid → no flag, no clientContent.
+  console.log("[7] All-filtered history...")
+  receivedSetups.length = 0
+  receivedClientContent.length = 0
+  const adapter5 = new GeminiAdapter()
+  ;(adapter5 as unknown as { wsUrlOverride: string }).wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+  const config5: SessionConfigEvent = {
+    ...config,
+    conversationHistory: [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { role: "system" as any, text: "x" },
+      { role: "user", text: "" },
+      { role: "assistant", text: "   " },
+    ],
+  }
+  await adapter5.connect(config5, () => { /* ignore */ })
+  await new Promise((r) => setTimeout(r, 200))
+  const setup5 = receivedSetups[0] as { historyConfig?: unknown }
+  assert(setup5?.historyConfig === undefined, "no historyConfig when all turns filter out")
+  assert(receivedClientContent.length === 0, "no clientContent when all turns filter out")
+
   adapter.disconnect()
   adapter2.disconnect()
   adapter3.disconnect()
+  adapter4.disconnect()
+  adapter5.disconnect()
   wss.close()
 
   console.log("")
