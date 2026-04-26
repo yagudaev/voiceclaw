@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.1...desktop-v0.2.2) (2026-04-26)
+
+
+### Bug Fixes
+
+* **desktop:** pin electron-builder publish to desktop-v tags ([#250](https://github.com/yagudaev/voiceclaw/issues/250)) ([02a86fb](https://github.com/yagudaev/voiceclaw/commit/02a86fbb47ad1f604a01811e62b002ff3614e075))
+
 ## [0.2.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.0...desktop-v0.2.1) (2026-04-26)
 
 
