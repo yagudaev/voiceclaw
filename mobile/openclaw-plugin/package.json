@@ -14,11 +14,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "openclaw": "^2026.4.15"
+    "openclaw": "^2026.4.24"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2"
+  },
+  "resolutions": {
+    "hono": "^4.12.14",
+    "fast-xml-parser": "^5.7.0"
   },
   "keywords": [
     "openclaw",
