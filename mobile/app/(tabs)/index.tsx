@@ -109,7 +109,6 @@ export default function ChatScreen() {
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
-  const [vapiReady, setVapiReady] = useState(false)
   const [isThinking, setIsThinking] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [streamingText, setStreamingText] = useState<string | null>(null)
@@ -638,12 +637,6 @@ export default function ChatScreen() {
     await addMessage(conversationId, 'user', userInput)
     await loadMessages()
 
-    if (isCallActive && vapiReady) {
-      try { await ExpoVapiModule.sendMessage(userInput) }
-      catch (e) { console.warn('Failed to send via Vapi:', e) }
-      return
-    }
-
     const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
     const apiKey = await getSetting('realtime_api_key')
     if (!apiKey) {
@@ -695,7 +688,7 @@ export default function ChatScreen() {
         await loadMessages()
       },
     })
-  }, [inputText, conversationId, loadMessages, isCallActive, vapiReady])
+  }, [inputText, conversationId, loadMessages])
 
   const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
