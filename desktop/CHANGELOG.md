@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.0...desktop-v0.2.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* **desktop:** use boolean notarize flag for electron-builder 26 ([#239](https://github.com/yagudaev/voiceclaw/issues/239)) ([20b1a9f](https://github.com/yagudaev/voiceclaw/commit/20b1a9f4c748c7c9c23b005ce573773461382b1f))
+
 ## [0.2.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.1.0...desktop-v0.2.0) (2026-04-26)
 
 
