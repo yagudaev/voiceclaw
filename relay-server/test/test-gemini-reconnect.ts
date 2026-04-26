@@ -304,6 +304,64 @@ async function runWatchdogGatedTest() {
   adapter.disconnect()
 }
 
+async function runForceFreshReconnectTest() {
+  console.log("\nGemini Force-Fresh Reconnect Test (null handle path does not crash)")
+  console.log("==================================================================")
+
+  const MOCK_PORT = 19895
+  const clientEvents: RelayEvent[] = []
+  const receivedSetups: Record<string, unknown>[] = []
+
+  const wss = await startMockGemini({
+    receivedSetups,
+    onConnect: (_ws, _index) => {
+      // setupComplete is enough for this regression test
+    },
+  }, MOCK_PORT)
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  type AdapterInternals = {
+    wsUrlOverride: string
+    resumptionHandle: string | null
+    reconnect: (reason: string, forceFresh?: boolean) => Promise<void>
+  }
+  const internals = adapter as unknown as AdapterInternals
+  internals.wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+
+  // Simulate the poisoned-handle watchdog path: handle has already been cleared,
+  // but reconnect(forceFresh=true) should still start a fresh session instead of
+  // crashing on a null-handle log path.
+  internals.resumptionHandle = null
+  await internals.reconnect("poisoned handle — fresh session", true)
+  await new Promise((r) => setTimeout(r, 200))
+
+  assert(receivedSetups.length === 2, `mock received 2 setups (initial + fresh reconnect), got ${receivedSetups.length}`)
+
+  const secondSetup = receivedSetups[1] as { sessionResumption?: { handle?: string } } | undefined
+  assert(secondSetup?.sessionResumption !== undefined, "fresh reconnect still opts into sessionResumption")
+  assert(secondSetup?.sessionResumption?.handle === undefined, "fresh reconnect sends no handle after poisoned recovery")
+
+  const rotated = clientEvents.filter((e) => e.type === "session.rotated")
+  const errors = clientEvents.filter((e) => e.type === "error")
+  assert(rotated.length === 1, `fresh reconnect completed (rotated count=${rotated.length})`)
+  assert(errors.length === 0, `no error emitted during force-fresh reconnect (got ${errors.length})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
 async function runDeferredRotationMidToolCallTest() {
   console.log("\nGemini Deferred Rotation Test (goAway during tool call)")
   console.log("========================================================")
@@ -1026,6 +1084,7 @@ async function main() {
   await runUnrecoverableCloseTest()
   await runReconnectRetryTest()
   await runWatchdogGatedTest()
+  await runForceFreshReconnectTest()
   await runDeferredRotationMidToolCallTest()
   await runHardCloseMidToolCallTest()
   await runSendQueueDrainTest()
