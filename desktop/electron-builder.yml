@@ -30,12 +30,6 @@ mac:
       arch:
         - universal
 
-  # electron-builder takes the CN suffix only — "Nano 3 Labs Ltd (HN6T5KD4ND)"
-  # — and infers the "Developer ID Application: " prefix itself. Including the
-  # prefix here makes it reject every cert with "identity not found", which
-  # silently breaks signing (the build finishes but the .app is unsigned).
-  identity: "Nano 3 Labs Ltd (HN6T5KD4ND)"
-
   # Hardened Runtime + entitlements are required for notarization.
   hardenedRuntime: true
   gatekeeperAssess: false
