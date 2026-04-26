@@ -8,7 +8,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-rebuild -f -w better-sqlite3 --module-dir .",
-    "dist:mac": "electron-vite build && node scripts/with-build-env.mjs electron-builder --mac --publish never",
+    "dist:mac": "electron-vite build && node scripts/with-build-env.mjs electron-builder --mac",
     "build:icon": "tsx scripts/build-mac-icon.ts ../mobile/assets/images/ios/icon-1024x1024.png build/icon-master.png build/icon.iconset && iconutil -c icns build/icon.iconset -o build/icon.icns && cp build/icon.iconset/icon_512x512.png resources/dock/icon.png",
     "build:tray-icon": "tsx scripts/build-tray-icon.ts",
     "build:assets": "yarn build:icon && yarn build:tray-icon"

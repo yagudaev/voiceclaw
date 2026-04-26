@@ -82,17 +82,35 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
           chmod 600 ~/.appstore/AuthKey_${APPLE_API_KEY_ID}.p8
 
+      - name: Inspect Developer ID p12 (subject + private-key check)
+        env:
+          CSC_LINK: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          set +x
+          cert="$(mktemp)"
+          printf '%s' "$CSC_LINK" | base64 --decode > "$cert"
+          openssl pkcs12 -in "$cert" -nokeys -passin pass:"$CSC_KEY_PASSWORD" 2>/dev/null \
+            | openssl x509 -noout -subject -issuer -dates
+          openssl pkcs12 -in "$cert" -nocerts -nodes -passin pass:"$CSC_KEY_PASSWORD" 2>/dev/null \
+            | openssl pkey -noout -check >/dev/null 2>&1 \
+            && echo "p12 contains a valid private key" \
+            || { echo "FAIL: p12 has no private key (or wrong password / corrupted base64)"; exit 1; }
+          rm -f "$cert"
+
       - name: Build, sign, notarize, and publish
         working-directory: desktop
         env:
           # CSC_LINK + CSC_KEY_PASSWORD let electron-builder import the
-          # Developer ID cert into its own temporary keychain. More
-          # reliable than apple-actions/import-codesign-certs on macos-14,
-          # which sometimes leaves the imported identity invisible to
-          # electron-builder's `security find-identity` lookup, causing
-          # an ad-hoc-signed app that Apple notarytool then rejects.
+          # Developer ID cert into its own temporary keychain.
           CSC_LINK: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          # Fail loudly instead of silently falling back to an ad-hoc
+          # signature that Apple notarytool will then reject.
+          CSC_FOR_PULL_REQUEST: "true"
+          # Verbose electron-builder logs while we are still debugging
+          # the macos-14 signing path.
+          DEBUG: electron-builder
           # APPLE_API_KEY points at the .p8 written above; the id/issuer
           # pair lets notarytool auth without username/password.
           APPLE_API_KEY: ${{ format('/Users/runner/.appstore/AuthKey_{0}.p8', secrets.APPLE_API_KEY_ID) }}
@@ -101,7 +119,7 @@ jobs:
           # GH_TOKEN scopes the GitHub Releases upload done by
           # electron-builder's `--publish always`.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn dist:mac --publish always
+        run: yarn dist:mac --publish always -c.forceCodeSigning=true
 
       - name: Upload DMG as workflow artifact
         if: always()
