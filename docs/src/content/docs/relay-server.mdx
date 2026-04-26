@@ -100,7 +100,7 @@ When a client sends `conversationHistory` on `session.config`, the relay reconst
 How the recent turns are injected:
 
 - **OpenAI Realtime / xAI:** one `conversation.item.create` per turn (role `user` with content type `input_text`, or role `assistant` with content type `output_text`). No `response.create` is sent — the next user audio drives the first response.
-- **Gemini Live:** a single `clientContent` message with `turnComplete: true` containing all turns (roles mapped `assistant` → `model`, parts coalesced so roles strictly alternate). Sent immediately after `setupComplete`, before the audio stream begins. The setup message opts into this seeding path with `historyConfig.initialHistoryInClientContent: true` — required by `gemini-3.1-flash-live-preview`, which otherwise treats `sendClientContent` as unsupported. `turnComplete: true` marks this as the terminating message of the initial history seed; the next user audio drives the first model turn via `realtimeInput.audio`.
+- **Gemini Live:** the recent turns are folded into `systemInstruction.parts[0].text` under a `## Most recent turns (verbatim)` section, alongside the summary preamble. We do not use the documented `clientContent` + `historyConfig.initialHistoryInClientContent` seeding path: in production it closes the upstream WebSocket with `1007` ("invalid argument") on `gemini-3.1-flash-live-preview`, even when the payload matches the documented contract. Baking the transcript into the system prompt is less natural than first-class turns but is reliable and keeps continuity intact.
 
 History is injected only on the initial connect. Reconnects that use Gemini's resumption handle, and OpenAI's timer-based rotation, both have their own continuity paths and do not replay history.
 
