@@ -33,7 +33,8 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v5
+      - id: release
+        uses: googleapis/release-please-action@v5
         with:
           # Let the action discover config + manifest at the repo root.
           config-file: release-please-config.json
@@ -42,3 +43,21 @@ jobs:
           # workflows caused by GITHUB_TOKEN-created refs, so desktop release
           # tags would not reliably trigger release-desktop.yml.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      # Enable auto-merge on every release PR the action created or updated,
+      # so a release PR squashes itself into main once status checks settle.
+      # Merging the release PR is what pushes the package tag (e.g.
+      # desktop-v0.2.2) which downstream build workflows are wired to.
+      - name: Auto-merge release PRs
+        if: ${{ steps.release.outputs.prs_created == 'true' || fromJSON(steps.release.outputs.prs || '[]')[0] != null }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          set -euo pipefail
+          echo "$PRS" | jq -c '.[]' | while read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            echo "Enabling auto-merge on PR #$number"
+            gh pr merge "$number" --auto --squash --delete-branch || \
+              gh pr merge "$number" --auto --squash
+          done
