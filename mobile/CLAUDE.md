@@ -20,12 +20,19 @@ numbers, so always **commit first, then build**.
 Use the package scripts, not Xcode:
 
 ```bash
-# Staging: build IPA locally via xcodebuild, then submit via EAS
-yarn ios:release:staging
+# Staging: pre-flight → build IPA → altool validate → eas submit
+yarn release:ios:staging
 
 # Production (App Store / TestFlight prod)
-yarn ios:release:production
+yarn release:ios:production
 ```
+
+`release:ios:<variant>` runs `scripts/release-to-testflight.sh`, which
+checks the tree is clean, on `main`, and in sync with `origin/main`
+before chaining `build:ios:<variant>` + `submit:ios:<variant>`. The
+`/deploy-mobile` slash command is a thin wrapper around that same
+entry point. For ad-hoc IPAs on a feature branch, use
+`yarn build:ios:<variant>` directly (no pre-flight, no submit).
 
 Under the hood (`scripts/build-ios.sh`):
 
@@ -62,7 +69,7 @@ submit; the build then shows up in TestFlight → iOS builds.
   `app.config.ts` under `ios.infoPlist` and are written by prebuild.
   The `xcrun altool --validate-app` step in `scripts/build-ios.sh`
   catches this pre-submit.
-- **Duplicate build number**: always commit before `yarn ios:release:*`
+- **Duplicate build number**: always commit before `yarn release:ios:*`
   so `git rev-list --count HEAD` produces a fresh number.
 - **Never edit `ios/` directly**: `prebuild --clean` wipes it. Changes
   go in `app.config.ts` or Expo config plugins under `plugins/`.
@@ -86,7 +93,7 @@ submit; the build then shows up in TestFlight → iOS builds.
   ASC API key: happens when `ascAppId` is missing from the submit
   profile. EAS then tries to look up the app via the ASC API; if the
   key isn't scoped to that app or the listing fails, it falls back to
-  interactive Apple ID login. Either run `yarn ios:submit:*`
+  interactive Apple ID login. Either run `yarn submit:ios:*`
   interactively (so you can type the Apple ID + 2FA) or add
   `ascAppId` to each profile in `eas.json` (found in App Store Connect
   → Apps → VoiceClaw → App Information → Apple ID).
