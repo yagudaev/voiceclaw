@@ -54,12 +54,15 @@ export class GeminiAdapter implements ProviderAdapter {
   private userSpeaking = false
   private hasVideoInput = false
   private watchdogEnabled = false
-  // Post-resume liveness tracking. When a resumed session completes setup we
-  // arm a timer; any generation-side activity disarms it. ASR-only activity
-  // (inputTranscription or empty serverContent) does not disarm — that's the
-  // exact failure signature we're trying to detect.
+  // Post-resume liveness tracking. After a resumed setupComplete we wait for
+  // ASR-side activity (inputTranscription) before arming the generation
+  // watchdog. The poisoned signature is "ASR alive, generation dead", so
+  // arming on idle resume would false-positive on healthy quiet sessions
+  // where the user simply isn't speaking. Any generation-side event clears
+  // both flags.
   private postResumeTimer: ReturnType<typeof setTimeout> | null = null
   private awaitingResumeGeneration = false
+  private awaitingResumeFirstInput = false
 
   // Session resumption state
   private resumptionHandle: string | null = null
@@ -68,6 +71,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private isReconnecting = false
   private disconnected = false
   private wsUrlOverride: string | null = null // for tests to point at a mock server
+  private postResumeTimeoutMs: number = POST_RESUME_GENERATION_TIMEOUT_MS // overridable in tests
   // Resume context (summary + recent turns) baked into systemInstruction at setup.
   // Built once on initial connect; reconnects rely on Gemini's resumption handle.
   // We avoid the post-setup clientContent + historyConfig.initialHistoryInClientContent
@@ -284,7 +288,7 @@ export class GeminiAdapter implements ProviderAdapter {
         this.isReconnecting = false
         this.sendToClient?.({ type: "session.rotated", sessionId: `gemini-resumed-${Date.now()}` })
         log(`[gemini] Reconnected on attempt ${attempt}`)
-        if (resumingWithHandle) this.armPostResumeWatchdog()
+        if (resumingWithHandle) this.armPostResumeListener()
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -595,6 +599,13 @@ export class GeminiAdapter implements ProviderAdapter {
       // Every input-transcription delta refreshes our proxy for end-of-speech
       // — the LAST one before modelTurn is our best non-explicit signal.
       this.lastInputTranscriptionAtMs = Date.now()
+      // First post-resume ASR activity is our cue to start watching for
+      // the matching generation. Until ASR fires, an "idle" resumed session
+      // is healthy and must not be flagged as poisoned.
+      if (this.awaitingResumeFirstInput) {
+        this.awaitingResumeFirstInput = false
+        this.armPostResumeWatchdog()
+      }
       if (!this.userSpeaking) {
         this.userSpeaking = true
         // Reset per-turn marks at the start of the user's turn. Done here
@@ -751,23 +762,29 @@ export class GeminiAdapter implements ProviderAdapter {
     for (const p of audio) this.upstream.send(p)
   }
 
-  private armPostResumeWatchdog() {
+  private armPostResumeListener() {
     this.clearPostResumeWatchdog()
+    this.awaitingResumeFirstInput = true
+  }
+
+  private armPostResumeWatchdog() {
+    if (this.postResumeTimer) clearTimeout(this.postResumeTimer)
     this.awaitingResumeGeneration = true
     this.postResumeTimer = setTimeout(() => {
       if (!this.awaitingResumeGeneration || this.disconnected) return
-      logError(`[gemini] Post-resume generation timeout (${POST_RESUME_GENERATION_TIMEOUT_MS}ms) — handle is poisoned, forcing fresh session`)
+      logError(`[gemini] Post-resume generation timeout (${this.postResumeTimeoutMs}ms) — handle is poisoned, forcing fresh session`)
       this.awaitingResumeGeneration = false
       this.postResumeTimer = null
       // Drop the poisoned handle so the next reconnect starts a fresh session.
       this.resumptionHandle = null
       this.currentlyResumable = false
       void this.reconnect("poisoned handle — fresh session", true)
-    }, POST_RESUME_GENERATION_TIMEOUT_MS)
+    }, this.postResumeTimeoutMs)
   }
 
   private clearPostResumeWatchdog() {
     this.awaitingResumeGeneration = false
+    this.awaitingResumeFirstInput = false
     if (this.postResumeTimer) {
       clearTimeout(this.postResumeTimer)
       this.postResumeTimer = null

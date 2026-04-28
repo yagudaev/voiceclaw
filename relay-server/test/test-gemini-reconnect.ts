@@ -1079,6 +1079,144 @@ async function runControlOverflowTest() {
 // Must mirror the adapter's MAX_PENDING_CONTROL constant
 const MAX_PENDING_CONTROL_FROM_ADAPTER = 20
 
+async function runIdleResumeNoFalsePoisonTest() {
+  console.log("\nGemini Idle Resume Test (idle session resume must not trigger poisoned-handle reconnect)")
+  console.log("=========================================================================================")
+
+  const MOCK_PORT = 19900
+  const clientEvents: RelayEvent[] = []
+  const receivedSetups: Record<string, unknown>[] = []
+
+  const wss = await startMockGemini({
+    receivedSetups,
+    onConnect: (ws, index) => {
+      if (index === 0) {
+        // Original session: emit a handle, then a goAway. Conversation is idle —
+        // no inputTranscription, no modelTurn. Mirrors a session whose user
+        // finished talking minutes ago and is just sitting on the call.
+        setTimeout(() => ws.send(JSON.stringify({
+          sessionResumptionUpdate: { newHandle: "idle-handle", resumable: true },
+        })), 20)
+        setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "2s" } })), 40)
+        setTimeout(() => ws.close(1011, "rotating"), 80)
+      } else if (index === 1) {
+        // Resumed session: emit a handle but stay quiet — no user input
+        // means no inputTranscription, no modelTurn. Healthy idle session.
+        setTimeout(() => ws.send(JSON.stringify({
+          sessionResumptionUpdate: { newHandle: "idle-handle-2", resumable: true },
+        })), 20)
+        // Stay open. Adapter must NOT classify this as a poisoned handle.
+      }
+    },
+  }, MOCK_PORT)
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  type AdapterInternals = { wsUrlOverride: string, postResumeTimeoutMs: number }
+  const internals = adapter as unknown as AdapterInternals
+  internals.wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+  // Compress the post-resume window so the test runs quickly. The poisoned
+  // signature only matters when ASR-side activity arrived without generation;
+  // in this test no ASR activity arrives at all, so the watchdog must not fire
+  // regardless of timeout length.
+  internals.postResumeTimeoutMs = 200
+
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+
+  // Wait through original goAway (~80ms) + reconnect + 4× postResumeTimeout window
+  await new Promise((r) => setTimeout(r, 1500))
+
+  console.log(`    Setups: ${receivedSetups.length}, events: ${clientEvents.map((e) => e.type).join(", ")}`)
+
+  assert(receivedSetups.length === 2,
+    `idle resume does not trigger poisoned-handle reconnect (got ${receivedSetups.length} setups)`)
+
+  const rotated = clientEvents.filter((e) => e.type === "session.rotated")
+  assert(rotated.length === 1,
+    `exactly one rotation for the goAway; no spurious second rotation (got ${rotated.length})`)
+
+  const errors = clientEvents.filter((e) => e.type === "error")
+  assert(errors.length === 0, `no errors emitted (got ${errors.length})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
+async function runResumeWithUserSilentThenSpeakingTest() {
+  console.log("\nGemini Resume Then User Speaks Test (poisoned-handle still detected when ASR fires but generation never does)")
+  console.log("===============================================================================================================")
+
+  const MOCK_PORT = 19901
+  const clientEvents: RelayEvent[] = []
+  const receivedSetups: Record<string, unknown>[] = []
+
+  const wss = await startMockGemini({
+    receivedSetups,
+    onConnect: (ws, index) => {
+      if (index === 0) {
+        setTimeout(() => ws.send(JSON.stringify({
+          sessionResumptionUpdate: { newHandle: "h1", resumable: true },
+        })), 20)
+        setTimeout(() => ws.send(JSON.stringify({ goAway: { timeLeft: "2s" } })), 40)
+        setTimeout(() => ws.close(1011, "rotating"), 80)
+      } else if (index === 1) {
+        setTimeout(() => ws.send(JSON.stringify({
+          sessionResumptionUpdate: { newHandle: "h2", resumable: true },
+        })), 20)
+        // Simulate the documented poisoned-handle signature: ASR comes back
+        // (inputTranscription deltas flow) but generation never fires.
+        setTimeout(() => ws.send(JSON.stringify({
+          serverContent: { inputTranscription: { text: "hello" } },
+        })), 50)
+      } else {
+        // Third connection (post-poison fresh session): just stay open
+      }
+    },
+  }, MOCK_PORT)
+
+  const config: SessionConfigEvent = {
+    type: "session.config",
+    provider: "gemini",
+    model: "gemini-3.1-flash-live-preview",
+    voice: "Zephyr",
+    apiKey: "test",
+    brainAgent: "none",
+    deviceContext: { timezone: "UTC", locale: "en-US", deviceModel: "mock" },
+  }
+
+  const adapter = new GeminiAdapter()
+  type AdapterInternals = { wsUrlOverride: string, postResumeTimeoutMs: number }
+  const internals = adapter as unknown as AdapterInternals
+  internals.wsUrlOverride = `ws://localhost:${MOCK_PORT}`
+  internals.postResumeTimeoutMs = 200
+
+  await adapter.connect(config, (event) => clientEvents.push(event as RelayEvent))
+
+  await new Promise((r) => setTimeout(r, 1500))
+
+  console.log(`    Setups: ${receivedSetups.length}, events: ${clientEvents.map((e) => e.type).join(", ")}`)
+
+  // Initial + first resume + poisoned-handle fresh reconnect = 3 setups
+  assert(receivedSetups.length === 3,
+    `poisoned handle (ASR alive, generation dead) triggers fresh reconnect (got ${receivedSetups.length})`)
+
+  const thirdSetup = receivedSetups[2] as { sessionResumption?: { handle?: string } }
+  assert(thirdSetup.sessionResumption?.handle === undefined,
+    `third setup is fresh (no handle) (got ${thirdSetup.sessionResumption?.handle})`)
+
+  adapter.disconnect()
+  wss.close()
+}
+
 async function main() {
   await runReconnectTest()
   await runUnrecoverableCloseTest()
@@ -1094,6 +1232,8 @@ async function main() {
   await runResumedGoAwayBeforeFreshHandleTest()
   await runQueueAcrossRetryTest()
   await runControlOverflowTest()
+  await runIdleResumeNoFalsePoisonTest()
+  await runResumeWithUserSilentThenSpeakingTest()
   console.log(`\nResults: ${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)
 }
