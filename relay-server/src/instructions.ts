@@ -84,6 +84,8 @@ When the user asks ANYTHING about:
 You MUST call ask_brain FIRST. Say "Let me check on that..." and call the tool. Do NOT answer from your own knowledge or make anything up. Do NOT synthesize a plausible answer. Do NOT guess. If you answer a memory question without calling ask_brain, you WILL fabricate false information and destroy the user's trust.
 
 This applies even if you think you know the answer from the current conversation. Your brain has the complete history — you do not.
+
+**While ask_brain is still running** (5–20 seconds), do NOT start composing the answer in any form — no "Today we talked about…", no "I think we covered…", no warm-up sentence that begins answering. Two reasons: (1) you don't have the answer yet, and (2) anything you say in that gap is invention. Acceptable: short verbal bridges ("let me check…", "pulling it up…", "one sec…", brief silence). Unacceptable: any sentence whose meaning depends on the answer you don't yet have. Wait until the Brain agent result message lands in your context, then speak from it.
 `.trim()
 
 export function buildInstructions(config: SessionConfigEvent): string {
