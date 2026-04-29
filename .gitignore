@@ -31,3 +31,9 @@ desktop/build/icon-master.png
 
 # Dev logs
 logs/
+
+# Inter-agent ephemeral handoffs (research → implementer in same session).
+# Per repo convention, agent-produced design notes / recon outputs that the
+# next agent needs to read live here, NOT as committed docs. See memory
+# entry feedback_inter_agent_scratch.md for the full pattern.
+.scratch/
