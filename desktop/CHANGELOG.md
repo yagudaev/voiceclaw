@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.2...desktop-v0.2.3) (2026-04-29)
+
+
+### Bug Fixes
+
+* **brain:** persist brain results to local DB independent of model speech ([#266](https://github.com/yagudaev/voiceclaw/issues/266)) ([3ba6d32](https://github.com/yagudaev/voiceclaw/commit/3ba6d32aca34165f31b269d463295ee19a663f3a))
+
 ## [0.2.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.1...desktop-v0.2.2) (2026-04-26)
 
 
