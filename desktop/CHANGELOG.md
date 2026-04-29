@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.3...desktop-v0.3.0) (2026-04-29)
+
+
+### Features
+
+* **desktop:** bundle relay-server as a managed service in DMG (NAN-681 part 1) ([#269](https://github.com/yagudaev/voiceclaw/issues/269)) ([745d64c](https://github.com/yagudaev/voiceclaw/commit/745d64c0b6f8000ced9963ceb755aae43b1233a1))
+
 ## [0.2.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.2...desktop-v0.2.3) (2026-04-29)
 
 
