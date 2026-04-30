@@ -33,6 +33,7 @@ export class RelaySession {
   // each turn's video to its own audio).
   private currentTurnStartMs = 0
   private inFlightTools = new Map<string, AbortController>()
+  private toolCallStartMs = new Map<string, number>()
 
   constructor(ws: WebSocket) {
     this.ws = ws
@@ -70,6 +71,7 @@ export class RelaySession {
         break
       case "tool.call":
         this.tracer.startToolCall(event.callId, event.name, event.arguments)
+        this.toolCallStartMs.set(event.callId, Date.now())
         break
       case "audio.delta":
         // Tee the model's outbound audio into the assistant capture file BEFORE
@@ -154,6 +156,7 @@ export class RelaySession {
     const syncResult = executeSyncTool(name, args)
     if (syncResult !== null) {
       this.tracer.endToolCall(callId, syncResult)
+      this.emitToolCompleted(callId, name, syncResult)
       this.adapter?.sendToolResult(callId, syncResult)
       return
     }
@@ -218,6 +221,7 @@ export class RelaySession {
       const msg = e instanceof Error ? e.message : "invalid arguments"
       const errorPayload = JSON.stringify({ error: msg })
       this.tracer.endToolCall(callId, errorPayload, msg)
+      this.emitToolFailed(callId, "web_search", msg, false)
       this.adapter?.sendToolResult(callId, errorPayload)
       return
     }
@@ -242,11 +246,13 @@ export class RelaySession {
         log(`[session:${this.id}] web_search (${callId}) was cancelled — discarding result`)
         const cancelledPayload = JSON.stringify({ status: "cancelled" })
         this.tracer.endToolCall(callId, cancelledPayload, "cancelled")
+        this.emitToolFailed(callId, "web_search", "cancelled", true)
         this.adapter?.sendToolResult(callId, cancelledPayload)
         return
       }
 
       this.tracer.endToolCall(callId, result)
+      this.emitToolCompleted(callId, "web_search", result)
       this.adapter?.sendToolResult(callId, result)
     }).catch((err) => {
       const message = err instanceof Error ? err.message : "web search failed"
@@ -256,8 +262,10 @@ export class RelaySession {
       this.tracer.endToolCall(callId, errorPayload, message)
 
       if (controller.signal.aborted) {
+        this.emitToolFailed(callId, "web_search", message, true)
         this.adapter?.sendToolResult(callId, JSON.stringify({ status: "cancelled" }))
       } else {
+        this.emitToolFailed(callId, "web_search", message, false)
         this.adapter?.sendToolResult(callId, errorPayload)
       }
     }).finally(() => {
@@ -282,6 +290,7 @@ export class RelaySession {
       const msg = e instanceof Error ? e.message : "invalid arguments"
       const errorPayload = JSON.stringify({ error: msg })
       this.tracer.endToolCall(callId, errorPayload, msg)
+      this.emitToolFailed(callId, "ask_brain", msg, false)
       this.adapter?.sendToolResult(callId, errorPayload)
       this.inFlightTools.delete(callId)
       return
@@ -309,11 +318,13 @@ export class RelaySession {
       if (controller.signal.aborted) {
         const cancelledPayload = JSON.stringify({ status: "cancelled" })
         this.tracer.endToolCall(callId, cancelledPayload, "cancelled")
+        this.emitToolFailed(callId, "ask_brain", "cancelled", true)
         this.adapter?.sendToolResult(callId, cancelledPayload)
         return
       }
 
       this.tracer.endToolCall(callId, result)
+      this.emitToolCompleted(callId, "ask_brain", result)
       this.send({ type: "brain.result", callId, query, result })
       this.adapter?.sendToolResult(callId, result)
     }).catch((err) => {
@@ -324,8 +335,10 @@ export class RelaySession {
       this.tracer.endToolCall(callId, errorPayload, message)
 
       if (controller.signal.aborted) {
+        this.emitToolFailed(callId, "ask_brain", message, true)
         this.adapter?.sendToolResult(callId, JSON.stringify({ status: "cancelled" }))
       } else {
+        this.emitToolFailed(callId, "ask_brain", message, false)
         this.send({ type: "brain.result", callId, query, error: message })
         this.adapter?.sendToolResult(callId, errorPayload)
       }
@@ -351,6 +364,7 @@ export class RelaySession {
       const msg = e instanceof Error ? e.message : "invalid arguments"
       const errorPayload = JSON.stringify({ error: msg })
       this.tracer.endToolCall(callId, errorPayload, msg)
+      this.emitToolFailed(callId, "ask_brain", msg, false)
       this.adapter?.sendToolResult(callId, errorPayload)
       this.inFlightTools.delete(callId)
       return
@@ -399,10 +413,12 @@ export class RelaySession {
       if (controller.signal.aborted) {
         log(`[session:${this.id}] ask_brain (${callId}) was cancelled — discarding result`)
         this.tracer.endToolCall(callId, JSON.stringify({ status: "cancelled" }), "cancelled")
+        this.emitToolFailed(callId, "ask_brain", "cancelled", true)
         return
       }
 
       this.tracer.endToolCall(callId, result)
+      this.emitToolCompleted(callId, "ask_brain", result)
 
       this.send({ type: "brain.result", callId, query, result })
 
@@ -416,10 +432,13 @@ export class RelaySession {
       this.tracer.endToolCall(callId, JSON.stringify({ error: message }), message)
 
       if (!controller.signal.aborted) {
+        this.emitToolFailed(callId, "ask_brain", message, false)
         this.send({ type: "brain.result", callId, query, error: message })
         this.adapter?.injectContext(
           `[Brain agent failed for query: "${query}": ${message}]\nLet the user know the search didn't work and offer to try again.`
         )
+      } else {
+        this.emitToolFailed(callId, "ask_brain", message, true)
       }
     }).finally(() => {
       this.inFlightTools.delete(callId)
@@ -433,6 +452,7 @@ export class RelaySession {
     if (!tavilyKey) {
       const errorPayload = JSON.stringify({ error: "Tavily API key not configured" })
       this.tracer.endToolCall(callId, errorPayload, "no tavily key")
+      this.emitToolFailed(callId, "web_search", "Tavily API key not configured", false)
       this.adapter?.sendToolResult(callId, errorPayload)
       return
     }
@@ -448,6 +468,7 @@ export class RelaySession {
       const msg = e instanceof Error ? e.message : "invalid arguments"
       const errorPayload = JSON.stringify({ error: msg })
       this.tracer.endToolCall(callId, errorPayload, msg)
+      this.emitToolFailed(callId, "web_search", msg, false)
       this.adapter?.sendToolResult(callId, errorPayload)
       return
     }
@@ -472,10 +493,12 @@ export class RelaySession {
 
       if (controller.signal.aborted) {
         this.tracer.endToolCall(callId, JSON.stringify({ status: "cancelled" }), "cancelled")
+        this.emitToolFailed(callId, "web_search", "cancelled", true)
         return
       }
 
       this.tracer.endToolCall(callId, result)
+      this.emitToolCompleted(callId, "web_search", result)
       this.adapter?.injectContext(
         `[Web search result for query: "${query}"]\n${result}\n\nPlease share this information with the user naturally.`
       )
@@ -486,9 +509,12 @@ export class RelaySession {
       this.tracer.endToolCall(callId, JSON.stringify({ error: message }), message)
 
       if (!controller.signal.aborted) {
+        this.emitToolFailed(callId, "web_search", message, false)
         this.adapter?.injectContext(
           `[Web search failed for query: "${query}": ${message}]\nLet the user know the search didn't work and offer to try again.`
         )
+      } else {
+        this.emitToolFailed(callId, "web_search", message, true)
       }
     }).finally(() => {
       this.inFlightTools.delete(callId)
@@ -692,6 +718,19 @@ export class RelaySession {
     }
   }
 
+  private emitToolCompleted(callId: string, name: string, result: string) {
+    const startMs = this.toolCallStartMs.get(callId) ?? Date.now()
+    this.toolCallStartMs.delete(callId)
+    const truncated = result.length > 4096 ? result.slice(0, 4096) + "…" : result
+    this.send({ type: "tool_call.completed", callId, name, durationMs: Date.now() - startMs, result: truncated })
+  }
+
+  private emitToolFailed(callId: string, name: string, error: string, cancelled: boolean) {
+    const startMs = this.toolCallStartMs.get(callId) ?? Date.now()
+    this.toolCallStartMs.delete(callId)
+    this.send({ type: "tool_call.failed", callId, name, durationMs: Date.now() - startMs, error, cancelled })
+  }
+
   private isServerSideTool(name: string): boolean {
     if (!this.config) return false
     return getRelayTools(this.config).some((tool) => tool.name === name)
@@ -704,6 +743,7 @@ export class RelaySession {
       controller.abort(new Error(reason))
     }
     this.inFlightTools.clear()
+    this.toolCallStartMs.clear()
   }
 
   private syncTranscriptToBrain() {

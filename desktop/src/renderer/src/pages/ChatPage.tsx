@@ -7,9 +7,17 @@ import { AudioLevelMeter } from '../components/AudioLevelMeter'
 import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 import { ScreenSharePicker } from '../components/ScreenSharePicker'
 import { VolumeControl } from '../components/VolumeControl'
+import { ToolCallRow } from '../components/ToolCallRow'
 import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
 import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
 import { useConversationContext } from '../lib/conversation-context'
+import {
+  applyToolCallStarted,
+  applyToolCallCompleted,
+  applyToolCallFailed,
+  applyToolCallCancelled,
+  type ToolCallEntry,
+} from '../lib/tool-call-store'
 import {
   addMessage,
   createConversation,
@@ -28,6 +36,7 @@ const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
+  const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
   const conversationIdRef = useRef<number | null>(null)
   const titleGeneratedRef = useRef(false)
@@ -65,7 +74,7 @@ export function ChatPage() {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingText, isThinking])
+  }, [messages, toolCalls, streamingText, isThinking])
 
   // Load conversation when selected from History tab
   useEffect(() => {
@@ -157,8 +166,8 @@ export function ChatPage() {
     onTurnEnded: () => {
       setIsThinking(false)
     },
-    onToolCall: async (_callId, name, args) => {
-      // Handle displayText tool call locally
+    onToolCall: async (callId, name, args) => {
+      setToolCalls((prev) => applyToolCallStarted(prev, callId, name, args))
       if (name === 'displayText') {
         try {
           const parsed = JSON.parse(args)
@@ -169,6 +178,15 @@ export function ChatPage() {
           // ignore parse errors
         }
       }
+    },
+    onToolCallCompleted: (callId, _name, durationMs, result) => {
+      setToolCalls((prev) => applyToolCallCompleted(prev, callId, durationMs, result))
+    },
+    onToolCallFailed: (callId, _name, durationMs, error, cancelled) => {
+      setToolCalls((prev) => applyToolCallFailed(prev, callId, durationMs, error, cancelled))
+    },
+    onToolCancelled: (callIds) => {
+      setToolCalls((prev) => applyToolCallCancelled(prev, callIds))
     },
     onToolProgress: (_callId, summary) => {
       streamingRoleRef.current = 'assistant'
@@ -335,6 +353,7 @@ export function ChatPage() {
     conversationIdRef.current = null
     setConversationId(null)
     setMessages([])
+    setToolCalls([])
     titleGeneratedRef.current = false
   }, [isCallActive, endCall])
 
@@ -434,9 +453,13 @@ export function ChatPage() {
             </p>
           </div>
         )}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} showLatency={showLatency} />
-        ))}
+        {buildTimeline(messages, toolCalls).map((item) =>
+          item.kind === 'message' ? (
+            <MessageBubble key={`msg-${item.data.id}`} message={item.data} showLatency={showLatency} />
+          ) : (
+            <ToolCallRow key={`tool-${item.data.callId}`} entry={item.data} />
+          )
+        )}
         {/* Streaming text */}
         {streamingText.trim() && (
           <div className={`flex ${streamingRole === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -563,6 +586,19 @@ export function ChatPage() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+type TimelineItem =
+  | { kind: 'message'; ts: number; data: Message }
+  | { kind: 'tool'; ts: number; data: ToolCallEntry }
+
+function buildTimeline(messages: Message[], toolCalls: ToolCallEntry[]): TimelineItem[] {
+  const items: TimelineItem[] = [
+    ...messages.map((m) => ({ kind: 'message' as const, ts: m.created_at, data: m })),
+    ...toolCalls.map((t) => ({ kind: 'tool' as const, ts: t.startedAt, data: t })),
+  ]
+  items.sort((a, b) => a.ts - b.ts)
+  return items
+}
 
 function generateTitle(text: string): string {
   const trimmed = text.trim()

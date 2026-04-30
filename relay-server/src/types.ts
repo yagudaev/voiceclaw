@@ -102,6 +102,8 @@ export type RelayEvent =
   | TranscriptDoneEvent
   | ToolCallEvent
   | ToolProgressEvent
+  | ToolCallCompletedEvent
+  | ToolCallFailedEvent
   | TurnStartedEvent
   | TurnEndedEvent
   | SessionEndedEvent
@@ -140,6 +142,29 @@ export interface ToolCallEvent {
   callId: string
   name: string
   arguments: string
+}
+
+// Emitted when a server-side tool call finishes successfully.
+// durationMs is wall-clock time from the matching tool.call event.
+// result is the raw string payload returned by the tool (JSON or plain text,
+// keep ≤ 4 KB — strip audio/embedding fields before sending).
+export interface ToolCallCompletedEvent {
+  type: "tool_call.completed"
+  callId: string
+  name: string
+  durationMs: number
+  result: string
+}
+
+// Emitted when a server-side tool call finishes with an error or is cancelled.
+// cancelled=true distinguishes a mid-turn barge-in abort from an actual failure.
+export interface ToolCallFailedEvent {
+  type: "tool_call.failed"
+  callId: string
+  name: string
+  durationMs: number
+  error: string
+  cancelled: boolean
 }
 
 export interface ToolProgressEvent {

@@ -48,6 +48,9 @@ export interface RealtimeCallbacks {
   onTranscriptDone?: (text: string, role: 'user' | 'assistant') => void
   onToolCall?: (callId: string, name: string, args: string) => void
   onToolProgress?: (callId: string, summary: string) => void
+  onToolCallCompleted?: (callId: string, name: string, durationMs: number, result: string) => void
+  onToolCallFailed?: (callId: string, name: string, durationMs: number, error: string, cancelled: boolean) => void
+  onToolCancelled?: (callIds: string[]) => void
   onBrainResult?: (callId: string, query: string, result?: string, error?: string) => void
   onTurnStarted?: () => void
   onTurnEnded?: () => void
@@ -176,6 +179,18 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
         case 'tool.progress':
           cb.onToolProgress?.(data.callId, data.summary)
+          break
+
+        case 'tool_call.completed':
+          cb.onToolCallCompleted?.(data.callId, data.name, data.durationMs, data.result)
+          break
+
+        case 'tool_call.failed':
+          cb.onToolCallFailed?.(data.callId, data.name, data.durationMs, data.error, data.cancelled)
+          break
+
+        case 'tool.cancelled':
+          cb.onToolCancelled?.(data.callIds)
           break
 
         case 'brain.result':

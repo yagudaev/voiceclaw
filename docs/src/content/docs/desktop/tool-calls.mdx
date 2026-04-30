@@ -1,0 +1,36 @@
+---
+title: Tool call rows
+description: Small status rows that appear in the chat transcript when VoiceClaw runs a search or queries your brain agent — showing live progress, how long it took, and what went wrong if it failed.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+When you ask VoiceClaw something that needs a live search or a knowledge lookup, a small status row appears inline in the chat — right between the message that triggered it and the agent's reply. Each row tells you which tool ran, how long it took, and whether it succeeded.
+
+## The four states
+
+| Icon | Label | What it means |
+|------|-------|---------------|
+| Spinning circle | in-progress | The tool is running. A live timer counts up. |
+| Green check | done | The tool finished and the agent has the result. |
+| Red X | failed | Something went wrong. Expand the row to see the error. |
+| Slash circle | cancelled | You started talking before the tool finished, so it was aborted. |
+
+## Expanding a row
+
+Every row shows the tool name and timing on one line. Below that:
+
+- **Arguments** — click the chevron to see what the agent sent to the tool (e.g., the search query). Useful to confirm the agent understood what you asked.
+- **Result** — available once the tool completes. Click to expand. Error rows expand automatically so you don't have to hunt for the problem.
+
+## When a row shows "failed"
+
+The most common causes:
+
+1. **Web search** — your Tavily API key is missing or invalid. Go to **Settings → Tavily API Key** and add a valid key.
+2. **Brain agent** — the brain gateway isn't reachable. Check that your relay server is running and the `BRAIN_GATEWAY_URL` points to a live instance.
+3. **Cancelled** — you interrupted the agent mid-search. This isn't an error; start a new turn and the agent will try again.
+
+<Aside type="tip">
+  Rows stay in the transcript for the lifetime of the conversation — even after the call ends. They don't affect exported transcripts or conversation history synced to the brain agent.
+</Aside>
