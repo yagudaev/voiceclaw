@@ -66,6 +66,7 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const activeRelayUrlRef = useRef<string>('')
   const brainCallStartRef = useRef<Map<string, number>>(new Map())
+  const textChatCancelRef = useRef<(() => void) | null>(null)
   const [messageMenu, setMessageMenu] = useState<{ x: number; y: number; message: Message } | null>(null)
   const [typedMessageIds, setTypedMessageIds] = useState<Set<number>>(() => new Set())
   const { selectedConversationId, selectConversation } = useConversationContext()
@@ -455,7 +456,8 @@ export function ChatPage() {
     setIsThinking(true)
     streamingRoleRef.current = 'assistant'
     setStreamingRole('assistant')
-    streamTextChat(text, {
+    textChatCancelRef.current?.()
+    textChatCancelRef.current = streamTextChat(text, {
       serverUrl,
       apiKey,
       provider: provider === 'gemini' ? 'gemini' : provider === 'xai' ? 'xai' : 'openai',
@@ -477,6 +479,7 @@ export function ChatPage() {
       onDone: async (full) => {
         setStreamingText('')
         setIsThinking(false)
+        textChatCancelRef.current = null
         if (full.trim()) {
           await addMessage(convId, 'assistant', full)
           await loadMessages()
@@ -485,11 +488,19 @@ export function ChatPage() {
       onError: async (err) => {
         setStreamingText('')
         setIsThinking(false)
+        textChatCancelRef.current = null
         await addMessage(convId, 'assistant', `Error: ${err}`)
         await loadMessages()
       },
     })
   }, [loadMessages])
+
+  useEffect(() => {
+    return () => {
+      textChatCancelRef.current?.()
+      textChatCancelRef.current = null
+    }
+  }, [])
 
   const newConversation = useCallback(() => {
     if (isCallActive) endCall()
@@ -667,7 +678,7 @@ export function ChatPage() {
       )}
 
       {/* Typed text composer — always visible, works in and out of call */}
-      <ChatComposer onSubmit={handleComposerSubmit} />
+      <ChatComposer onSubmit={handleComposerSubmit} disabled={isThinking || !!streamingText} />
 
       {/* Call controls */}
       <div className="px-4 py-3 border-t border-border flex items-center justify-center gap-3">

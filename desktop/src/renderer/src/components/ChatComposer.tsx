@@ -34,6 +34,7 @@ export function ChatComposer({ onSubmit, disabled, placeholder }: ChatComposerPr
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.nativeEvent.isComposing) return
         e.preventDefault()
         submit()
       }

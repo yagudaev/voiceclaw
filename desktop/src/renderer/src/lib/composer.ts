@@ -1,14 +1,9 @@
-// Pure helpers for the chat composer. Kept separate from the React
-// component so they're easy to unit-test.
-
 const MIN_ROWS = 1
 const MAX_ROWS = 6
 const LINE_HEIGHT_PX = 20
 const VERTICAL_PADDING_PX = 16
 
 export function normalizeComposerText(value: string): string {
-  // Trim trailing whitespace only — preserve leading and internal whitespace
-  // because pasted code, indented diffs, and file paths depend on it.
   return value.replace(/[ \t\r\n]+$/u, '')
 }
 

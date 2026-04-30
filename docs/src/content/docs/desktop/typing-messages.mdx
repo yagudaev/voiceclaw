@@ -31,14 +31,14 @@ A small **typed** label appears beneath any message you sent through the compose
 
 The composer works in both states. The path your message takes is different, but the result feels the same.
 
-**During a realtime call.** The typed text is delivered to the live session as a text input alongside whatever you're saying. The assistant treats it as a user turn — the realtime model sees the text, can call tools (including `ask_brain`), and responds with voice and a transcript exactly like a spoken turn. You'll hear the answer if your speakers are on, and it lands in the chat history. Useful when you want to drop the assistant a URL mid-conversation without breaking the flow.
+**During a call.** The typed text is delivered into the live conversation alongside whatever you're saying. The assistant treats it as a user turn — it sees the text, has access to all the same tools, and responds with voice and a transcript exactly like a spoken turn. You'll hear the answer if your speakers are on, and it lands in the chat history. Useful when you want to drop the assistant a URL mid-conversation without breaking the flow.
 
-**Outside a call.** Typing a message opens a one-shot relay session, sends your text, streams the assistant's reply into the chat as text, and closes. No microphone access, no speaker output — pure text-in / text-out. Your message and the reply are both saved to the conversation, so the next time you start a call the model has the full context.
+**Outside a call.** Typing a message sends your text, streams the assistant's reply into the chat as text, and stops there. No microphone access, no speaker output — pure text-in / text-out. Your message and the reply are both saved to the conversation, so the next time you start a call the assistant has the full context.
 
-In both modes the assistant has access to the same brain agent and the same tools. The only difference is whether you hear the reply or just read it.
+In both modes the assistant has access to the same tools. The only difference is whether you hear the reply or just read it.
 
 <Aside type="note">
-The typed-text path uses your existing relay server URL and API key. If those aren't configured in **Settings → Relay**, the composer will reply with a setup hint instead of trying to send the message.
+The composer needs your VoiceClaw connection settings. If those aren't configured yet, the composer will reply with a setup hint instead of trying to send the message — open **Settings** to finish setup.
 </Aside>
 
 ## Practical examples

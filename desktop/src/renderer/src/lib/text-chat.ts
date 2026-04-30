@@ -1,8 +1,3 @@
-// One-shot text turn over the relay WebSocket. Used when the chat
-// composer submits while no realtime call is active — opens a fresh ws,
-// sends session.config + text.input, streams the assistant transcript,
-// closes when the relay reports the turn is done.
-
 export interface TextChatOptions {
   serverUrl: string
   apiKey: string
