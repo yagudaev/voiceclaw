@@ -5,6 +5,7 @@ const existsRef = { fn: (_p: string) => false as boolean }
 const tokenRef = { value: null as string | null }
 const providerKeysRef = { fn: (_p: 'gemini' | 'openai' | 'xai') => null as string | null }
 const bundledRelayKeyRef = { value: null as string | null }
+const allocatedPortsRef = { openclawGateway: undefined as number | undefined }
 let originalResourcesPath: string | undefined
 
 vi.mock('electron', () => ({
@@ -13,6 +14,11 @@ vi.mock('electron', () => ({
       return isPackagedRef.value
     },
   },
+}))
+
+vi.mock('../ports', () => ({
+  allocatePort: vi.fn(),
+  getAllocatedPorts: () => ({ ...allocatedPortsRef }),
 }))
 
 vi.mock('fs', () => ({
@@ -110,6 +116,7 @@ describe('buildRelayEnv', () => {
     tokenRef.value = null
     providerKeysRef.fn = () => null
     bundledRelayKeyRef.value = null
+    allocatedPortsRef.openclawGateway = undefined
   })
 
   afterEach(() => {
@@ -162,5 +169,29 @@ describe('buildRelayEnv', () => {
     const { buildRelayEnv } = await import('./relay-server')
     const env = buildRelayEnv()
     expect(env.RELAY_API_KEY).toBe('env-relay-key')
+  })
+
+  it('injects BRAIN_GATEWAY_URL from the allocated openclaw port when env is unset', async () => {
+    allocatedPortsRef.openclawGateway = 19876
+    delete process.env.BRAIN_GATEWAY_URL
+    const { buildRelayEnv } = await import('./relay-server')
+    const env = buildRelayEnv()
+    expect(env.BRAIN_GATEWAY_URL).toBe('http://127.0.0.1:19876')
+  })
+
+  it('does not override an explicit BRAIN_GATEWAY_URL env value', async () => {
+    process.env.BRAIN_GATEWAY_URL = 'http://localhost:9999'
+    allocatedPortsRef.openclawGateway = 19876
+    const { buildRelayEnv } = await import('./relay-server')
+    const env = buildRelayEnv()
+    expect(env.BRAIN_GATEWAY_URL).toBe('http://localhost:9999')
+  })
+
+  it('leaves BRAIN_GATEWAY_URL unset when no openclaw port is allocated', async () => {
+    allocatedPortsRef.openclawGateway = undefined
+    delete process.env.BRAIN_GATEWAY_URL
+    const { buildRelayEnv } = await import('./relay-server')
+    const env = buildRelayEnv()
+    expect(env.BRAIN_GATEWAY_URL).toBeUndefined()
   })
 })
