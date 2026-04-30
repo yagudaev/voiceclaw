@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.0...desktop-v0.3.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** stage prod deps for electron-builder and smoke-test packaged app ([#274](https://github.com/yagudaev/voiceclaw/issues/274)) ([32c8a48](https://github.com/yagudaev/voiceclaw/commit/32c8a484b8e83b408ec9694fb89c13427d8d75b6))
+
 ## [0.3.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.2.3...desktop-v0.3.0) (2026-04-29)
 
 
