@@ -1,0 +1,95 @@
+# Build the desktop .app and run a smoke launch against it on every push
+# to main that touches desktop/ (or its build-pipeline inputs). Catches
+# regressions like missing native modules, broken asar layout, or
+# unhandled main-process exceptions BEFORE they reach a `desktop-v*` tag.
+#
+# This is a `--mac dir` build (no DMG, no notarize) — uses an ad-hoc
+# signature and runs the smoke test against the unpacked .app. Quick (~5
+# min) and doesn't burn signing credentials on every commit.
+
+name: Desktop smoke
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop/**"
+      - "relay-server/**"
+      - "vendor/openclaw"
+      - ".github/workflows/desktop-smoke.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "relay-server/**"
+      - "vendor/openclaw"
+      - ".github/workflows/desktop-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Build + smoke-launch packaged app
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10.33.0
+
+      - name: Build openclaw
+        working-directory: vendor/openclaw
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('desktop/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build services + electron-vite + stage
+        working-directory: desktop
+        run: |
+          node scripts/build-services.mjs
+          yarn build
+          node scripts/stage-app.mjs
+
+      # `hardenedRuntime: false` is critical for ad-hoc-signed local
+      # builds. The release pipeline keeps it on (required for
+      # notarization), but with hardenedRuntime + ad-hoc the dyld loader
+      # rejects the embedded Electron Framework with "different Team IDs"
+      # at launch — false-positive for the smoke test.
+      - name: Pack .app (ad-hoc signature, no DMG)
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --mac dir -c.mac.hardenedRuntime=false
+
+      - name: Smoke-test packaged app
+        working-directory: desktop
+        run: yarn smoke:mac

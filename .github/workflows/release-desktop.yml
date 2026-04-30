@@ -141,6 +141,16 @@ jobs:
           RELAY_VERSION: ${{ steps.meta.outputs.relay_version }}
         run: yarn dist:mac --publish never -c.forceCodeSigning=true
 
+      # Launch the freshly-signed-and-notarized .app against an isolated
+      # HOME so it gets a clean userData dir, settle for 10s, and assert
+      # the main process is still alive with no `Cannot find module` /
+      # uncaught-exception patterns. Catches the class of regression where
+      # native modules (better-sqlite3) or workspace-hoisted prod deps
+      # silently fail to land in app.asar / app.asar.unpacked.
+      - name: Smoke-test packaged app
+        working-directory: desktop
+        run: yarn smoke:mac
+
       # release-please-action creates the GitHub Release synchronously with
       # the tag push, so electron-builder's `--publish always` raced it and
       # got 422 already_exists. Upload directly to the existing release with
