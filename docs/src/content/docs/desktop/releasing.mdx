@@ -13,18 +13,18 @@ Every tagged release produces a signed, notarized universal DMG on GitHub, plus 
 
 1. Confirm `desktop/package.json` has the version you want to ship. Bump it on a feature branch if needed, open a PR, merge.
 
-2. From `main`, create and push the tag. The tag name must match `v*.*.*`:
+2. From `main`, create and push the tag. The tag name must match `desktop-v*.*.*` (release-please pushes this for you when its release PR is merged):
 
    ```bash
    git checkout main
    git pull
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag desktop-v0.3.1
+   git push origin desktop-v0.3.1
    ```
 
 3. Watch the `Release desktop` workflow run in GitHub Actions. On `macos-14` it typically takes 15–25 minutes, most of which is Apple notarization.
 
-4. When the workflow finishes, a new draft-free GitHub Release exists at `https://github.com/yagudaev/voiceclaw/releases/tag/v0.1.0` with the DMG, `.blockmap`, and `latest-mac.yml` attached.
+4. When the workflow finishes, a new draft-free GitHub Release exists at `https://github.com/yagudaev/voiceclaw/releases/tag/desktop-v0.3.1` with the DMG, `.blockmap`, and `latest-mac.yml` attached.
 
 5. Edit the release description with the user-facing changelog if needed. The download page pulls the latest release automatically within 5 minutes of publishing.
 
@@ -76,8 +76,8 @@ Apple's API keys don't expire but they can be revoked. If you ever need to rotat
 
 After a successful run you'll see three artifacts attached to the GitHub Release:
 
-- `VoiceClaw-<version>-universal.dmg` — the universal build, roughly 180–220 MB.
-- `VoiceClaw-<version>-universal.dmg.blockmap` — delta-update manifest consumed by `electron-updater`.
+- `VoiceClaw-<version>-arm64.dmg` — the Apple Silicon build, roughly 220–250 MB.
+- `VoiceClaw-<version>-arm64.dmg.blockmap` — delta-update manifest consumed by `electron-updater`.
 - `latest-mac.yml` — the top-level manifest `electron-updater` reads first. Points at the DMG and blockmap by URL + SHA-512.
 
 The workflow also uploads the same files as a workflow artifact (`voiceclaw-dmg`) for 14 days — handy if the Release publish step fails after the build succeeded.
@@ -91,6 +91,21 @@ At runtime the app reads the `publish` block from `desktop/electron-builder.yml`
 3. On Apple Silicon it verifies the DMG is signed by the same Developer ID, then stages the update for the next launch.
 
 No extra server, no extra auth — the public Release is the update channel.
+
+## Build pipeline internals
+
+`yarn dist:mac` runs four stages back-to-back:
+
+1. `node scripts/build-services.mjs` — fetches the bundled Node 22 runtime, builds the relay-server bundle, and packs the openclaw bundle into `desktop/resources/`.
+2. `electron-vite build` — emits the main + preload + renderer code to `desktop/out/`.
+3. `node scripts/stage-app.mjs` — assembles a self-contained `desktop/dist-staging/` directory containing only the things that ship: `out/`, a minimal `package.json` listing prod deps, a `node_modules/` installed by npm (no yarn workspace ambiguity), and an electron-rebuilt `better-sqlite3` binding. electron-builder then packs from `dist-staging/` rather than the workspace-aware `desktop/`.
+4. `electron-builder --mac` — codesigns, notarizes, and writes the DMG.
+
+The staging step exists because electron-builder's `npm list`-based dep walker, when invoked from a yarn-workspace child package, walks up to the workspace root and silently treats the root's hoisted transitives as the app's deps — dropping every package declared in `desktop/package.json`. Staging produces a flat npm project that is unambiguous to inspect.
+
+## Smoke test
+
+Both `release-desktop.yml` and `desktop-smoke.yml` run `yarn smoke:mac` against the packaged `.app` after build. The smoke test launches the app against an isolated `HOME`, settles for 10s, and asserts the main process is still alive with no `Cannot find module` / uncaught-exception patterns in launcher stderr or recent system logs. A failing smoke test blocks the release tag from publishing and blocks PRs that touch `desktop/**` or `relay-server/**`.
 
 ## Local builds vs CI builds
 

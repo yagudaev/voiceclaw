@@ -2,14 +2,30 @@ appId: com.getvoiceclaw.desktop
 productName: VoiceClaw
 copyright: "Copyright © 2026 Nano 3 Labs Ltd."
 
+# `app: dist-staging` points electron-builder at a self-contained
+# package directory produced by `scripts/stage-app.mjs`. The staging dir
+# has its own `package.json` listing only prod deps and a clean
+# `node_modules/` installed by npm — no yarn workspaces in sight. Without
+# this, electron-builder's `npm list` walks up to the workspace root and
+# treats the root's hoisted transitives as the app's dependencies,
+# silently dropping every package declared in `desktop/package.json`.
 directories:
+  app: dist-staging
   output: dist
   buildResources: build
 
 files:
   - "out/**/*"
   - "package.json"
+  - "node_modules/**/*"
   - "!node_modules/**/{README.md,LICENSE*,*.map,*.ts}"
+
+# Native modules with .node bindings cannot be loaded from inside an
+# asar — Electron requires them to live in app.asar.unpacked/ and
+# resolves the require there transparently. Without this, the main
+# process crashes at startup with `Cannot find module 'better-sqlite3'`.
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**/*"
 
 # Anything under desktop/resources/ ships into <App>/Contents/Resources/
 # at the same relative path. Includes the bundled Node runtime

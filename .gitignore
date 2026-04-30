@@ -25,6 +25,9 @@ desktop/resources/relay-server-bundle/
 desktop/resources/openclaw/
 desktop/resources/.openclaw-pack/
 
+# electron-builder app staging dir — produced by scripts/stage-app.mjs
+desktop/dist-staging/
+
 # IDE
 .idea/
 .vscode/
