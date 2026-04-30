@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.3...desktop-v0.4.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** wizard captures agent name + voice + description, greets out loud ([#282](https://github.com/yagudaev/voiceclaw/issues/282)) ([39a7d85](https://github.com/yagudaev/voiceclaw/commit/39a7d853ca9d2b0d8b0b9c5f0dccfc88386849df))
+
 ## [0.3.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.2...desktop-v0.3.3) (2026-04-30)
 
 
