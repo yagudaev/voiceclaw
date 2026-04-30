@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.1...desktop-v0.3.2) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** drop misleading Accessibility permission ask from onboarding ([0328136](https://github.com/yagudaev/voiceclaw/commit/03281360af095b4e300f8aa717335d76be314ab9))
+
 ## [0.3.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.0...desktop-v0.3.1) (2026-04-30)
 
 
