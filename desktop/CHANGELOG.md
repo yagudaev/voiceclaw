@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** export diagnostic bundle for support ([#293](https://github.com/yagudaev/voiceclaw/issues/293)) ([c951cdf](https://github.com/yagudaev/voiceclaw/commit/c951cdf71f2c3408f4c17b3c85ff0d85650f2fa3))
+
 ## [0.6.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-04-30)
 
 
