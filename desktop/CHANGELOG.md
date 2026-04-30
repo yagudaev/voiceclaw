@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.2...desktop-v0.3.3) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** wire bundled service defaults on fresh install (NAN-686, NAN-687) ([#280](https://github.com/yagudaev/voiceclaw/issues/280)) ([4f528cd](https://github.com/yagudaev/voiceclaw/commit/4f528cd6c9ec9830ac78ea19b2bd94b302b88dcb))
+
 ## [0.3.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.1...desktop-v0.3.2) (2026-04-30)
 
 
