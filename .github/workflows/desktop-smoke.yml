@@ -79,11 +79,16 @@ jobs:
           yarn build
           node scripts/stage-app.mjs
 
+      # `hardenedRuntime: false` is critical for ad-hoc-signed local
+      # builds. The release pipeline keeps it on (required for
+      # notarization), but with hardenedRuntime + ad-hoc the dyld loader
+      # rejects the embedded Electron Framework with "different Team IDs"
+      # at launch — false-positive for the smoke test.
       - name: Pack .app (ad-hoc signature, no DMG)
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx electron-builder --mac dir
+        run: npx electron-builder --mac dir -c.mac.hardenedRuntime=false
 
       - name: Smoke-test packaged app
         working-directory: desktop
