@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** right-click delete message in chat (NAN-679) ([#296](https://github.com/yagudaev/voiceclaw/issues/296)) ([e39a747](https://github.com/yagudaev/voiceclaw/commit/e39a7476dabdf8c581dd70ba1beedeb6a31ac5fa))
+
+
+### Bug Fixes
+
+* **desktop:** per-provider voice persistence + Grok default Ara (NAN-676) ([#300](https://github.com/yagudaev/voiceclaw/issues/300)) ([d634583](https://github.com/yagudaev/voiceclaw/commit/d634583a581693b26fc08f403f2179aa1f5bff79))
+
 ## [0.8.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.2...desktop-v0.8.0) (2026-04-30)
 
 
