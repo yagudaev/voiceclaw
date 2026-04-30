@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** add re-run onboarding button to Settings ([#285](https://github.com/yagudaev/voiceclaw/issues/285)) ([83e5662](https://github.com/yagudaev/voiceclaw/commit/83e5662f2ad80ff2171fa82a68ab698b4a77fdb1))
+
 ## [0.4.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.3.3...desktop-v0.4.0) (2026-04-30)
 
 
