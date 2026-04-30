@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** inline tool-call rows in chat (NAN-690) ([#287](https://github.com/yagudaev/voiceclaw/issues/287)) ([d792f35](https://github.com/yagudaev/voiceclaw/commit/d792f359d17dbcf7e299fa56311d6f7e287ef58d))
+
 ## [0.5.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-04-30)
 
 
