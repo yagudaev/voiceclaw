@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.9.0...desktop-v0.9.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** add missing archiver dep to fix Cannot find module crash ([#310](https://github.com/yagudaev/voiceclaw/issues/310)) ([e2e2561](https://github.com/yagudaev/voiceclaw/commit/e2e25613650fbacf572440281366057b3e2340cc))
+
 ## [0.9.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-04-30)
 
 
