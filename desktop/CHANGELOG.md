@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.2...desktop-v0.8.0) (2026-04-30)
+
+
+### Features
+
+* **desktop:** show/hide toggle on onboarding API key field (NAN-683) ([#294](https://github.com/yagudaev/voiceclaw/issues/294)) ([6aad653](https://github.com/yagudaev/voiceclaw/commit/6aad65359ab8a75b7f27256f1241f98bc0d532d4))
+
 ## [0.7.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.1...desktop-v0.7.2) (2026-04-30)
 
 
