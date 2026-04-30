@@ -53,11 +53,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           PRS: ${{ steps.release.outputs.prs }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           echo "$PRS" | jq -c '.[]' | while read -r pr; do
             number=$(echo "$pr" | jq -r '.number')
             echo "Enabling auto-merge on PR #$number"
-            gh pr merge "$number" --auto --squash --delete-branch || \
-              gh pr merge "$number" --auto --squash
+            gh pr merge "$number" --repo "$REPO" --auto --squash --delete-branch || \
+              gh pr merge "$number" --repo "$REPO" --auto --squash
           done
