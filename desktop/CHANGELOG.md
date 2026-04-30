@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.0...desktop-v0.7.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** inject BRAIN_GATEWAY_URL into relay + self-heal Gemini config (NAN-695) ([#298](https://github.com/yagudaev/voiceclaw/issues/298)) ([8fc5489](https://github.com/yagudaev/voiceclaw/commit/8fc54894f895c56e38dd0a582ffad7325d6bbfb1))
+
 ## [0.7.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-04-30)
 
 
