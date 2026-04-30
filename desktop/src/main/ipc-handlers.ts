@@ -237,7 +237,7 @@ export function registerIpcHandlers() {
     return { ok: true }
   })
 
-  // Permissions (macOS) — read + request mic / screen / accessibility.
+  // Permissions (macOS) — read + request mic / screen.
   ipcMain.handle('perm:getMediaStatus', (_e, kind: 'microphone' | 'screen') => {
     if (process.platform !== 'darwin') return 'granted'
     return systemPreferences.getMediaAccessStatus(kind)
@@ -246,18 +246,9 @@ export function registerIpcHandlers() {
     if (process.platform !== 'darwin') return true
     return systemPreferences.askForMediaAccess('microphone')
   })
-  ipcMain.handle('perm:getAccessibility', () => {
-    if (process.platform !== 'darwin') return true
-    return systemPreferences.isTrustedAccessibilityClient(false)
-  })
-  ipcMain.handle('perm:openSettings', (_e, pane: 'mic' | 'screen' | 'accessibility') => {
+  ipcMain.handle('perm:openSettings', (_e, pane: 'mic' | 'screen') => {
     if (process.platform !== 'darwin') return
-    const anchor =
-      pane === 'mic'
-        ? 'Privacy_Microphone'
-        : pane === 'screen'
-          ? 'Privacy_ScreenCapture'
-          : 'Privacy_Accessibility'
+    const anchor = pane === 'mic' ? 'Privacy_Microphone' : 'Privacy_ScreenCapture'
     void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`)
   })
 

@@ -15,7 +15,6 @@ type OnboardingPayload = {
   permissions?: {
     mic?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
     screen?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
-    accessibility?: 'granted' | 'denied' | 'unknown'
   }
   provider?: 'gemini' | 'openai' | 'xai'
   providerKeyValidated?: boolean
@@ -129,8 +128,7 @@ const electronAPI = {
         'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
       >,
     requestMic: () => ipcRenderer.invoke('perm:requestMic') as Promise<boolean>,
-    getAccessibility: () => ipcRenderer.invoke('perm:getAccessibility') as Promise<boolean>,
-    openSettings: (pane: 'mic' | 'screen' | 'accessibility') =>
+    openSettings: (pane: 'mic' | 'screen') =>
       ipcRenderer.invoke('perm:openSettings', pane) as Promise<void>,
   },
   provider: {

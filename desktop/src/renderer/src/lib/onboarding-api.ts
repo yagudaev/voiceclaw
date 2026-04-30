@@ -23,7 +23,6 @@ export type OnboardingPayload = {
   permissions?: {
     mic?: PermissionStatus
     screen?: PermissionStatus
-    accessibility?: 'granted' | 'denied' | 'unknown'
   }
   provider?: ProviderId
   providerKeyValidated?: boolean
@@ -61,8 +60,7 @@ declare global {
       permissions: {
         getMediaStatus: (kind: 'microphone' | 'screen') => Promise<PermissionStatus>
         requestMic: () => Promise<boolean>
-        getAccessibility: () => Promise<boolean>
-        openSettings: (pane: 'mic' | 'screen' | 'accessibility') => Promise<void>
+        openSettings: (pane: 'mic' | 'screen') => Promise<void>
       }
       provider: {
         listConfigured: () => Promise<ProviderId[]>
@@ -96,8 +94,7 @@ export const permissions = {
   getMediaStatus: (kind: 'microphone' | 'screen') =>
     window.electronAPI.permissions.getMediaStatus(kind),
   requestMic: () => window.electronAPI.permissions.requestMic(),
-  getAccessibility: () => window.electronAPI.permissions.getAccessibility(),
-  openSettings: (pane: 'mic' | 'screen' | 'accessibility') =>
+  openSettings: (pane: 'mic' | 'screen') =>
     window.electronAPI.permissions.openSettings(pane),
 }
 

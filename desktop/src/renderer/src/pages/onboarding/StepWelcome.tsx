@@ -82,7 +82,7 @@ export function StepWelcome({ onContinue, onStartOver }: Props) {
           <Beat
             eyebrow="02"
             title="Permissions"
-            description="Mic, screen, accessibility — all in one screen."
+            description="Mic and screen recording — all in one screen."
           />
           <Beat
             eyebrow="03"

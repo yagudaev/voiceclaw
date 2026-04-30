@@ -19,7 +19,6 @@ export type OnboardingPayload = {
   permissions?: {
     mic?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
     screen?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
-    accessibility?: 'granted' | 'denied' | 'unknown'
   }
   provider?: 'gemini' | 'openai' | 'xai'
   providerKeyValidated?: boolean

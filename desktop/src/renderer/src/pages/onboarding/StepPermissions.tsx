@@ -7,7 +7,7 @@ import {
   type PermissionStatus,
 } from '../../lib/onboarding-api'
 
-type PermissionId = 'mic' | 'screen' | 'accessibility'
+type PermissionId = 'mic' | 'screen'
 
 type Permission = {
   id: PermissionId
@@ -35,15 +35,6 @@ const PERMISSIONS: Permission[] = [
     optional: true,
     icon: IconScreen,
   },
-  {
-    id: 'accessibility',
-    name: 'Accessibility',
-    purpose: 'So push-to-talk works from anywhere.',
-    detail:
-      "Lets VoiceClaw listen for your hotkey even when another app is focused. Skippable, but recommended.",
-    optional: true,
-    icon: IconAccessibility,
-  },
 ]
 
 type Props = {
@@ -59,7 +50,6 @@ type StatusMap = Record<PermissionId, PermissionStatus | 'granted' | 'denied' | 
 const PREVIEW_STATUS: StatusMap = {
   mic: 'granted',
   screen: 'not-determined',
-  accessibility: 'denied',
 }
 
 export function StepPermissions({
@@ -72,22 +62,17 @@ export function StepPermissions({
   const [statuses, setStatuses] = useState<StatusMap>(
     previewMode
       ? PREVIEW_STATUS
-      : { mic: 'unknown', screen: 'unknown', accessibility: 'unknown' },
+      : { mic: 'unknown', screen: 'unknown' },
   )
 
   const refresh = useCallback(async () => {
     if (previewMode) return
     try {
-      const [mic, screen, accessibility] = await Promise.all([
+      const [mic, screen] = await Promise.all([
         permissions.getMediaStatus('microphone'),
         permissions.getMediaStatus('screen'),
-        permissions.getAccessibility(),
       ])
-      setStatuses({
-        mic,
-        screen,
-        accessibility: accessibility ? 'granted' : 'denied',
-      })
+      setStatuses({ mic, screen })
     } catch (err) {
       console.warn('[onboarding] perm refresh failed', err)
     }
@@ -114,13 +99,13 @@ export function StepPermissions({
       void refresh()
       return
     }
-    // For screen / accessibility, and for any denied state, jump straight
-    // to the matching pane in System Settings.
+    // For screen, and for any denied state, jump straight to the
+    // matching pane in System Settings.
     void permissions.openSettings(id)
   }
 
-  // We treat the mic as the only required permission. Screen + a11y can
-  // be added later. Allow continue if mic is granted OR not-determined
+  // We treat the mic as the only required permission. Screen can be
+  // added later. Allow continue if mic is granted OR not-determined
   // (user can grant mid-flow), and let the user explicitly skip too.
   const micUsable = statuses.mic === 'granted' || statuses.mic === 'not-determined'
   const allHandled = micUsable
@@ -139,12 +124,6 @@ export function StepPermissions({
             permissions: {
               mic: normalizeStatus(statuses.mic),
               screen: normalizeStatus(statuses.screen),
-              accessibility:
-                statuses.accessibility === 'granted'
-                  ? 'granted'
-                  : statuses.accessibility === 'denied'
-                    ? 'denied'
-                    : 'unknown',
             },
           }),
         disabled: !allHandled,
@@ -305,7 +284,7 @@ function ActionButton({
     )
   }
   // mic + not-determined → "Allow" (in-app prompt). Everything else
-  // (screen, accessibility, anything denied) → System Settings shortcut.
+  // (screen, anything denied) → System Settings shortcut.
   const inAppRequest = permissionId === 'mic' && status === 'not-determined'
   const label = inAppRequest ? 'Allow' : 'Open System Settings'
   return (
@@ -354,18 +333,6 @@ function IconScreen(props: SVGProps<SVGSVGElement>) {
       <path d="M8 21h8" strokeWidth="1.6" strokeLinecap="round" />
       <path d="M12 17v4" strokeWidth="1.6" strokeLinecap="round" />
       <circle cx="18" cy="8" r="1" fill="var(--accent)" stroke="none" />
-    </svg>
-  )
-}
-
-function IconAccessibility(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
-      <circle cx="12" cy="5" r="1.6" strokeWidth="1.6" />
-      <path d="M5 9h14" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M9 9v3l-2 8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M15 9v3l2 8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9 12h6" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }
