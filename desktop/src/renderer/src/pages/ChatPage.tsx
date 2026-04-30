@@ -31,11 +31,10 @@ import {
   updateConversationTitle,
   type Message,
 } from '../lib/db'
+import { getVoiceForProvider, providerForModel } from '../lib/voice-prefs'
 
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
 const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
-const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
-const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
 export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -297,7 +296,7 @@ export function ChatPage() {
     const serverUrl = (await getSetting('realtime_server_url')) || (await defaultRelayUrl())
     activeRelayUrlRef.current = serverUrl
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
-    const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
+    const voice = await getVoiceForProvider(providerForModel(model))
     const apiKey = (await getSetting('realtime_api_key')) || ''
     // Tavily key is only forwarded when the user hasn't explicitly disabled
     // web_search. The setting is undefined on first run, which we treat as
@@ -703,14 +702,6 @@ function normalizeRealtimeModel(model: string | null): typeof REALTIME_MODELS[nu
   return (REALTIME_MODELS as readonly string[]).includes(model ?? '')
     ? model as typeof REALTIME_MODELS[number]
     : DEFAULT_REALTIME_MODEL
-}
-
-function normalizeRealtimeVoice(model: typeof REALTIME_MODELS[number], voice: string | null): string {
-  if (model.startsWith('grok-voice-')) {
-    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
-  }
-
-  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
 }
 
 async function defaultRelayUrl(): Promise<string> {

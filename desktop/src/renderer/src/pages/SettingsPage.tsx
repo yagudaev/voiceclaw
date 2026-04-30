@@ -10,12 +10,19 @@ import { useTheme, type Theme } from '../lib/use-theme'
 import { enumerateAudioDevices, type AudioDevice } from '../lib/audio-engine'
 import { getSetting, setSetting } from '../lib/db'
 import {
+  GEMINI_VOICES,
+  XAI_VOICES,
+  getVoiceForProvider,
+  isVoiceForProvider,
+  providerForModel,
+  setVoiceForProvider,
+} from '../lib/voice-prefs'
+import {
   captureRenderer,
   isOptedOutRenderer,
   setOptedOutRenderer,
 } from '../lib/telemetry'
 
-const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Puck: 'Puck (M)',
   Charon: 'Charon (M)',
@@ -27,7 +34,6 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Zephyr: 'Zephyr (F)',
 }
 
-const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 const XAI_VOICE_LABELS: Record<typeof XAI_VOICES[number], string> = {
   eve: 'Eve (F)',
   ara: 'Ara (F)',
@@ -119,10 +125,8 @@ export function SettingsPage() {
       const loadedModel = normalizeRealtimeModel(m)
       setModel(loadedModel)
       if (m && m !== loadedModel) setSetting('realtime_model', loadedModel)
-      const v = await getSetting('realtime_voice')
-      const loadedVoice = normalizeRealtimeVoice(loadedModel, v)
+      const loadedVoice = await getVoiceForProvider(providerForModel(loadedModel))
       setVoice(loadedVoice)
-      if (v !== loadedVoice) setSetting('realtime_voice', loadedVoice)
       const vol = await getSetting('realtime_volume')
       if (vol) setVolume(parseFloat(vol))
       const inDev = await getSetting('input_device_id')
@@ -198,24 +202,21 @@ export function SettingsPage() {
   const updateModel = useCallback((v: RealtimeModel) => {
     setModel(v)
     if (loadedRef.current) save('realtime_model', v)
-    // Reset voice when switching providers
-    const isGemini = v.startsWith('gemini-')
-    const currentIsGemini = (GEMINI_VOICES as readonly string[]).includes(voice)
-    const isXAI = v.startsWith('grok-voice-')
-    const currentIsXAI = (XAI_VOICES as readonly string[]).includes(voice)
-    if (isGemini && !currentIsGemini) {
-      setVoice('Zephyr')
-      save('realtime_voice', 'Zephyr')
-    } else if (isXAI && !currentIsXAI) {
-      setVoice('eve')
-      save('realtime_voice', 'eve')
-    }
+    const nextProvider = providerForModel(v)
+    if (isVoiceForProvider(nextProvider, voice)) return
+    void (async () => {
+      const restored = await getVoiceForProvider(nextProvider)
+      setVoice(restored)
+      if (loadedRef.current) await setVoiceForProvider(nextProvider, restored)
+    })()
   }, [save, voice])
 
   const updateVoice = useCallback((v: string) => {
     setVoice(v)
-    if (loadedRef.current) save('realtime_voice', v)
-  }, [save])
+    if (loadedRef.current) {
+      void setVoiceForProvider(providerForModel(model), v)
+    }
+  }, [model])
 
   const updateVolume = useCallback((v: number) => {
     setVolume(v)
@@ -824,14 +825,6 @@ function isRealtimeModel(model: string | null): model is RealtimeModel {
 
 function normalizeRealtimeModel(model: string | null): RealtimeModel {
   return isRealtimeModel(model) ? model : DEFAULT_REALTIME_MODEL
-}
-
-function normalizeRealtimeVoice(model: RealtimeModel, voice: string | null): string {
-  if (model.startsWith('grok-voice-')) {
-    return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
-  }
-
-  return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'
 }
 
 // --- Helper Components ---

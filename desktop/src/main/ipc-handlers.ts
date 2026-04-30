@@ -33,6 +33,11 @@ import { detectBrains } from './brain-detect'
 import { startSignInFlow } from './auth'
 import { getMainWindow } from './window-lifecycle'
 import {
+  getActiveProvider,
+  providerForVoice,
+  setVoiceForProviderSync,
+} from './voice-prefs'
+import {
   capture as telemetryCapture,
   captureException as telemetryCaptureException,
   getDistinctId,
@@ -347,10 +352,8 @@ export function registerIpcHandlers() {
   ipcMain.handle('identity:save', (_e, patch: Partial<AgentIdentity>) => {
     const saved = writeAgentIdentity(patch)
     if (saved.voice) {
-      const db = getDb()
-      db.prepare(
-        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?',
-      ).run('realtime_voice', saved.voice, saved.voice)
+      const provider = providerForVoice(saved.voice) ?? getActiveProvider()
+      setVoiceForProviderSync(provider, saved.voice)
     }
     serviceManager.restart('relay', () => buildRelayEnv()).catch((err) => {
       console.warn('[relay] restart after identity save failed', err)
