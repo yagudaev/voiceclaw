@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.1...desktop-v0.7.2) (2026-04-30)
+
+
+### Bug Fixes
+
+* **desktop:** wire Google sign-in callback to complete onboarding (NAN-694) ([#301](https://github.com/yagudaev/voiceclaw/issues/301)) ([1ac1d60](https://github.com/yagudaev/voiceclaw/commit/1ac1d60591611fd8e7d38ff8dfb759534df8630f))
+
 ## [0.7.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.7.0...desktop-v0.7.1) (2026-04-30)
 
 
