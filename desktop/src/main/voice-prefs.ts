@@ -1,7 +1,3 @@
-// Main-process mirror of the renderer's per-provider voice preferences.
-// Used by IPC handlers that need to keep the persisted voice map in sync
-// with state owned in main (e.g. agent identity).
-
 import { getDb } from './db'
 
 export const GEMINI_VOICES = [

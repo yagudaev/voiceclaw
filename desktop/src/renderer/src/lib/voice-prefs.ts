@@ -1,7 +1,3 @@
-// Per-provider voice preferences. Voice selection is persisted as a
-// JSON map keyed by provider so switching models in Settings restores
-// the user's prior voice for that provider instead of dropping it.
-
 import { getSetting, setSetting } from './db'
 
 export const GEMINI_VOICES = [
