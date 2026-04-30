@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.1.1...mobile-v1.2.0) (2026-04-30)
+
+
+### Features
+
+* **mobile:** inline tool-call rows in chat ([#289](https://github.com/yagudaev/voiceclaw/issues/289)) ([c17174b](https://github.com/yagudaev/voiceclaw/commit/c17174b413c48d7bb149afed85f3d47a50ecf522))
+
 ## [1.1.1](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.1.0...mobile-v1.1.1) (2026-04-27)
 
 
