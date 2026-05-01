@@ -1,0 +1,8 @@
+version: 0.10.3
+files:
+  - url: VoiceClaw-0.10.3-arm64.dmg
+    sha512: Ivn29p40kLhS28hijSIsRUmZ6ziZb/acqH4t54kmofo8qGXcuNUvzOJ4gT3xucopz14noHn7Vx5hbpTqB7I1RQ==
+    size: 241397534
+path: VoiceClaw-0.10.3-arm64.dmg
+sha512: Ivn29p40kLhS28hijSIsRUmZ6ziZb/acqH4t54kmofo8qGXcuNUvzOJ4gT3xucopz14noHn7Vx5hbpTqB7I1RQ==
+releaseDate: '2026-05-01T01:28:28.593Z'
