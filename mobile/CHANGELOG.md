@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.2.0...mobile-v1.3.0) (2026-05-01)
+
+
+### Features
+
+* **mobile:** wire release-please version bump + add release-mobile workflow scaffold ([#275](https://github.com/yagudaev/voiceclaw/issues/275)) ([5c1e4e8](https://github.com/yagudaev/voiceclaw/commit/5c1e4e8dc88c30d6b9b6e1253d82313c30f6f803))
+
 ## [1.2.0](https://github.com/yagudaev/voiceclaw/compare/mobile-v1.1.1...mobile-v1.2.0) (2026-04-30)
 
 
