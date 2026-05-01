@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.38](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.37...desktop-v0.10.38) (2026-05-01)
+
+
+### Features
+
+* **desktop:** allow typed-text interrupt of streaming reply (NAN-704) ([#345](https://github.com/yagudaev/voiceclaw/issues/345)) ([9156fdf](https://github.com/yagudaev/voiceclaw/commit/9156fdf8c08608e7e325434ed9b83ac95cb0f530))
+
 ## [0.10.37](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.36...desktop-v0.10.37) (2026-05-01)
 
 
