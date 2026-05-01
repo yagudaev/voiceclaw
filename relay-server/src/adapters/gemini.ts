@@ -1,12 +1,14 @@
 // Gemini Live adapter — translates relay protocol ↔ Gemini Live WebSocket events
 
 import WebSocket from "ws"
+import type { IncomingMessage } from "node:http"
 import type { SessionConfigEvent } from "../types.js"
 import type { AdapterCapabilities, ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getGeminiTools } from "../tools/index.js"
 import { buildHistorySplit, formatSummaryPreamble, formatRecentTurnsPreamble, type HistoryMessage } from "../history.js"
 import { log, error as logError } from "../log.js"
+import { mapAdapterError } from "./error-map.js"
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
@@ -151,6 +153,30 @@ export class GeminiAdapter implements ProviderAdapter {
         }
       }
 
+      const onUnexpectedResponse = (_req: unknown, res: IncomingMessage) => {
+        const httpStatus = res.statusCode ?? null
+        logError(`[gemini] Upstream unexpected response: HTTP ${httpStatus}`)
+        const chunks: Buffer[] = []
+        res.on("data", (chunk: Buffer) => chunks.push(chunk))
+        res.on("end", () => {
+          const bodyExcerpt = Buffer.concat(chunks).toString("utf8").slice(0, 500) || null
+          const mapped = mapAdapterError("gemini", httpStatus, bodyExcerpt)
+          const err = Object.assign(
+            new Error(`Gemini WebSocket upgrade failed: ${httpStatus}`),
+            { httpStatus, bodyExcerpt, userMessage: mapped.userMessage, actionUrl: mapped.actionUrl },
+          )
+          finish(err)
+          this.sendToClient?.({
+            type: "error",
+            message: mapped.userMessage,
+            code: httpStatus ?? 502,
+            userMessage: mapped.userMessage,
+            actionUrl: mapped.actionUrl,
+            httpStatus,
+          })
+        })
+      }
+
       const onError = (err: Error) => {
         logError("[gemini] WebSocket error:", err.message)
         finish(err)
@@ -178,6 +204,7 @@ export class GeminiAdapter implements ProviderAdapter {
           ws.off("message", onMessage)
           ws.off("error", onError)
           ws.off("close", onClose)
+          ws.off("unexpected-response", onUnexpectedResponse)
           ws.on("error", () => { /* discard */ })
           ws.on("close", () => { /* discard */ })
           if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
@@ -196,6 +223,7 @@ export class GeminiAdapter implements ProviderAdapter {
       ws.on("message", onMessage)
       ws.on("error", onError)
       ws.on("close", onClose)
+      ws.on("unexpected-response", onUnexpectedResponse)
     })
   }
 
@@ -217,12 +245,28 @@ export class GeminiAdapter implements ProviderAdapter {
       logError(`[gemini] upstream closed mid-tool-call — cannot safely resume (pending=${this.pendingToolCalls}, deferred=${this.rotateAfterToolCalls})`)
       this.pendingToolCalls = 0
       this.rotateAfterToolCalls = false
-      this.sendToClient?.({ type: "error", message: "upstream connection closed mid-tool-call", code: 502 })
+      const mapped = mapAdapterError("gemini", null, null)
+      this.sendToClient?.({
+        type: "error",
+        message: mapped.userMessage,
+        code: 502,
+        userMessage: mapped.userMessage,
+        actionUrl: mapped.actionUrl,
+        httpStatus: null,
+      })
       return
     }
 
     if (!RECONNECTABLE_CLOSE_CODES.has(code) || !this.resumptionHandle) {
-      this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+      const mapped = mapAdapterError("gemini", null, null)
+      this.sendToClient?.({
+        type: "error",
+        message: mapped.userMessage,
+        code: 502,
+        userMessage: mapped.userMessage,
+        actionUrl: mapped.actionUrl,
+        httpStatus: null,
+      })
       return
     }
 
@@ -239,7 +283,15 @@ export class GeminiAdapter implements ProviderAdapter {
     if (this.isReconnecting || this.disconnected) return
     if (!forceFresh && !this.resumptionHandle) {
       logError(`[gemini] reconnect requested (${reason}) but no resumption handle — giving up`)
-      this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+      const mapped = mapAdapterError("gemini", null, null)
+      this.sendToClient?.({
+        type: "error",
+        message: mapped.userMessage,
+        code: 502,
+        userMessage: mapped.userMessage,
+        actionUrl: mapped.actionUrl,
+        httpStatus: null,
+      })
       return
     }
 
@@ -304,7 +356,15 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     this.isReconnecting = false
-    this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+    const mapped = mapAdapterError("gemini", null, null)
+    this.sendToClient?.({
+      type: "error",
+      message: mapped.userMessage,
+      code: 502,
+      userMessage: mapped.userMessage,
+      actionUrl: mapped.actionUrl,
+      httpStatus: null,
+    })
   }
 
   sendAudio(data: string) {

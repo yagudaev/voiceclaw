@@ -33,8 +33,9 @@ import { VoiceClawMark } from '../components/brand/VoiceClawMark'
 import { ScreenSharePicker } from '../components/ScreenSharePicker'
 import { VolumeControl } from '../components/VolumeControl'
 import { ToolCallRow } from '../components/ToolCallRow'
+import { AdapterErrorBanner } from '../components/AdapterErrorBanner'
 import { ScreenCapture, type ScreenSource } from '../lib/screen-capture'
-import { useRealtime, type RealtimeCallbacks } from '../lib/use-realtime'
+import { useRealtime, type RealtimeCallbacks, type AdapterErrorPayload } from '../lib/use-realtime'
 import { captureRenderer } from '../lib/telemetry'
 import { useConversationContext } from '../lib/conversation-context'
 import {
@@ -72,7 +73,11 @@ import { streamTextChat } from '../lib/text-chat'
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
 const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
 
-export function ChatPage() {
+interface ChatPageProps {
+  onNavigateToSettings?: () => void
+}
+
+export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
   const [messages, setMessages] = useState<Message[]>([])
   const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([])
   const [conversationId, setConversationId] = useState<number | null>(null)
@@ -92,6 +97,7 @@ export function ChatPage() {
   const streamingRoleRef = useRef<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
   const [connectionError, setConnectionError] = useState('')
+  const [adapterError, setAdapterError] = useState<AdapterErrorPayload | null>(null)
   const [activeRealtimeModel, setActiveRealtimeModel] = useState('')
   const [showScreenPicker, setShowScreenPicker] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
@@ -334,12 +340,16 @@ export function ChatPage() {
       setStreamingText('')
       streamingRoleRef.current = 'assistant'
     },
-    onError: (message, code) => {
+    onError: (message, code, payload) => {
       console.error('[ChatPage] Relay error:', message)
       if (code === 401) {
         captureRenderer('relay_unauthorized', { relay_url: activeRelayUrlRef.current })
       }
-      setConnectionError(message)
+      if (payload?.userMessage) {
+        setAdapterError(payload)
+      } else {
+        setConnectionError(message)
+      }
       setIsConnecting(false)
       setIsCallActive(false)
       realtimeRef.current?.stop()
@@ -361,6 +371,7 @@ export function ChatPage() {
   const startCall = useCallback(async () => {
     setConnectionError('')
     setIsConnecting(true)
+    setAdapterError(null)
     setOutputMuted(false)
     const serverUrl = (await getSetting('realtime_server_url')) || (await defaultRelayUrl())
     activeRelayUrlRef.current = serverUrl
@@ -805,6 +816,12 @@ export function ChatPage() {
       onDrop={handleDrop}
       onPaste={handlePaste}
     >
+      <AdapterErrorBanner
+        error={adapterError}
+        onDismiss={() => setAdapterError(null)}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-background/65 backdrop-blur">
         <div className="text-sm text-muted-foreground">

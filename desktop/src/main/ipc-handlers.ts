@@ -565,6 +565,12 @@ export function registerIpcHandlers() {
     installNow(source)
   })
 
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+      return shell.openExternal(url)
+    }
+  })
+
   // Network: test relay server connection from main process (avoids CORS)
   ipcMain.handle('net:healthCheck', async (_e, url: string) => {
     const httpUrl = toHealthUrl(url)

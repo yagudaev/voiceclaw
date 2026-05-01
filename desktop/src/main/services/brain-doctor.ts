@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { getProviderKey } from '../provider-keys'
 
 export type CheckStatus = 'PASS' | 'FAIL' | 'SKIP'
 
@@ -467,6 +468,73 @@ async function checkGeminiApiKey(acc: Acc, configPath: string): Promise<void> {
   }
 }
 
+async function checkXaiApiKey(acc: Acc): Promise<void> {
+  const apiKey = getProviderKey('xai')
+  if (!apiKey) {
+    skip(acc, 'xAI API key reachability', 'skipped (no xAI key configured)')
+    return
+  }
+  try {
+    const res = await safeFetch(
+      'https://api.x.ai/v1/models',
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+      10_000,
+    )
+    const text = await res.text()
+    if (res.ok) {
+      pass(acc, 'xAI API key reachability', `HTTP ${res.status}`)
+    } else {
+      let hint = 'Check your xAI API key in VoiceClaw Settings → Provider tab'
+      if (res.status === 401) hint = 'API key invalid or revoked. Re-enter it in Settings → Provider'
+      if (res.status === 402 || res.status === 429)
+        hint = 'xAI account out of credits or rate limited. Top up at https://console.x.ai/team'
+      if (res.status === 403) hint = 'xAI API key lacks permission. Check key settings at https://console.x.ai'
+      fail(acc, 'xAI API key reachability', `HTTP ${res.status}: ${text.substring(0, 200)}`, hint)
+    }
+  } catch (err) {
+    fail(
+      acc,
+      'xAI API key reachability',
+      `fetch failed: ${(err as Error).message}`,
+      'Check internet connectivity; if behind a VPN/proxy, try disabling it',
+    )
+  }
+}
+
+async function checkOpenAiApiKey(acc: Acc): Promise<void> {
+  const apiKey = getProviderKey('openai')
+  if (!apiKey) {
+    skip(acc, 'OpenAI API key reachability', 'skipped (no OpenAI key configured)')
+    return
+  }
+  try {
+    const res = await safeFetch(
+      'https://api.openai.com/v1/models',
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+      10_000,
+    )
+    const text = await res.text()
+    if (res.ok) {
+      pass(acc, 'OpenAI API key reachability', `HTTP ${res.status}`)
+    } else {
+      let hint = 'Check your OpenAI API key in VoiceClaw Settings → Provider tab'
+      if (res.status === 401) hint = 'API key invalid or revoked. Re-enter it in Settings → Provider'
+      if (res.status === 402 || (res.status === 429 && text.includes('insufficient_quota')))
+        hint = 'OpenAI quota exceeded. Top up at https://platform.openai.com/account/billing'
+      if (res.status === 429 && !text.includes('insufficient_quota'))
+        hint = 'OpenAI rate limit hit. Try again in a moment'
+      fail(acc, 'OpenAI API key reachability', `HTTP ${res.status}: ${text.substring(0, 200)}`, hint)
+    }
+  } catch (err) {
+    fail(
+      acc,
+      'OpenAI API key reachability',
+      `fetch failed: ${(err as Error).message}`,
+      'Check internet connectivity; if behind a VPN/proxy, try disabling it',
+    )
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -488,6 +556,8 @@ export async function runAllChecks(): Promise<DoctorResult> {
   await checkPortAgreement(acc, relayPort, openclawPort)
   await checkOpenclawCompletions(acc, openclawPort, configPath)
   await checkGeminiApiKey(acc, configPath)
+  await checkXaiApiKey(acc)
+  await checkOpenAiApiKey(acc)
 
   return {
     checks: acc,

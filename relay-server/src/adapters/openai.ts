@@ -1,12 +1,14 @@
 // OpenAI Realtime adapter — translates relay protocol ↔ OpenAI Realtime WebSocket events
 
 import WebSocket from "ws"
+import type { IncomingMessage } from "node:http"
 import type { SessionConfigEvent } from "../types.js"
 import type { AdapterCapabilities, ProviderAdapter, SendToClient } from "./types.js"
 import { buildInstructions } from "../instructions.js"
 import { getTools } from "../tools/index.js"
 import { buildHistorySplit, formatStampedTurnText, formatSummaryPreamble, type HistoryMessage } from "../history.js"
 import { log, error as logError } from "../log.js"
+import { mapAdapterError } from "./error-map.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 const DEFAULT_MODEL = "gpt-realtime-mini"
@@ -213,6 +215,32 @@ export class OpenAIAdapter implements ProviderAdapter {
         }
       })
 
+      this.upstream.on("unexpected-response", (_req, res: IncomingMessage) => {
+        const httpStatus = res.statusCode ?? null
+        logError(`[${this.providerName}] Upstream unexpected response: HTTP ${httpStatus}`)
+        const chunks: Buffer[] = []
+        res.on("data", (chunk: Buffer) => chunks.push(chunk))
+        res.on("end", () => {
+          const bodyExcerpt = Buffer.concat(chunks).toString("utf8").slice(0, 500) || null
+          const mapped = mapAdapterError(this.providerName, httpStatus, bodyExcerpt)
+          const err = Object.assign(
+            new Error(`Unexpected server response: ${httpStatus}`),
+            { httpStatus, bodyExcerpt, userMessage: mapped.userMessage, actionUrl: mapped.actionUrl },
+          )
+          if (!this.isRotating) {
+            reject(err)
+            this.sendToClient?.({
+              type: "error",
+              message: mapped.userMessage,
+              code: httpStatus ?? 502,
+              userMessage: mapped.userMessage,
+              actionUrl: mapped.actionUrl,
+              httpStatus,
+            })
+          }
+        })
+      })
+
       this.upstream.on("error", (err) => {
         logError(`[${this.providerName}] Upstream error:`, err.message)
         if (!this.isRotating) reject(err)
@@ -220,8 +248,16 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       this.upstream.on("close", (code, reason) => {
         log(`[${this.providerName}] Upstream closed: ${code} ${String(reason)}`)
-        if (!this.isRotating) {
-          this.sendToClient?.({ type: "error", message: "upstream connection closed", code: 502 })
+        if (!this.isRotating && code !== 1000) {
+          const mapped = mapAdapterError(this.providerName, null, null)
+          this.sendToClient?.({
+            type: "error",
+            message: mapped.userMessage,
+            code: 502,
+            userMessage: mapped.userMessage,
+            actionUrl: mapped.actionUrl,
+            httpStatus: null,
+          })
         }
       })
     })
@@ -294,7 +330,18 @@ export class OpenAIAdapter implements ProviderAdapter {
       log(`[${this.providerName}] Session rotation complete`)
     } catch (err) {
       logError(`[${this.providerName}] Rotation failed:`, err)
-      this.sendToClient?.({ type: "error", message: "session rotation failed", code: 502 })
+      const errObj = err as Record<string, unknown>
+      const httpStatus = (typeof errObj?.httpStatus === "number" ? errObj.httpStatus : null)
+      const bodyExcerpt = (typeof errObj?.bodyExcerpt === "string" ? errObj.bodyExcerpt : null)
+      const mapped = mapAdapterError(this.providerName, httpStatus, bodyExcerpt)
+      this.sendToClient?.({
+        type: "error",
+        message: mapped.userMessage,
+        code: httpStatus ?? 502,
+        userMessage: mapped.userMessage,
+        actionUrl: mapped.actionUrl,
+        httpStatus,
+      })
     } finally {
       this.isRotating = false
     }

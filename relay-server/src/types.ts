@@ -274,4 +274,7 @@ export interface ErrorEvent {
   type: "error"
   message: string
   code: number
+  userMessage?: string
+  actionUrl?: string | null
+  httpStatus?: number | null
 }

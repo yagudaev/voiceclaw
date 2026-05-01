@@ -312,6 +312,9 @@ const electronAPI = {
   attachments: {
     pickImage: () => ipcRenderer.invoke('attachments:pickImage') as Promise<PickImageResult>,
   },
+  shell: {
+    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) as Promise<void>,
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

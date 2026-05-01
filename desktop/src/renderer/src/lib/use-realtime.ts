@@ -43,6 +43,14 @@ export interface RealtimeConfig {
   tracingEnabled?: boolean
 }
 
+export interface AdapterErrorPayload {
+  message: string
+  code: number
+  userMessage?: string
+  actionUrl?: string | null
+  httpStatus?: number | null
+}
+
 export interface RealtimeCallbacks {
   onTranscriptDelta?: (text: string, role: 'user' | 'assistant') => void
   onTranscriptDone?: (text: string, role: 'user' | 'assistant') => void
@@ -57,7 +65,7 @@ export interface RealtimeCallbacks {
   onSessionReady?: (sessionId: string) => void
   onSessionEnded?: (summary: string) => void
   onDisconnect?: () => void
-  onError?: (message: string, code: number) => void
+  onError?: (message: string, code: number, payload?: AdapterErrorPayload) => void
 }
 
 export interface RealtimeControls {
@@ -232,7 +240,13 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
         case 'error':
           console.warn(`[useRealtime] Error: ${data.message} (${data.code})`)
-          cb.onError?.(data.message, data.code)
+          cb.onError?.(data.message, data.code, {
+            message: data.message,
+            code: data.code,
+            userMessage: data.userMessage,
+            actionUrl: data.actionUrl,
+            httpStatus: data.httpStatus,
+          })
           break
       }
     },

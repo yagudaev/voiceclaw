@@ -124,7 +124,7 @@ export function App() {
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
         <main className="flex-1 flex flex-col overflow-hidden relative">
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'chat' ? 'hidden' : ''}`}>
-            <ChatPage />
+            <ChatPage onNavigateToSettings={() => setActiveTab('settings')} />
           </div>
           <div className={`flex-1 flex flex-col overflow-hidden ${activeTab !== 'history' ? 'hidden' : ''}`}>
             <HistoryPage isVisible={activeTab === 'history'} onNavigateToChat={navigateToChat} />
