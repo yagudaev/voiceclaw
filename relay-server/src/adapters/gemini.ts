@@ -337,6 +337,22 @@ export class GeminiAdapter implements ProviderAdapter {
     // "are you still there?" prompt fires correctly during silent screen sharing.
   }
 
+  // AX-text channel paired with the previous sendFrame. Sent as a separate
+  // realtimeInput.text — Gemini Live has no combined video+text part, but
+  // adjacent realtimeInput sends in the same WS tick are treated as a single
+  // moment. Same watchdog policy as sendFrame: do not pet on AX text.
+  // Classified as "video" for queueing during reconnect so it shares the
+  // oldest-drop discipline of its paired image — at 1 FPS, drift between
+  // image and AX text after a rotation is bounded to one second.
+  sendAxText(text: string) {
+    if (!text) return
+    this.sendUpstream({
+      realtimeInput: {
+        text,
+      },
+    }, "video")
+  }
+
   commitAudio() {
     // Gemini uses automatic VAD — no explicit commit needed
   }

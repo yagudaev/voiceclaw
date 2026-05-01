@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
+import { registerAxCaptureHandlers } from './ax-capture'
 import { closeDb, getDb } from './db'
 import { createTray, destroyTray, rebuildTrayMenu, setTrayState } from './tray'
 import {
@@ -91,6 +92,7 @@ app.whenReady().then(async () => {
   registerAuthDeepLink()
   registerIpcHandlers()
   registerScreenCaptureHandlers()
+  registerAxCaptureHandlers()
   registerTelemetryHandlers()
   const firstLaunch = isFirstLaunch()
   telemetryIdentify()

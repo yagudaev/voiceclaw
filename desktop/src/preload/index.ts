@@ -234,6 +234,36 @@ const electronAPI = {
         }>
       >,
   },
+  ax: {
+    capture: () =>
+      ipcRenderer.invoke('ax:capture') as Promise<
+        | {
+            ok: true
+            app: string
+            window: string
+            elements: Array<{
+              role: string
+              text: string
+              frame?: { x: number; y: number; w: number; h: number }
+            }>
+            truncated?: boolean
+          }
+        | {
+            ok: false
+            error:
+              | 'permission_denied'
+              | 'no_frontmost'
+              | 'no_window'
+              | 'ax_failed'
+              | 'unavailable'
+              | 'timeout'
+              | 'sidecar_unavailable'
+          }
+      >,
+    permission: () =>
+      ipcRenderer.invoke('ax:permission') as Promise<{ granted: boolean }>,
+    openSettings: () => ipcRenderer.invoke('ax:openSettings') as Promise<void>,
+  },
   logs: {
     reveal: () => ipcRenderer.invoke('logs:reveal') as Promise<{ ok: boolean, path: string }>,
   },

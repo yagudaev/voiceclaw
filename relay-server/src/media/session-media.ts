@@ -38,7 +38,7 @@ export type TurnAudioEntry = {
 export type TurnVideoEntry = {
   turnId: string
   videoDir: string | null
-  frames: { file: string, offset_ms: number }[]
+  frames: { file: string, offset_ms: number, ax_text?: string }[]
   turnStartMs: number // session-relative
 }
 

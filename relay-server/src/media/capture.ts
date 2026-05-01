@@ -136,7 +136,7 @@ export class MediaCapture {
     t.assistantBytes += buf.byteLength
   }
 
-  onVideoFrame(base64Jpeg: string, offsetMs: number): void {
+  onVideoFrame(base64Jpeg: string, offsetMs: number, axText?: string): void {
     const t = this.currentTurn
     if (!t || !t.videoDir) return
     // Lazy-create the per-turn video dir on first frame so audio-only turns
@@ -158,7 +158,13 @@ export class MediaCapture {
       // timings.json can't list a frame whose JPEG hasn't landed yet.
       const p = fs.writeFile(abs, buf).catch(() => undefined)
       t.frameWrites.push(p)
-      t.videoFrames.push({ offset_ms: offsetMs, file })
+      // ax_text capped at 8KB per frame so timings.json stays sane on
+      // long screen-share turns. Truncation already happens client-side
+      // (see desktop ax-capture formatAxText), but we re-cap defensively.
+      const trimmed = axText && axText.length > 0
+        ? truncateBytes(axText, 8 * 1024)
+        : undefined
+      t.videoFrames.push({ offset_ms: offsetMs, file, ax_text: trimmed })
     } catch {
       // Drop the frame on sync-encode failure — don't kill the turn.
     }
@@ -390,7 +396,7 @@ type TurnState = {
   assistantBytes: number
   videoDir: string | null
   videoDirReady: boolean
-  videoFrames: { offset_ms: number; file: string }[]
+  videoFrames: { offset_ms: number; file: string; ax_text?: string }[]
   frameWrites: Promise<void | undefined>[]
 }
 
@@ -401,7 +407,7 @@ type CompletedTurn = {
   assistantPcmPath: string | null
   assistantBytes: number
   videoDir: string | null
-  videoFrames: { offset_ms: number; file: string }[]
+  videoFrames: { offset_ms: number; file: string; ax_text?: string }[]
   turnStartRelMs: number
 }
 
@@ -491,6 +497,14 @@ function isSafeSegment(s: string): boolean {
 // resistant against an adversary.
 function hashShort(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 16)
+}
+
+function truncateBytes(s: string, maxBytes: number): string {
+  const buf = Buffer.from(s, "utf8")
+  if (buf.byteLength <= maxBytes) return s
+  // Cut and re-decode lossy. Trailing replacement-char (U+FFFD) from a split
+  // multi-byte sequence is harmless for tracer rows.
+  return buf.slice(0, maxBytes).toString("utf8") + "…"
 }
 
 // Exposed so callers (e.g. tests) can assert the resolved media root matches

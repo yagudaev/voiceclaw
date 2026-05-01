@@ -12,6 +12,7 @@ step("build relay-server bundle", () =>
   run("yarn", ["workspace", "relay-server", "run", "build:bundle"], repoRoot),
 )
 step("build openclaw bundle", () => run("node", ["scripts/build-openclaw-bundle.mjs"], desktopRoot))
+step("build ax-capture sidecar", () => run("node", ["scripts/build-ax-capture.mjs"], desktopRoot))
 
 function step(label, fn) {
   console.log(`\n[build-services] ${label}`)

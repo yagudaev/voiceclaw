@@ -32,6 +32,14 @@ export interface ProviderAdapter {
   /** Forward a video frame from client to provider */
   sendFrame(data: string, mimeType?: string): void
 
+  /**
+   * Forward a macOS Accessibility-API text snapshot from the client to the
+   * provider as a sibling text input adjacent to the most recent video chunk.
+   * Optional — only Gemini implements it; other adapters that don't accept
+   * video should leave it undefined and the relay will simply not forward.
+   */
+  sendAxText?(text: string): void
+
   /** Request a response from the provider */
   createResponse(): void
 
