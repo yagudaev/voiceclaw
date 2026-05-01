@@ -476,6 +476,12 @@ export function ChatPage() {
   }, [toggleMute, endCall])
 
   const handleComposerSubmit = useCallback(async (text: string) => {
+    if (textChatCancelRef.current) {
+      textChatCancelRef.current()
+      textChatCancelRef.current = null
+      setStreamingText('')
+      setIsThinking(false)
+    }
     const convId = await ensureConversation()
     const persisted = await addMessage(convId, 'user', text)
     setTypedMessageIds((prev) => {
@@ -525,7 +531,6 @@ export function ChatPage() {
     setIsThinking(true)
     streamingRoleRef.current = 'assistant'
     setStreamingRole('assistant')
-    textChatCancelRef.current?.()
     textChatCancelRef.current = streamTextChat(text, {
       serverUrl,
       apiKey,
@@ -936,7 +941,6 @@ export function ChatPage() {
       <ChatComposer
         onSubmit={handleComposerSubmit}
         onAttach={handlePickImage}
-        disabled={isThinking || !!streamingText}
       />
 
       {/* Call controls */}

@@ -64,8 +64,8 @@ The chat window's existing shortcuts still work alongside the composer:
 
 The composer respects the OS clipboard. Cmd+V pastes the exact text from your clipboard, including hidden characters like tabs and newlines — there's no normalization, sanitization, or auto-formatting between the clipboard and the assistant.
 
-## When the composer goes quiet
+## Interrupting a streaming reply
 
-The composer can disable itself temporarily — for example while a previous typed message is still streaming a reply. The send button greys out and the field rejects Enter until the reply finishes. This prevents two parallel turns from racing each other in the same conversation.
+Sometimes the assistant is halfway through a long reply and you already know you want to take it in a different direction. You can. Just type the new message and press Enter — the in-flight reply stops mid-sentence and the new turn takes over. The half-finished text disappears from the chat and isn't saved to history; only the new exchange lands in the conversation.
 
-If you want to interrupt a long reply, end the call (Cmd+E) or start a new conversation (Cmd+N). Both wipe the in-flight state and let you start fresh.
+This mirrors how voice already works. Speaking over the assistant cuts it off and starts your turn; typing now does the same. The composer stays enabled the whole time, so there's no waiting for the reply to finish before you can redirect.

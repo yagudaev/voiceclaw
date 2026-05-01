@@ -71,12 +71,14 @@ export function streamTextChat(
         ws?.send(JSON.stringify({ type: 'text.input', text }))
         break
       case 'transcript.delta':
+        if (didFinish) break
         if (data.role === 'assistant' && typeof data.text === 'string') {
           fullText += data.text
           callbacks.onToken(fullText)
         }
         break
       case 'transcript.done':
+        if (didFinish) break
         if (data.role === 'assistant' && typeof data.text === 'string') {
           fullText = data.text
           sawDone = true
@@ -84,9 +86,11 @@ export function streamTextChat(
         }
         break
       case 'turn.ended':
+        if (didFinish) break
         if (!sawDone) finish('done', fullText)
         break
       case 'error':
+        if (didFinish) break
         finish('error', data.message || `relay error ${data.code ?? ''}`.trim())
         break
     }
@@ -101,6 +105,8 @@ export function streamTextChat(
   }
 
   return () => {
-    if (!didFinish) finish('error', 'cancelled')
+    if (didFinish) return
+    didFinish = true
+    try { ws?.close() } catch {}
   }
 }
