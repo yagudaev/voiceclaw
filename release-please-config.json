@@ -25,7 +25,8 @@
       "package-name": "voiceclaw-desktop",
       "component": "desktop",
       "include-component-in-tag": true,
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "draft": true
     },
     "mobile": {
       "package-name": "voiceclaw-mobile",
