@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.4...desktop-v0.10.5) (2026-05-01)
+
+
+### Features
+
+* **desktop:** iMessage-style time grouping in chat (NAN-680) ([#308](https://github.com/yagudaev/voiceclaw/issues/308)) ([31af4e1](https://github.com/yagudaev/voiceclaw/commit/31af4e1d6c807428a22804ff2c87e00f38a0d76f))
+
 ## [0.10.4](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.3...desktop-v0.10.4) (2026-05-01)
 
 
