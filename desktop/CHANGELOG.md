@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.3...desktop-v0.10.4) (2026-05-01)
+
+
+### Bug Fixes
+
+* **desktop:** openclaw subprocess exits on startup due to invalid config schema and port parsed as subcommand ([#318](https://github.com/yagudaev/voiceclaw/issues/318)) ([75d63dd](https://github.com/yagudaev/voiceclaw/commit/75d63dd80c25a41a488886eb28af7548d86aa7d7))
+
 ## [0.10.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.2...desktop-v0.10.3) (2026-05-01)
 
 
