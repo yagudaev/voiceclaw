@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.2...desktop-v0.10.3) (2026-05-01)
+
+
+### Features
+
+* **desktop:** in-app auto-update via electron-updater (NAN-688) ([#292](https://github.com/yagudaev/voiceclaw/issues/292)) ([c38ee63](https://github.com/yagudaev/voiceclaw/commit/c38ee63a94e7d2a8bf1b9adfc7e96e5f6e757cff))
+
 ## [0.10.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.1...desktop-v0.10.2) (2026-05-01)
 
 
