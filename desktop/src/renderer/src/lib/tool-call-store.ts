@@ -9,6 +9,12 @@ export interface ToolCallEntry {
   durationMs?: number
   result?: string
   error?: string
+  step?: string
+}
+
+export interface ToolCallProgressDelta {
+  textDelta?: string
+  step?: string
 }
 
 export function applyToolCallStarted(
@@ -24,15 +30,37 @@ export function applyToolCallStarted(
   ]
 }
 
+export function applyToolCallProgress(
+  entries: ToolCallEntry[],
+  callId: string,
+  delta: ToolCallProgressDelta,
+): ToolCallEntry[] {
+  if (!entries.some((e) => e.callId === callId)) return entries
+  return entries.map((e) => {
+    if (e.callId !== callId) return e
+    const next: ToolCallEntry = { ...e }
+    if (delta.textDelta) {
+      next.result = (e.result ?? '') + delta.textDelta
+    }
+    if (delta.step !== undefined) {
+      next.step = delta.step
+    }
+    return next
+  })
+}
+
 export function applyToolCallCompleted(
   entries: ToolCallEntry[],
   callId: string,
   durationMs: number,
   result: string,
 ): ToolCallEntry[] {
-  return entries.map((e) =>
-    e.callId === callId ? { ...e, status: 'success', durationMs, result } : e,
-  )
+  return entries.map((e) => {
+    if (e.callId !== callId) return e
+    const finalResult =
+      result && result.length > 0 && result !== e.result ? result : (e.result ?? result)
+    return { ...e, status: 'success', durationMs, result: finalResult, step: undefined }
+  })
 }
 
 export function applyToolCallFailed(
@@ -44,7 +72,7 @@ export function applyToolCallFailed(
 ): ToolCallEntry[] {
   return entries.map((e) =>
     e.callId === callId
-      ? { ...e, status: cancelled ? 'cancelled' : 'error', durationMs, error }
+      ? { ...e, status: cancelled ? 'cancelled' : 'error', durationMs, error, step: undefined }
       : e,
   )
 }
@@ -55,7 +83,7 @@ export function applyToolCallCancelled(
 ): ToolCallEntry[] {
   return entries.map((e) =>
     callIds.includes(e.callId) && e.status === 'in-progress'
-      ? { ...e, status: 'cancelled', durationMs: Date.now() - e.startedAt }
+      ? { ...e, status: 'cancelled', durationMs: Date.now() - e.startedAt, step: undefined }
       : e,
   )
 }

@@ -170,7 +170,9 @@ export interface ToolCallFailedEvent {
 export interface ToolProgressEvent {
   type: "tool.progress"
   callId: string
-  summary: string
+  summary?: string
+  step?: string
+  textDelta?: string
 }
 
 export interface TurnStartedEvent {

@@ -131,21 +131,34 @@ export async function askBrain(
       try {
         const parsed = JSON.parse(data)
 
-        // Check for step completion signals (live progress injection)
+        if (parsed.type === "step_started" && typeof parsed.step === "string") {
+          sendToClient({
+            type: "tool.progress",
+            callId,
+            step: parsed.step,
+          })
+          continue
+        }
+
         if (parsed.type === "step_complete" && parsed.summary) {
           log(`[brain] Step complete: ${parsed.summary}`)
           sendToClient({
             type: "tool.progress",
             callId,
             summary: parsed.summary,
+            step: parsed.summary,
           })
           continue
         }
 
-        // Standard OpenAI-compatible SSE chunk
         const delta = parsed.choices?.[0]?.delta?.content
         if (delta) {
           fullResponse += delta
+          sendToClient({
+            type: "tool.progress",
+            callId,
+            textDelta: delta,
+          })
         }
       } catch {
         // Skip unparseable chunks

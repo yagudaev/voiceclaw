@@ -1,8 +1,10 @@
-// useRealtime — WebSocket hook for relay server connection
-// Port of mobile/lib/use-realtime.ts, using AudioEngine instead of native modules
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from './audio-engine'
+
+export interface ToolCallProgressDelta {
+  textDelta?: string
+  step?: string
+}
 
 // Narrow, local typings for the slice of preload this file touches.
 // The full preload surface is declared by other modules (onboarding,
@@ -47,7 +49,7 @@ export interface RealtimeCallbacks {
   onTranscriptDelta?: (text: string, role: 'user' | 'assistant') => void
   onTranscriptDone?: (text: string, role: 'user' | 'assistant') => void
   onToolCall?: (callId: string, name: string, args: string) => void
-  onToolProgress?: (callId: string, summary: string) => void
+  onToolCallProgress?: (callId: string, delta: ToolCallProgressDelta) => void
   onToolCallCompleted?: (callId: string, name: string, durationMs: number, result: string) => void
   onToolCallFailed?: (callId: string, name: string, durationMs: number, error: string, cancelled: boolean) => void
   onToolCancelled?: (callIds: string[]) => void
@@ -178,9 +180,16 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
           cb.onToolCall?.(data.callId, data.name, data.arguments)
           break
 
-        case 'tool.progress':
-          cb.onToolProgress?.(data.callId, data.summary)
+        case 'tool.progress': {
+          const delta: ToolCallProgressDelta = {}
+          if (typeof data.textDelta === 'string') delta.textDelta = data.textDelta
+          if (typeof data.step === 'string') delta.step = data.step
+          else if (typeof data.summary === 'string') delta.step = data.summary
+          if (delta.textDelta !== undefined || delta.step !== undefined) {
+            cb.onToolCallProgress?.(data.callId, delta)
+          }
           break
+        }
 
         case 'tool_call.completed':
           cb.onToolCallCompleted?.(data.callId, data.name, data.durationMs, data.result)

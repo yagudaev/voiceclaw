@@ -16,14 +16,19 @@ When you ask VoiceClaw something that needs a live search or a knowledge lookup,
 | Red X | failed | Something went wrong. Expand the row to see the error. |
 | Slash circle | cancelled | You started talking before the tool finished, so it was aborted. |
 
-## Expanding a row
+## What you see during a tool call
 
-Every row shows the tool name and timing on one line. Below that:
+Each row is its own little panel. From top to bottom:
 
-- **Arguments** — click the chevron to see what the agent sent to the tool (e.g., the search query). Useful to confirm the agent understood what you asked.
-- **Result** — available once the tool completes. Click to expand. Error rows expand automatically so you don't have to hunt for the problem.
+- **Header** — tool name on the left, status and elapsed time on the right.
+- **Parameters** — the JSON the agent sent into the tool, pretty-printed in a monospace block. Always visible, so you can confirm at a glance that the agent understood your question.
+- **Response** — appears as soon as the tool starts replying. The text streams in word-by-word, just like a chat reply, with a small caption above it ("Searching documents…", "Reading file…") that updates as the agent moves between steps. When the tool finishes, the caption disappears and the response settles into its final form.
+
+Long responses (more than a few paragraphs) gain a **Collapse** toggle once the tool has finished — useful when you want to keep scrolling without a wall of JSON in the way.
 
 ## When a row shows "failed"
+
+If a tool errors out, the streaming response is replaced with the error message and the row picks up a thin red accent on the side. The Parameters panel stays visible so you can see exactly what was tried.
 
 The most common causes:
 
