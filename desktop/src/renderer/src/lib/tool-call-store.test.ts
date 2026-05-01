@@ -71,6 +71,12 @@ describe('applyToolCallProgress', () => {
     expect(next).toBe(entries)
   })
 
+  it('ignores empty textDelta without clobbering existing result', () => {
+    const entries: ToolCallEntry[] = [baseEntry({ result: 'kept' })]
+    const next = applyToolCallProgress(entries, 'call-1', { textDelta: '' })
+    expect(next[0].result).toBe('kept')
+  })
+
   it('preserves other entries', () => {
     const entries: ToolCallEntry[] = [
       baseEntry({ callId: 'call-1', result: 'a' }),
@@ -95,6 +101,13 @@ describe('applyToolCallCompleted', () => {
     const streamed = 'streamed-by-deltas'
     const entries: ToolCallEntry[] = [baseEntry({ result: streamed })]
     const next = applyToolCallCompleted(entries, 'call-1', 50, streamed)
+    expect(next[0].result).toBe(streamed)
+  })
+
+  it('keeps streamed text when completion only differs by trailing whitespace', () => {
+    const streamed = 'streamed-text'
+    const entries: ToolCallEntry[] = [baseEntry({ result: streamed })]
+    const next = applyToolCallCompleted(entries, 'call-1', 50, `${streamed}\n`)
     expect(next[0].result).toBe(streamed)
   })
 

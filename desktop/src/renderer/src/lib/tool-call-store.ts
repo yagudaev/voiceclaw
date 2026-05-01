@@ -57,8 +57,7 @@ export function applyToolCallCompleted(
 ): ToolCallEntry[] {
   return entries.map((e) => {
     if (e.callId !== callId) return e
-    const finalResult =
-      result && result.length > 0 && result !== e.result ? result : (e.result ?? result)
+    const finalResult = pickFinalResult(e.result, result)
     return { ...e, status: 'success', durationMs, result: finalResult, step: undefined }
   })
 }
@@ -86,4 +85,11 @@ export function applyToolCallCancelled(
       ? { ...e, status: 'cancelled', durationMs: Date.now() - e.startedAt, step: undefined }
       : e,
   )
+}
+
+function pickFinalResult(streamed: string | undefined, completion: string): string {
+  if (!completion) return streamed ?? completion
+  if (streamed === undefined) return completion
+  if (streamed.trim() === completion.trim()) return streamed
+  return completion
 }

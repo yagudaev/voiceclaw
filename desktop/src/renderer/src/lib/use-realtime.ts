@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AudioEngine } from './audio-engine'
+import type { ToolCallProgressDelta } from './tool-call-store'
 
-export interface ToolCallProgressDelta {
-  textDelta?: string
-  step?: string
-}
+export type { ToolCallProgressDelta } from './tool-call-store'
 
 // Narrow, local typings for the slice of preload this file touches.
 // The full preload surface is declared by other modules (onboarding,
