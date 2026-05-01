@@ -189,6 +189,15 @@ jobs:
           git commit -m "chore(desktop): update release feed for ${TAG}"
           git push origin main
 
+      - name: Publish release (flip from draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+
       - name: Upload DMG as workflow artifact
         if: always()
         uses: actions/upload-artifact@v7
