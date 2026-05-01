@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.41](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.40...desktop-v0.10.41) (2026-05-01)
+
+
+### Features
+
+* **relay:** surface provider auth/quota errors with billing links ([#380](https://github.com/yagudaev/voiceclaw/issues/380)) ([6964c5e](https://github.com/yagudaev/voiceclaw/commit/6964c5e377ed03062e2fc326a9667b734b231966))
+
 ## [0.10.40](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.39...desktop-v0.10.40) (2026-05-01)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "voiceclaw-desktop",
-  "version": "0.10.40",
+  "version": "0.10.41",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
