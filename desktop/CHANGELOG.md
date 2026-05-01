@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.40](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.39...desktop-v0.10.40) (2026-05-01)
+
+
+### Features
+
+* **desktop:** in-app brain diagnostic button in Settings → Debug ([#373](https://github.com/yagudaev/voiceclaw/issues/373)) ([9c99f12](https://github.com/yagudaev/voiceclaw/commit/9c99f12c23d2875498bb5dc0f73ace8207c02391))
+
 ## [0.10.39](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.38...desktop-v0.10.39) (2026-05-01)
 
 
