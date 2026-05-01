@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.1...desktop-v0.10.2) (2026-05-01)
+
+
+### Features
+
+* **desktop:** image attachments in chat (NAN-646 MVP) ([#309](https://github.com/yagudaev/voiceclaw/issues/309)) ([a9ca0cb](https://github.com/yagudaev/voiceclaw/commit/a9ca0cb65b31fa1d96169c138cbf4cea96e5b7e1))
+
 ## [0.10.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.0...desktop-v0.10.1) (2026-05-01)
 
 
