@@ -57,6 +57,11 @@ export interface FrameAppendEvent {
   type: "frame.append"
   data: string // base64 JPEG
   mimeType?: string // default "image/jpeg"
+  // Optional macOS Accessibility-API text snapshot of the frontmost window,
+  // captured by the desktop client at the same moment as the JPEG. The relay
+  // forwards it to Gemini as a sibling realtimeInput.text immediately after
+  // the video chunk so they're temporally aligned. See NAN-707.
+  axText?: string
 }
 
 export interface ResponseCreateEvent {

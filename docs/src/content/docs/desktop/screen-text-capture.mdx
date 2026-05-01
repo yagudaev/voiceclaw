@@ -1,0 +1,67 @@
+---
+title: Screen text capture
+description: How VoiceClaw desktop reads on-screen text via macOS Accessibility to help the AI read what you're sharing more accurately.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+When you share your screen with the AI, VoiceClaw also captures the text of whatever window you're focused on and sends it alongside each frame. The AI gets two views of the same moment: the screenshot and the actual text. This dramatically reduces hallucinated text on dense interfaces — code, terminal output, tables, small UI labels — where pure vision OCR struggles.
+
+## Why this exists
+
+Screenshot understanding is great for layout and intent. It's unreliable for *exact* text, especially:
+
+- Code and terminal output (8–11pt monospace fonts get blurred through JPEG compression)
+- Web tables with thousands of cells
+- Long URLs, error messages, IDs, file paths
+- Small toolbars and labels
+
+The AI does its best from a pixel-level read, but it fills gaps by guessing. With the actual text on hand, it stops guessing.
+
+## How it works
+
+Whenever a screen share is active, VoiceClaw asks macOS for the contents of the **frontmost window** once per second — the same cadence as the screenshot itself. The text snapshot includes the role of each element (button, text field, static text, etc.), the visible label or value, and the on-screen position. Both the image and the text reach the AI in the same moment, so they're temporally aligned.
+
+The text channel rides over the existing realtime connection — no separate network hop, no extra cost, no audio-quality impact.
+
+## Granting Accessibility permission
+
+macOS treats Accessibility access as a high-trust permission, so it isn't granted automatically. The first time you start screen sharing, VoiceClaw checks whether it has the permission and offers to open the right pane in System Settings if it doesn't:
+
+1. Click **Open Settings** in the dialog.
+2. In **Privacy & Security → Accessibility**, find **VoiceClaw** in the list and toggle it on. (You may need to click the lock icon first.)
+3. Return to VoiceClaw. The next screen share you start will pick up the new permission automatically.
+
+Screen sharing works without Accessibility — the AI just falls back to vision-only. You can grant the permission whenever it's convenient.
+
+<Aside type="note">
+You only need to grant Accessibility on the device you're using VoiceClaw from. Nothing is uploaded to our servers — text reads happen locally and stream straight to the AI provider you've configured (Gemini), the same path your audio takes.
+</Aside>
+
+## What gets read, and what doesn't
+
+VoiceClaw only reads the **frontmost window** — the one you're currently focused on. Background windows of the same app, other apps, the menu bar, the Dock, and the system itself are all ignored. If you switch to a different window mid-call, the next text snapshot covers the new window.
+
+Some surfaces don't expose text to Accessibility:
+
+- **Canvas-rendered apps** (Figma's editor, some web games) draw directly to a bitmap and the AI gets no text to work with. You'll fall back to vision-only.
+- **Heavily customized cross-platform UIs** (Electron apps that don't wire up ARIA correctly, some Java apps) may expose only partial text.
+- **Password fields** appear as masked dots, never as the underlying text. (This is enforced by macOS, not by VoiceClaw.)
+
+If the AI starts misreading text in one of these surfaces, it's worth confirming whether the app exposes text at all — the macOS **Accessibility Inspector** (in `Xcode → Open Developer Tool`) shows you what an app is sharing.
+
+## Disabling it
+
+If you'd rather not have Accessibility read engaged:
+
+- Don't grant the permission, or revoke it under **Privacy & Security → Accessibility**.
+- VoiceClaw automatically reverts to vision-only as soon as the permission is gone.
+
+## Privacy
+
+The Accessibility text reads are:
+
+- Local to your Mac. The capture happens in a sidecar binary signed by VoiceClaw; no other process sees the text.
+- Sent only to the AI provider you've configured for the current call (e.g. Google Gemini). They follow the same data path as audio and screenshots.
+- Capped at 8 KB per frame, with the larger of the two being truncated when the screen has unusually deep UI hierarchies. This keeps payloads bounded and prevents a single frame from dominating the model's context window.
+- Not persisted on our infrastructure. Local session-recording (off by default) does include the text alongside the frame for replay, but the recording lives only on your disk.

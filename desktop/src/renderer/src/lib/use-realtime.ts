@@ -66,7 +66,7 @@ export interface RealtimeControls {
   setMuted: (muted: boolean) => void
   setOutputVolume: (volume: number) => void
   setOutputMuted: (muted: boolean) => void
-  sendFrame: (base64Jpeg: string) => void
+  sendFrame: (base64Jpeg: string, axText?: string) => void
   sendUserText: (text: string) => boolean
   getInputLevel: () => number
   getOutputLevel: () => number
@@ -380,9 +380,14 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
     engineRef.current?.setOutputMuted(muted)
   }, [])
 
-  const sendFrame = useCallback((base64Jpeg: string) => {
+  const sendFrame = useCallback((base64Jpeg: string, axText?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'frame.append', data: base64Jpeg }))
+      const msg: { type: 'frame.append', data: string, axText?: string } = {
+        type: 'frame.append',
+        data: base64Jpeg,
+      }
+      if (axText) msg.axText = axText
+      wsRef.current.send(JSON.stringify(msg))
     }
   }, [])
 

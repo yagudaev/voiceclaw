@@ -588,13 +588,43 @@ export function ChatPage() {
   const startScreenShare = useCallback(async (source: ScreenSource) => {
     if (activeRealtimeModel.startsWith('grok-voice-')) return
     setShowScreenPicker(false)
+
+    // Probe Accessibility permission once before starting capture so we can
+    // tell the user up-front that the AX text channel is off rather than
+    // silently degrading. Continuing without AX is fine — Gemini still gets
+    // the image stream.
+    const axApi = window.electronAPI?.ax
+    let axEnabled = true
+    if (axApi?.permission) {
+      try {
+        const { granted } = await axApi.permission()
+        if (!granted) {
+          axEnabled = false
+          const open = window.confirm(
+            'VoiceClaw can read on-screen text via macOS Accessibility to ' +
+              'help the AI read text more accurately. Open System Settings to ' +
+              'grant Accessibility permission? (Screen sharing will continue ' +
+              'either way.)',
+          )
+          if (open) await axApi.openSettings()
+        }
+      } catch (err) {
+        console.warn('[ChatPage] AX permission probe failed', err)
+        axEnabled = false
+      }
+    }
+
     const capture = new ScreenCapture()
     capture.setSourceName(source.name)
     screenCaptureRef.current = capture
     try {
-      await capture.start(source.id, (base64Jpeg) => {
-        realtime.sendFrame(base64Jpeg)
-      })
+      await capture.start(
+        source.id,
+        (frame) => {
+          realtime.sendFrame(frame.base64Jpeg, frame.axText)
+        },
+        { axEnabled },
+      )
       setIsScreenSharing(true)
       setScreenSourceName(source.name)
     } catch (err) {

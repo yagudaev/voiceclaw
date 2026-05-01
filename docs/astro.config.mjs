@@ -89,6 +89,7 @@ export default defineConfig({
             { slug: 'desktop/time-grouping', label: 'Desktop: time grouping in chat' },
             { slug: 'desktop/typing-messages', label: 'Desktop: typing messages' },
             { slug: 'desktop/attachments', label: 'Desktop: image attachments' },
+            { slug: 'desktop/screen-text-capture', label: 'Desktop: screen text capture' },
             { slug: 'desktop/releasing', label: 'Desktop: releasing' },
             { slug: 'mobile-app' },
             { slug: 'canvas-mode', label: 'Canvas mode (in design)', badge: { text: 'Preview', variant: 'note' } },

@@ -21,9 +21,15 @@ desktop/build/icon-master.png
 
 # Bundled service runtimes — produced by yarn dist:mac
 desktop/resources/bin/node
+desktop/resources/bin/ax-capture
 desktop/resources/relay-server-bundle/
 desktop/resources/openclaw/
 desktop/resources/.openclaw-pack/
+
+# Swift package build output for the AX-capture sidecar — regenerable
+# from `node desktop/scripts/build-ax-capture.mjs`.
+desktop/native/ax-capture/.build/
+desktop/native/ax-capture/.swiftpm/
 
 # electron-builder app staging dir — produced by scripts/stage-app.mjs
 desktop/dist-staging/

@@ -562,8 +562,17 @@ export class RelaySession {
         this.media.onVideoFrame(
           event.data,
           Math.max(0, Date.now() - this.currentTurnStartMs),
+          event.axText,
         )
         this.adapter?.sendFrame(event.data, event.mimeType)
+        // AX-text channel: send the accessibility snapshot as a sibling
+        // realtimeInput.text immediately after the video chunk so the model
+        // sees the image and ground-truth text as one moment. Gemini Live's
+        // realtimeInput accepts video and text as separate fields only;
+        // adjacent sends preserve temporal alignment. See NAN-707.
+        if (event.axText && this.adapter?.sendAxText) {
+          this.adapter.sendAxText(event.axText)
+        }
         break
       case "response.create":
         this.adapter?.createResponse()

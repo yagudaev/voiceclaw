@@ -14,8 +14,42 @@ declare global {
       screen: {
         getSources: () => Promise<ScreenSource[]>
       }
+      ax: {
+        capture: () => Promise<AXCaptureResultBridge>
+        permission: () => Promise<{ granted: boolean }>
+        openSettings: () => Promise<void>
+      }
     }
   }
+}
+
+export type AXCaptureResultBridge =
+  | {
+      ok: true
+      app: string
+      window: string
+      elements: Array<{
+        role: string
+        text: string
+        frame?: { x: number; y: number; w: number; h: number }
+      }>
+      truncated?: boolean
+    }
+  | {
+      ok: false
+      error:
+        | 'permission_denied'
+        | 'no_frontmost'
+        | 'no_window'
+        | 'ax_failed'
+        | 'unavailable'
+        | 'timeout'
+        | 'sidecar_unavailable'
+    }
+
+export type ScreenFrame = {
+  base64Jpeg: string
+  axText?: string
 }
 
 // 1536 keeps small terminal text legible on Retina captures while staying within
@@ -28,6 +62,12 @@ const CAPTURE_INTERVAL_MS = 1000 // 1 FPS
 // dropping enough high-frequency luma detail that ligatures and thin glyph
 // strokes (i, l, |, /) became unreadable after JPEG.
 const JPEG_QUALITY = 0.85
+// Bound the AX call so a hung sidecar (or slow AX tree on a giant window) can
+// never delay the next image frame. 250ms gives the sidecar a generous budget
+// — typical capture is well under 50ms — while leaving 750ms of slack before
+// the next 1 FPS tick. On timeout we send the image without text rather than
+// blocking it.
+const AX_CAPTURE_TIMEOUT_MS = 250
 // Upper bound for the source stream so Chromium doesn't silently cap the
 // desktop capture at its 1280x720 default. We downscale to MAX_DIMENSION
 // after the fact — this just prevents pre-canvas downsampling. 4K covers
@@ -42,8 +82,15 @@ export class ScreenCapture {
   private ctx: CanvasRenderingContext2D | null = null
   private intervalId: ReturnType<typeof setInterval> | null = null
   private sourceName = ''
+  private axEnabled = true
+  private axPermissionDenied = false
 
-  async start(sourceId: string, onFrame: (base64Jpeg: string) => void) {
+  async start(
+    sourceId: string,
+    onFrame: (frame: ScreenFrame) => void,
+    options?: { axEnabled?: boolean },
+  ) {
+    this.axEnabled = options?.axEnabled ?? true
     // Request screen capture stream using Electron's chromeMediaSource.
     // The legacy `mandatory` constraint shape is required when combining
     // chromeMediaSource: 'desktop' with size hints — modern width/height
@@ -74,8 +121,16 @@ export class ScreenCapture {
 
     // Start capturing at 1 FPS
     this.intervalId = setInterval(() => {
-      this.captureFrame(onFrame)
+      void this.captureFrame(onFrame)
     }, CAPTURE_INTERVAL_MS)
+  }
+
+  isAxPermissionDenied(): boolean {
+    return this.axPermissionDenied
+  }
+
+  setAxEnabled(enabled: boolean) {
+    this.axEnabled = enabled
   }
 
   stop() {
@@ -103,7 +158,7 @@ export class ScreenCapture {
     this.sourceName = name
   }
 
-  private captureFrame(onFrame: (base64Jpeg: string) => void) {
+  private async captureFrame(onFrame: (frame: ScreenFrame) => void) {
     if (!this.video || !this.canvas || !this.ctx) return
     if (this.video.videoWidth === 0 || this.video.videoHeight === 0) return
 
@@ -120,12 +175,72 @@ export class ScreenCapture {
     // Export as JPEG base64 (strip the data:image/jpeg;base64, prefix)
     const dataUrl = this.canvas.toDataURL('image/jpeg', JPEG_QUALITY)
     const base64 = dataUrl.split(',')[1]
-    if (base64) {
-      onFrame(base64)
+    if (!base64) return
+
+    // Run AX capture concurrently with the rest of the frame pipeline so a
+    // slow AX tree never delays image delivery. We awaited drawImage above
+    // synchronously, so by the time we get here the bitmap is fixed; the
+    // AX result captured ~now is the closest-aligned to the JPEG.
+    let axText: string | undefined
+    if (this.axEnabled && !this.axPermissionDenied) {
+      axText = await this.captureAxTextOrTimeout()
+    }
+
+    onFrame({ base64Jpeg: base64, axText })
+  }
+
+  private async captureAxTextOrTimeout(): Promise<string | undefined> {
+    const api = window.electronAPI?.ax
+    if (!api?.capture) return undefined
+    try {
+      const result = await Promise.race([
+        api.capture(),
+        new Promise<{ ok: false; error: 'timeout' }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, error: 'timeout' }), AX_CAPTURE_TIMEOUT_MS),
+        ),
+      ])
+      if (!result.ok) {
+        if (result.error === 'permission_denied') this.axPermissionDenied = true
+        return undefined
+      }
+      return formatAxTextRenderer(result)
+    } catch {
+      return undefined
     }
   }
 }
 
 export async function getScreenSources(): Promise<ScreenSource[]> {
   return window.electronAPI.screen.getSources()
+}
+
+// Format an AX capture result into the compact text block we send to Gemini
+// inline with each image frame. Keeps the rendered string under `maxBytes`
+// so it can't blow span attribute or token limits. Mirrors the main-process
+// formatter in desktop/src/main/ax-capture.ts; kept here so the renderer
+// doesn't import across the main/preload bundle boundary.
+export function formatAxTextRenderer(
+  result: AXCaptureResultBridge,
+  maxBytes = 8 * 1024,
+): string {
+  if (!result.ok) return ''
+  const header = `[Screen text — ${result.app}${result.window ? ` · ${result.window}` : ''}]`
+  const lines: string[] = [header]
+  for (const el of result.elements) {
+    if (!el.text) continue
+    const role = el.role.replace(/^AX/, '')
+    lines.push(`${role}: ${el.text}`)
+  }
+  let out = lines.join('\n')
+  if (byteLen(out) > maxBytes) {
+    while (byteLen(out) > maxBytes && lines.length > 1) {
+      lines.pop()
+      out = lines.join('\n') + '\n…(truncated)'
+    }
+  }
+  return out
+}
+
+function byteLen(s: string): number {
+  return new TextEncoder().encode(s).length
 }
