@@ -1,8 +1,11 @@
-import { useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Cloud, Eye, EyeOff, Key } from 'lucide-react'
 import { StepFrame } from './StepFrame'
 import {
+  cloudApi,
   providerApi,
+  type AccessMode,
+  type CloudUserInfo,
   type OnboardingPayload,
   type ProviderId,
 } from '../../lib/onboarding-api'
@@ -51,11 +54,19 @@ type ValidationState =
   | { kind: 'valid' }
   | { kind: 'invalid'; error: string }
 
+type CloudState =
+  | { kind: 'unknown' }
+  | { kind: 'not-signed-in' }
+  | { kind: 'verifying' }
+  | { kind: 'verified'; me: CloudUserInfo }
+  | { kind: 'error'; error: string }
+
 type Props = {
   onContinue?: (patch: OnboardingPayload) => void
   onBack?: () => void
   onStartOver?: () => void
   initialProvider?: ProviderId
+  initialAccessMode?: AccessMode
   previewMode?: boolean
 }
 
@@ -64,15 +75,54 @@ export function StepProvider({
   onBack,
   onStartOver,
   initialProvider = 'gemini',
+  initialAccessMode = 'byo-key',
   previewMode = false,
 }: Props) {
+  const [accessMode, setAccessMode] = useState<AccessMode>(initialAccessMode)
   const [selected, setSelected] = useState<ProviderId>(
     PROVIDERS.some((p) => p.id === initialProvider) ? initialProvider : 'gemini',
   )
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [validation, setValidation] = useState<ValidationState>({ kind: 'empty' })
+  const [cloudState, setCloudState] = useState<CloudState>({ kind: 'unknown' })
   const active = PROVIDERS.find((p) => p.id === selected) ?? PROVIDERS[0]
+
+  useEffect(() => {
+    if (previewMode) return
+    if (accessMode !== 'cloud') return
+    if (cloudState.kind !== 'unknown') return
+    void verifyCloud()
+  }, [accessMode, cloudState.kind, previewMode])
+
+  const verifyCloud = async () => {
+    setCloudState({ kind: 'verifying' })
+    try {
+      const status = await cloudApi.getStatus()
+      if (!status.signedIn) {
+        setCloudState({ kind: 'not-signed-in' })
+        return
+      }
+      const result = await cloudApi.fetchMe()
+      if (!result.ok) {
+        if (result.status === 401) {
+          setCloudState({ kind: 'not-signed-in' })
+          return
+        }
+        setCloudState({
+          kind: 'error',
+          error: result.error || `Server returned ${result.status}`,
+        })
+        return
+      }
+      setCloudState({ kind: 'verified', me: result.value })
+    } catch (err) {
+      setCloudState({
+        kind: 'error',
+        error: err instanceof Error ? err.message : 'Could not reach VoiceClaw Cloud.',
+      })
+    }
+  }
 
   const handleKeyChange = (key: string) => {
     setApiKey(key)
@@ -109,21 +159,42 @@ export function StepProvider({
   }
 
   const handleContinue = async () => {
-    if (validation.kind !== 'valid') {
-      await handleValidate()
-      // re-read state inside handleValidate; handleContinue stops here
-      // and the user clicks Continue again once they see the green check.
+    if (accessMode === 'cloud') {
+      if (cloudState.kind === 'verified') {
+        onContinue?.({ accessMode: 'cloud', cloudVerified: true, provider: 'gemini' })
+      } else {
+        await verifyCloud()
+      }
       return
     }
-    onContinue?.({ provider: selected, providerKeyValidated: true })
+    if (validation.kind !== 'valid') {
+      await handleValidate()
+      return
+    }
+    onContinue?.({ accessMode: 'byo-key', provider: selected, providerKeyValidated: true })
   }
 
-  const continueLabel =
-    validation.kind === 'valid'
-      ? 'Continue'
-      : validation.kind === 'validating'
-        ? 'Checking…'
-        : 'Validate + continue'
+  const cloudReady = cloudState.kind === 'verified'
+  const cloudBusy = cloudState.kind === 'verifying'
+
+  const continueLabel = (() => {
+    if (accessMode === 'cloud') {
+      if (cloudReady) return 'Continue'
+      if (cloudBusy) return 'Checking…'
+      if (cloudState.kind === 'not-signed-in') return 'Sign in first'
+      return 'Verify + continue'
+    }
+    if (validation.kind === 'valid') return 'Continue'
+    if (validation.kind === 'validating') return 'Checking…'
+    return 'Validate + continue'
+  })()
+
+  const continueDisabled = (() => {
+    if (accessMode === 'cloud') {
+      return cloudBusy || cloudState.kind === 'not-signed-in'
+    }
+    return validation.kind === 'validating' || apiKey.length === 0
+  })()
 
   return (
     <StepFrame
@@ -131,15 +202,32 @@ export function StepProvider({
       totalSteps={6}
       eyebrow="04 / Voice provider"
       title="Pick a voice. Paste a key."
-      description="VoiceClaw doesn't keep your key. It goes straight into macOS Keychain on this machine, encrypted the way the OS encrypts your Wi-Fi passwords."
+      description="Run on VoiceClaw Cloud (free trial, no key needed) or bring your own provider key. Keys go straight into macOS Keychain — VoiceClaw never sees them."
       primaryAction={{
         label: continueLabel,
         onClick: () => void handleContinue(),
-        disabled: validation.kind === 'validating' || apiKey.length === 0,
+        disabled: continueDisabled,
       }}
       secondaryAction={{ label: 'Back', onClick: onBack }}
       onStartOver={onStartOver}
     >
+      <div className="mb-5 grid gap-3 md:grid-cols-2">
+        <AccessModeCard
+          mode="cloud"
+          selected={accessMode === 'cloud'}
+          onSelect={() => setAccessMode('cloud')}
+        />
+        <AccessModeCard
+          mode="byo-key"
+          selected={accessMode === 'byo-key'}
+          onSelect={() => setAccessMode('byo-key')}
+        />
+      </div>
+
+      {accessMode === 'cloud' ? (
+        <CloudPanel state={cloudState} onRetry={() => void verifyCloud()} />
+      ) : (
+        <>
       <div className="grid gap-3 md:grid-cols-2">
         {PROVIDERS.map((provider) => (
           <ProviderCard
@@ -253,6 +341,8 @@ export function StepProvider({
           , no audio yet.
         </p>
       </div>
+        </>
+      )}
     </StepFrame>
   )
 }
@@ -407,4 +497,172 @@ function mapVisual(state: ValidationState): {
     dot: 'var(--muted)',
     label: 'Press tab to check',
   }
+}
+
+function AccessModeCard({
+  mode,
+  selected,
+  onSelect,
+}: {
+  mode: AccessMode
+  selected: boolean
+  onSelect: () => void
+}) {
+  const isCloud = mode === 'cloud'
+  const Icon = isCloud ? Cloud : Key
+  const tagline = isCloud ? 'Free trial · Recommended' : 'Bring your own key'
+  const title = isCloud ? 'VoiceClaw Cloud' : 'Use your own provider'
+  const detail = isCloud
+    ? '15 minutes a day on Gemini Live, on us. Sign in once. No key paste, no setup.'
+    : 'Paste a Gemini, OpenAI, or Grok key. The key stays on this Mac, in macOS Keychain.'
+  return (
+    <button
+      onClick={onSelect}
+      className="flex flex-col items-start gap-3 rounded-[20px] border p-5 text-left transition-all"
+      style={{
+        borderColor: selected ? 'var(--accent)' : 'var(--line-strong)',
+        backgroundColor: selected ? 'var(--accent-soft)' : 'var(--panel)',
+        boxShadow: selected ? 'none' : 'var(--shadow)',
+      }}
+    >
+      <div className="flex w-full items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Icon className="h-5 w-5" style={{ color: selected ? 'var(--accent)' : 'var(--muted)' }} />
+          <div>
+            <p
+              className="text-[10px] uppercase"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.24em',
+                color: selected ? 'var(--accent)' : 'var(--muted)',
+              }}
+            >
+              {tagline}
+            </p>
+            <p
+              className="mt-1 text-[16px] font-medium tracking-[-0.01em]"
+              style={{ color: 'var(--ink)' }}
+            >
+              {title}
+            </p>
+          </div>
+        </div>
+        <RadioDot selected={selected} />
+      </div>
+      <p className="text-[13px] leading-[1.55]" style={{ color: 'var(--muted)' }}>
+        {detail}
+      </p>
+    </button>
+  )
+}
+
+function CloudPanel({
+  state,
+  onRetry,
+}: {
+  state: CloudState
+  onRetry: () => void
+}) {
+  return (
+    <div
+      className="rounded-[22px] border p-6"
+      style={{
+        borderColor: 'var(--line-strong)',
+        backgroundColor: 'var(--panel)',
+        boxShadow: 'var(--shadow)',
+      }}
+    >
+      {state.kind === 'verified' ? (
+        <CloudVerifiedDetails me={state.me} />
+      ) : state.kind === 'verifying' || state.kind === 'unknown' ? (
+        <p className="text-[14px]" style={{ color: 'var(--muted)' }}>
+          Checking your VoiceClaw Cloud account…
+        </p>
+      ) : state.kind === 'not-signed-in' ? (
+        <CloudNotSignedIn />
+      ) : (
+        <CloudErrorPanel error={state.error} onRetry={onRetry} />
+      )}
+    </div>
+  )
+}
+
+function CloudVerifiedDetails({ me }: { me: CloudUserInfo }) {
+  const remainingMin = Math.floor(me.usage.secondsRemainingToday / 60)
+  const capMin = Math.floor(me.usage.dailyCapSeconds / 60)
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: 'var(--accent)' }}
+        />
+        <p
+          className="text-[12px] uppercase"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            letterSpacing: '0.22em',
+            color: 'var(--accent)',
+          }}
+        >
+          {me.user.tier === 'pro' ? 'Pro tier' : 'Free tier · Verified'}
+        </p>
+      </div>
+      <div>
+        <p className="text-[14px]" style={{ color: 'var(--ink)' }}>
+          Signed in as <strong>{me.user.email}</strong>.
+        </p>
+        <p className="mt-2 text-[13px]" style={{ color: 'var(--muted)' }}>
+          {remainingMin} of {capMin} minutes available today. Daily quota resets
+          at 00:00 UTC.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function CloudNotSignedIn() {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[14px]" style={{ color: 'var(--ink)' }}>
+        Sign in to use VoiceClaw Cloud.
+      </p>
+      <p className="text-[13px]" style={{ color: 'var(--muted)' }}>
+        Go back to the sign-in step and choose Google or Apple. We need a
+        device token before the cloud broker will mint Gemini sessions on
+        your behalf.
+      </p>
+    </div>
+  )
+}
+
+function CloudErrorPanel({
+  error,
+  onRetry,
+}: {
+  error: string
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[14px]" style={{ color: 'var(--accent)' }}>
+        Could not verify VoiceClaw Cloud.
+      </p>
+      <p className="text-[12px]" style={{ color: 'var(--muted)' }}>
+        {error}
+      </p>
+      <button
+        onClick={onRetry}
+        className="self-start rounded-[12px] border px-4 py-2 text-[12px] uppercase"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          letterSpacing: '0.22em',
+          borderColor: 'var(--line-strong)',
+          color: 'var(--ink)',
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  )
 }

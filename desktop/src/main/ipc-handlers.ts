@@ -47,6 +47,12 @@ import {
   installNow,
 } from './services/auto-updater'
 import { startSignInFlow } from './auth'
+import {
+  fetchMe as cloudFetchMe,
+  fetchSessionToken as cloudFetchSessionToken,
+  getCloudBaseUrl,
+  isCloudModeAvailable,
+} from './cloud-broker'
 import { getMainWindow } from './window-lifecycle'
 import {
   getActiveProvider,
@@ -563,6 +569,29 @@ export function registerIpcHandlers() {
   ipcMain.handle('updates:checkNow', () => checkForUpdatesNow())
   ipcMain.handle('updates:installNow', (_e, source: 'banner' | 'settings' | 'tray' = 'settings') => {
     installNow(source)
+  })
+
+  // Cloud-mode broker (cloud.getvoiceclaw.com)
+  ipcMain.handle('cloud:getStatus', () => ({
+    signedIn: isCloudModeAvailable(),
+    baseUrl: getCloudBaseUrl(),
+  }))
+  ipcMain.handle('cloud:fetchMe', async () => cloudFetchMe())
+  ipcMain.handle('cloud:fetchSessionToken', async (_e, opts?: { forceRefresh?: boolean }) => {
+    const result = await cloudFetchSessionToken(opts ?? {})
+    if (result.ok) {
+      return {
+        ok: true as const,
+        token: result.value.token,
+        model: result.value.model,
+        newSessionExpiresAt: result.value.newSessionExpiresAt.toISOString(),
+        expiresAt: result.value.expiresAt.toISOString(),
+        lifetimeSeconds: result.value.lifetimeSeconds,
+        tier: result.value.tier,
+        quota: result.value.quota,
+      }
+    }
+    return result
   })
 
   // Network: test relay server connection from main process (avoids CORS)

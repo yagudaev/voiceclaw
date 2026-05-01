@@ -11,12 +11,16 @@ type WizardStepId =
   | 'identity'
   | 'testcall'
 
+type AccessMode = 'cloud' | 'byo-key'
+
 type OnboardingPayload = {
   signedIn?: boolean
   permissions?: {
     mic?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
     screen?: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
   }
+  accessMode?: AccessMode
+  cloudVerified?: boolean
   provider?: 'gemini' | 'openai' | 'xai'
   providerKeyValidated?: boolean
   brain?: 'openclaw' | 'claude' | 'codex' | { url: string }
@@ -311,6 +315,56 @@ const electronAPI = {
   },
   attachments: {
     pickImage: () => ipcRenderer.invoke('attachments:pickImage') as Promise<PickImageResult>,
+  },
+  cloud: {
+    getStatus: () =>
+      ipcRenderer.invoke('cloud:getStatus') as Promise<{
+        signedIn: boolean
+        baseUrl: string
+      }>,
+    fetchMe: () =>
+      ipcRenderer.invoke('cloud:fetchMe') as Promise<
+        | {
+            ok: true
+            value: {
+              user: {
+                id: string
+                email: string
+                name: string | null
+                tier: 'free' | 'pro'
+                proUntil: string | null
+              }
+              device: { id: string }
+              usage: {
+                day: string
+                dailyCapSeconds: number
+                secondsUsedToday: number
+                secondsRemainingToday: number
+                tokensMintedToday: number
+                lastMintedAt: string | null
+              }
+            }
+          }
+        | { ok: false; status: number; error: string; retryAfterSeconds?: number }
+      >,
+    fetchSessionToken: (opts?: { forceRefresh?: boolean }) =>
+      ipcRenderer.invoke('cloud:fetchSessionToken', opts) as Promise<
+        | {
+            ok: true
+            token: string
+            model: string
+            newSessionExpiresAt: string
+            expiresAt: string
+            lifetimeSeconds: number
+            tier: 'free' | 'pro'
+            quota: {
+              dailyCapSeconds: number
+              secondsUsedToday: number
+              secondsRemainingToday: number
+            }
+          }
+        | { ok: false; status: number; error: string; retryAfterSeconds?: number }
+      >,
   },
 }
 
