@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.0...desktop-v0.10.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **desktop:** default wizard voice to Zephyr + log preview failures ([#314](https://github.com/yagudaev/voiceclaw/issues/314)) ([cad7669](https://github.com/yagudaev/voiceclaw/commit/cad7669692a28c492617a6e4b88e788b13c90fb1))
+
 ## [0.10.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.9.1...desktop-v0.10.0) (2026-05-01)
 
 
