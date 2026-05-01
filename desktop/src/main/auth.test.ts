@@ -99,7 +99,7 @@ describe('startSignInFlow', () => {
     const { startSignInFlow } = await import('./auth')
     startSignInFlow('google')
     expect(openExternalCalls[0]).toBe(
-      'https://getvoiceclaw.com/api/auth/google/start?target=desktop',
+      'https://cloud.getvoiceclaw.com/api/auth/google/start?target=desktop',
     )
   })
 
