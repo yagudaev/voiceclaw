@@ -4,7 +4,9 @@ import PackageDescription
 let package = Package(
   name: "ax-capture",
   platforms: [
-    .macOS(.v12)
+    // Match Electron 41's minimum (macOS 11). Bumping forces unnecessary
+    // OS-version gating on the smallest piece of the bundle.
+    .macOS(.v11)
   ],
   targets: [
     .executableTarget(

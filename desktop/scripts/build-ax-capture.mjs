@@ -54,8 +54,20 @@ if (builtBins.length === 0) {
 if (builtBins.length === 1) {
   copyFileSync(builtBins[0], outBin)
 } else {
-  spawnSync("lipo", ["-create", "-output", outBin, ...builtBins], { stdio: "inherit" })
+  const lipo = spawnSync("lipo", ["-create", "-output", outBin, ...builtBins], { stdio: "inherit" })
+  if (lipo.status !== 0) {
+    console.error("[build-ax-capture] lipo failed; aborting")
+    process.exit(lipo.status ?? 1)
+  }
 }
-spawnSync("chmod", ["+x", outBin])
+const chmod = spawnSync("chmod", ["+x", outBin])
+if (chmod.status !== 0) {
+  console.error("[build-ax-capture] chmod failed; aborting")
+  process.exit(chmod.status ?? 1)
+}
+if (!existsSync(outBin)) {
+  console.error(`[build-ax-capture] expected ${outBin} after build but it is missing`)
+  process.exit(1)
+}
 
 console.log(`[build-ax-capture] -> ${outBin}`)

@@ -216,9 +216,10 @@ export async function getScreenSources(): Promise<ScreenSource[]> {
 
 // Format an AX capture result into the compact text block we send to Gemini
 // inline with each image frame. Keeps the rendered string under `maxBytes`
-// so it can't blow span attribute or token limits. Mirrors the main-process
-// formatter in desktop/src/main/ax-capture.ts; kept here so the renderer
-// doesn't import across the main/preload bundle boundary.
+// so it can't blow span attribute or token limits.
+//
+// Mirrors formatAxText in desktop/src/main/ax-capture.ts. Both have unit
+// tests; if you change one, change the other and update both test files.
 export function formatAxTextRenderer(
   result: AXCaptureResultBridge,
   maxBytes = 8 * 1024,

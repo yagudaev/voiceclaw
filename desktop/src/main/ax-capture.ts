@@ -50,13 +50,15 @@ let permissionGranted: boolean | null = null
 export function registerAxCaptureHandlers() {
   if (process.platform !== 'darwin') return
 
-  startSidecar()
+  // Sidecar is lazy-started on first use (capture/permission probe). Users
+  // who never enable screen sharing pay nothing.
 
   ipcMain.handle('ax:capture', async (): Promise<AXCaptureResult> => {
     return capture()
   })
 
   ipcMain.handle('ax:permission', async (): Promise<{ granted: boolean }> => {
+    ensureSidecar()
     const r = await sendCommand({ cmd: 'permission' })
     if (r && (r as { ok: boolean }).ok && 'granted' in r) {
       permissionGranted = (r as { granted: boolean }).granted
@@ -79,12 +81,18 @@ export function registerAxCaptureHandlers() {
 
 export async function capture(): Promise<AXCaptureResult> {
   if (process.platform !== 'darwin') return { ok: false, error: 'unavailable' }
+  ensureSidecar()
   if (!proc) return { ok: false, error: 'sidecar_unavailable' }
   const r = (await sendCommand({ cmd: 'capture' })) as AXCaptureResult | null
   if (!r) return { ok: false, error: 'timeout' }
   if (!r.ok && r.error === 'permission_denied') permissionGranted = false
   else if (r.ok) permissionGranted = true
   return r
+}
+
+function ensureSidecar() {
+  if (proc) return
+  startSidecar()
 }
 
 export function isPermissionGranted(): boolean | null {
@@ -189,7 +197,18 @@ function sendCommand(cmd: Record<string, unknown>): Promise<Record<string, unkno
       timer,
     })
     try {
-      proc.stdin.write(JSON.stringify({ ...cmd, id }) + '\n')
+      // stdin.write returns false when the kernel pipe buffer is full; if a
+      // wedged sidecar is no longer reading, accumulating writes would leak
+      // memory into Node's internal buffer. Drop the request immediately —
+      // the timeout would have fired anyway and our oldest-drop discipline
+      // matches the queue policy at every other layer (audio, video).
+      const ok = proc.stdin.write(JSON.stringify({ ...cmd, id }) + '\n')
+      if (!ok) {
+        pending.delete(id)
+        clearTimeout(timer)
+        console.warn('[ax-capture] stdin backpressure; dropping request')
+        resolve(null)
+      }
     } catch (err) {
       pending.delete(id)
       clearTimeout(timer)
@@ -210,6 +229,11 @@ function failAllPending(_reason: string) {
 // Compact a capture result into a single string for the LLM. Caller decides
 // whether to send. Format: header line + one line per element; truncated to
 // `maxBytes` bytes (UTF-8) so it can't blow span attribute or token limits.
+//
+// Mirrored by formatAxTextRenderer in desktop/src/renderer/src/lib/screen-capture.ts.
+// They're kept in lockstep by their respective unit tests; consolidating into a
+// shared module would require routing through preload or a third bundle target,
+// which isn't worth it for ~18 lines of pure string manipulation.
 export function formatAxText(result: AXCaptureResult, maxBytes = 8 * 1024): string {
   if (!result.ok) return ''
   const header = `[Screen text — ${result.app}${result.window ? ` · ${result.window}` : ''}]`

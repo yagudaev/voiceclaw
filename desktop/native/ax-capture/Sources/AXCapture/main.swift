@@ -73,6 +73,12 @@ func capture() -> [String: Any] {
     }
     focused = first
   }
+  // Safe cast: Accessibility implementations are inconsistent and a buggy
+  // app could conceivably return something that isn't an AXUIElement.
+  // Force-casting here would crash the sidecar; bail with ax_failed instead.
+  guard CFGetTypeID(focused!) == AXUIElementGetTypeID() else {
+    return ["ok": false, "error": "ax_failed"]
+  }
   let window = focused as! AXUIElement
 
   var windowTitle = ""
@@ -145,9 +151,14 @@ func elementFrame(_ el: AXUIElement) -> [String: Double]? {
   guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &posRef) == .success,
         AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &sizeRef) == .success
   else { return nil }
+  guard let posVal = posRef, let sizeVal = sizeRef else { return nil }
+  // Safe cast: a non-AXValue here would force-crash. Apps occasionally
+  // return malformed types for these attributes; skipping the frame is
+  // strictly preferable to taking down the sidecar.
+  guard CFGetTypeID(posVal) == AXValueGetTypeID(),
+        CFGetTypeID(sizeVal) == AXValueGetTypeID() else { return nil }
   var pos = CGPoint.zero
   var size = CGSize.zero
-  guard let posVal = posRef, let sizeVal = sizeRef else { return nil }
   AXValueGetValue(posVal as! AXValue, .cgPoint, &pos)
   AXValueGetValue(sizeVal as! AXValue, .cgSize, &size)
   return ["x": Double(pos.x), "y": Double(pos.y), "w": Double(size.width), "h": Double(size.height)]
