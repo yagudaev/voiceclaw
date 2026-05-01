@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.37](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.36...desktop-v0.10.37) (2026-05-01)
+
+
+### Features
+
+* **desktop:** move attach to inline composer icon (NAN-703) ([#344](https://github.com/yagudaev/voiceclaw/issues/344)) ([f2c1bb1](https://github.com/yagudaev/voiceclaw/commit/f2c1bb18a734cc2736ecd0f6016663ba83921540))
+* **desktop:** structured tool-call panels with streaming brain response (NAN-702) ([#343](https://github.com/yagudaev/voiceclaw/issues/343)) ([7995bfe](https://github.com/yagudaev/voiceclaw/commit/7995bfeb0844e9f2361f520fadd61613dfa7d41d))
+
+
+### Bug Fixes
+
+* **desktop:** remove hoverable phantom element on composer textarea border (NAN-705) ([#360](https://github.com/yagudaev/voiceclaw/issues/360)) ([4b4f28e](https://github.com/yagudaev/voiceclaw/commit/4b4f28e98969fc473869ea7ba76953b2383e871e))
+
 ## [0.10.36](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.35...desktop-v0.10.36) (2026-05-01)
 
 
