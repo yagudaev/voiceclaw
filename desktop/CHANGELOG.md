@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.39](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.38...desktop-v0.10.39) (2026-05-01)
+
+
+### Features
+
+* **brain:** reliability — upstream errors + e2e harness + doctor script ([#370](https://github.com/yagudaev/voiceclaw/issues/370)) ([a4f501c](https://github.com/yagudaev/voiceclaw/commit/a4f501c23a43c5dd4d77ec4c3b33d460c4cd592d))
+
 ## [0.10.38](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.37...desktop-v0.10.38) (2026-05-01)
 
 
