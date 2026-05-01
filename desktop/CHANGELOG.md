@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.42](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.41...desktop-v0.10.42) (2026-05-01)
+
+
+### Bug Fixes
+
+* **relay:** Gemini 400, action labels, dedupe errors on upgrade rejection ([#387](https://github.com/yagudaev/voiceclaw/issues/387)) ([26b036e](https://github.com/yagudaev/voiceclaw/commit/26b036e11b16eb47ee7d909f816a04f128a3260f))
+
 ## [0.10.41](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.40...desktop-v0.10.41) (2026-05-01)
 
 
