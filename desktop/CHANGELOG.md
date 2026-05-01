@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.9.1...desktop-v0.10.0) (2026-05-01)
+
+
+### Features
+
+* **desktop:** typed text input in chat composer (NAN-638) ([#306](https://github.com/yagudaev/voiceclaw/issues/306)) ([e5c98af](https://github.com/yagudaev/voiceclaw/commit/e5c98afa4afd3f0002da02eddcf64ee7cc1574f3))
+
 ## [0.9.1](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.9.0...desktop-v0.9.1) (2026-04-30)
 
 
