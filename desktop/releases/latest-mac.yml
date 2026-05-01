@@ -1,8 +1,8 @@
-version: 0.10.40
+version: 0.10.42
 files:
-  - url: VoiceClaw-0.10.40-arm64.dmg
-    sha512: zraIOdNu5uApMZ7znQnj5Ud1jYqw/SYk3HA6KIvcS0QN4kF6qivO5P6CGlSZ27BnRbNj5G/Cqjf8XuezV7y4OQ==
-    size: 241405055
-path: VoiceClaw-0.10.40-arm64.dmg
-sha512: zraIOdNu5uApMZ7znQnj5Ud1jYqw/SYk3HA6KIvcS0QN4kF6qivO5P6CGlSZ27BnRbNj5G/Cqjf8XuezV7y4OQ==
-releaseDate: '2026-05-01T08:30:00.305Z'
+  - url: VoiceClaw-0.10.42-arm64.dmg
+    sha512: hoBf1ADG6f4YqZR+y0MK4aWafxqeS3Pdn6pJbPq+7/iewENcxOrlx6+kFe4YMSM3kr+0krdrpQixxEXUjFtd0Q==
+    size: 241369504
+path: VoiceClaw-0.10.42-arm64.dmg
+sha512: hoBf1ADG6f4YqZR+y0MK4aWafxqeS3Pdn6pJbPq+7/iewENcxOrlx6+kFe4YMSM3kr+0krdrpQixxEXUjFtd0Q==
+releaseDate: '2026-05-01T23:37:59.647Z'
