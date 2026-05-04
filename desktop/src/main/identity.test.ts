@@ -139,26 +139,7 @@ describe('getCachedVoicePreview', () => {
       net: {
         fetch: async (url: string, init?: RequestInit) => {
           fetchCalls.push({ url, init })
-          return {
-            ok: true,
-            json: async () => ({
-              candidates: [
-                {
-                  content: {
-                    parts: [
-                      {
-                        inlineData: {
-                          data: 'BASE64DATA',
-                          mimeType: 'audio/L16;rate=24000',
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-            }),
-            text: async () => '',
-          }
+          throw new Error('net.fetch must NOT be called from getCachedVoicePreview')
         },
       },
     }))
@@ -169,85 +150,14 @@ describe('getCachedVoicePreview', () => {
     vi.doUnmock('electron')
   })
 
-  it('generates and caches the preview on first request', async () => {
+  it('reads bundled Gemini WAVs without ever hitting the network', async () => {
+    const wavBytes = 'PRETEND-GEMINI-WAV-BYTES'
+    fileSystem.set(
+      '/tmp/voiceclaw-app-path/resources/voice-previews/gemini/Zephyr.wav',
+      wavBytes,
+    )
     const { getCachedVoicePreview } = await import('./identity')
-    const result = await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
-    expect(result).toEqual({
-      ok: true,
-      audioBase64: 'BASE64DATA',
-      mimeType: 'audio/L16;rate=24000',
-    })
-    expect(fetchCalls).toHaveLength(1)
-    // Cache file written next to identity files
-    const cacheWrite = writes.find((w) => w.path.includes('voice-previews'))
-    expect(cacheWrite).toBeDefined()
-    expect(cacheWrite?.path).toContain('Zephyr.json')
-  })
-
-  it('reuses the cached clip on subsequent calls without hitting the network', async () => {
-    const { getCachedVoicePreview } = await import('./identity')
-    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
-    expect(fetchCalls).toHaveLength(1)
-    const second = await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
-    expect(second).toEqual({
-      ok: true,
-      audioBase64: 'BASE64DATA',
-      mimeType: 'audio/L16;rate=24000',
-    })
-    // No additional network call
-    expect(fetchCalls).toHaveLength(1)
-  })
-
-  it('serves cached previews even when the API key is missing', async () => {
-    const { getCachedVoicePreview } = await import('./identity')
-    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Kore' })
-    expect(fetchCalls).toHaveLength(1)
-    const second = await getCachedVoicePreview({ apiKey: null, voice: 'Kore' })
-    expect(second).toEqual({
-      ok: true,
-      audioBase64: 'BASE64DATA',
-      mimeType: 'audio/L16;rate=24000',
-    })
-    expect(fetchCalls).toHaveLength(1)
-  })
-
-  it('returns an error when no cache is present and no API key is configured', async () => {
-    const { getCachedVoicePreview } = await import('./identity')
-    const result = await getCachedVoicePreview({ apiKey: null, voice: 'Aoede' })
-    expect(result.ok).toBe(false)
-    expect(fetchCalls).toHaveLength(0)
-  })
-
-  it('keeps separate cache entries per voice', async () => {
-    const { getCachedVoicePreview } = await import('./identity')
-    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Puck' })
-    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Charon' })
-    expect(fetchCalls).toHaveLength(2)
-    const cacheWrites = writes.filter((w) => w.path.includes('voice-previews'))
-    const paths = cacheWrites.map((w) => w.path)
-    expect(paths.some((p) => p.includes('Puck.json'))).toBe(true)
-    expect(paths.some((p) => p.includes('Charon.json'))).toBe(true)
-  })
-
-  it('coalesces concurrent first-clicks for the same voice into one TTS call', async () => {
-    const { getCachedVoicePreview } = await import('./identity')
-    const [a, b, c] = await Promise.all([
-      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
-      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
-      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
-    ])
-    expect(a.ok).toBe(true)
-    expect(b.ok).toBe(true)
-    expect(c.ok).toBe(true)
-    // All three resolve with the same payload but only one network call ran.
-    expect(fetchCalls).toHaveLength(1)
-  })
-
-  it('serves xAI voices from the bundled WAV without hitting the network', async () => {
-    const wavBytes = 'PRETEND-XAI-WAV-BYTES'
-    fileSystem.set('/tmp/voiceclaw-app-path/resources/voice-previews/xai/eve.wav', wavBytes)
-    const { getCachedVoicePreview } = await import('./identity')
-    const result = await getCachedVoicePreview({ apiKey: null, voice: 'eve' })
+    const result = await getCachedVoicePreview({ voice: 'Zephyr' })
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.mimeType).toBe('audio/wav')
@@ -256,11 +166,40 @@ describe('getCachedVoicePreview', () => {
     expect(fetchCalls).toHaveLength(0)
   })
 
-  it('returns an error when an xAI bundled preview is missing', async () => {
+  it('reads bundled xAI WAVs without ever hitting the network', async () => {
+    const wavBytes = 'PRETEND-XAI-WAV-BYTES'
+    fileSystem.set('/tmp/voiceclaw-app-path/resources/voice-previews/xai/eve.wav', wavBytes)
     const { getCachedVoicePreview } = await import('./identity')
-    const result = await getCachedVoicePreview({ apiKey: null, voice: 'sal' })
+    const result = await getCachedVoicePreview({ voice: 'eve' })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.mimeType).toBe('audio/wav')
+      expect(Buffer.from(result.audioBase64, 'base64').toString('utf8')).toBe(wavBytes)
+    }
+    expect(fetchCalls).toHaveLength(0)
+  })
+
+  it('does not write any files (no userData lazy cache)', async () => {
+    fileSystem.set('/tmp/voiceclaw-app-path/resources/voice-previews/gemini/Puck.wav', 'a')
+    fileSystem.set('/tmp/voiceclaw-app-path/resources/voice-previews/xai/rex.wav', 'b')
+    const { getCachedVoicePreview } = await import('./identity')
+    await getCachedVoicePreview({ voice: 'Puck' })
+    await getCachedVoicePreview({ voice: 'rex' })
+    expect(writes.filter((w) => w.path.includes('voice-previews'))).toHaveLength(0)
+  })
+
+  it('returns an error when a bundled preview is missing', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    const result = await getCachedVoicePreview({ voice: 'Aoede' })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/sal/)
+    if (!result.ok) expect(result.error).toMatch(/Aoede/)
+    expect(fetchCalls).toHaveLength(0)
+  })
+
+  it('returns an error for an unknown voice', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    const result = await getCachedVoicePreview({ voice: 'NotAVoice' })
+    expect(result.ok).toBe(false)
     expect(fetchCalls).toHaveLength(0)
   })
 })

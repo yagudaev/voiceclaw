@@ -540,13 +540,13 @@ export function registerIpcHandlers() {
     },
   )
 
-  // Static, cached preview used by the Settings voice picker. The clip is
-  // generated once per voice and reused thereafter, so this does NOT hit the
-  // TTS endpoint after the first call (and works without a key once cached).
+  // Static voice preview used by the Settings voice picker. The clips
+  // ship with the app under resources/voice-previews/<provider>/ — this
+  // handler never hits the network and does not need an API key.
   ipcMain.handle(
     'identity:getVoicePreview',
     async (_e, params: { voice: string }) => {
-      return getCachedVoicePreview({ apiKey: getProviderKey('gemini'), voice: params.voice })
+      return getCachedVoicePreview({ voice: params.voice })
     },
   )
 
