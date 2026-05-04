@@ -136,11 +136,13 @@ export class MediaCapture {
     t.assistantBytes += buf.byteLength
   }
 
-  onVideoFrame(base64Jpeg: string, offsetMs: number): void {
+  onVideoFrame(
+    base64Jpeg: string,
+    offsetMs: number,
+    annotation?: { original: string; strokesPng: string },
+  ): void {
     const t = this.currentTurn
     if (!t || !t.videoDir) return
-    // Lazy-create the per-turn video dir on first frame so audio-only turns
-    // don't leave empty scaffolding behind. Safe to call repeatedly.
     if (!t.videoDirReady) {
       try {
         mkdirSync(t.videoDir, { recursive: true })
@@ -150,15 +152,37 @@ export class MediaCapture {
       }
     }
     const idx = t.videoFrames.length
-    const file = `${String(idx).padStart(4, "0")}.jpeg`
+    const padded = String(idx).padStart(4, "0")
+    const file = `${padded}.jpeg`
     const abs = join(t.videoDir, file)
     try {
       const buf = Buffer.from(base64Jpeg, "base64")
-      // Track the write promise and wait for settled before finalize so
-      // timings.json can't list a frame whose JPEG hasn't landed yet.
       const p = fs.writeFile(abs, buf).catch(() => undefined)
       t.frameWrites.push(p)
-      t.videoFrames.push({ offset_ms: offsetMs, file })
+      const entry: VideoFrameEntry = { offset_ms: offsetMs, file }
+      if (annotation) {
+        const originalFile = `${padded}.original.jpeg`
+        const strokesFile = `${padded}.strokes.png`
+        try {
+          const originalBuf = Buffer.from(annotation.original, "base64")
+          t.frameWrites.push(
+            fs.writeFile(join(t.videoDir, originalFile), originalBuf).catch(() => undefined),
+          )
+          entry.original_file = originalFile
+        } catch {
+          // skip original on encode failure
+        }
+        try {
+          const strokesBuf = Buffer.from(annotation.strokesPng, "base64")
+          t.frameWrites.push(
+            fs.writeFile(join(t.videoDir, strokesFile), strokesBuf).catch(() => undefined),
+          )
+          entry.strokes_file = strokesFile
+        } catch {
+          // skip strokes on encode failure
+        }
+      }
+      t.videoFrames.push(entry)
     } catch {
       // Drop the frame on sync-encode failure — don't kill the turn.
     }
@@ -390,8 +414,15 @@ type TurnState = {
   assistantBytes: number
   videoDir: string | null
   videoDirReady: boolean
-  videoFrames: { offset_ms: number; file: string }[]
+  videoFrames: VideoFrameEntry[]
   frameWrites: Promise<void | undefined>[]
+}
+
+export type VideoFrameEntry = {
+  offset_ms: number
+  file: string
+  original_file?: string
+  strokes_file?: string
 }
 
 type CompletedTurn = {
@@ -401,7 +432,7 @@ type CompletedTurn = {
   assistantPcmPath: string | null
   assistantBytes: number
   videoDir: string | null
-  videoFrames: { offset_ms: number; file: string }[]
+  videoFrames: VideoFrameEntry[]
   turnStartRelMs: number
 }
 

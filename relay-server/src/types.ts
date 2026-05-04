@@ -55,8 +55,15 @@ export interface AudioCommitEvent {
 
 export interface FrameAppendEvent {
   type: "frame.append"
-  data: string // base64 JPEG
+  data: string // base64 JPEG — composite when annotated, raw capture otherwise
   mimeType?: string // default "image/jpeg"
+  // Sibling artifacts captured alongside the composite when on-screen drawing
+  // is active. Saved into the per-turn trace as separate files; never sent
+  // upstream to the realtime model (data is what the model sees).
+  annotation?: {
+    original: string // base64 JPEG of the un-annotated capture
+    strokesPng: string // base64 PNG of strokes-only canvas, transparent background
+  }
 }
 
 export interface ResponseCreateEvent {

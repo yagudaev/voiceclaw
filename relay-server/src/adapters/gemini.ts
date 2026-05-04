@@ -56,6 +56,7 @@ export class GeminiAdapter implements ProviderAdapter {
   private currentUserText = ""
   private userSpeaking = false
   private hasVideoInput = false
+  private framesSent = 0
   private watchdogEnabled = false
   // Watchdog arms only after the first post-resume ASR text; any generation
   // event clears it.
@@ -208,6 +209,12 @@ export class GeminiAdapter implements ProviderAdapter {
       const onClose = (code: number, reason: Buffer) => {
         const reasonText = String(reason)
         log(`[gemini] WebSocket closed: ${code} ${reasonText}`)
+        if (this.currentUserText) {
+          log(`[gemini] user (in-flight at close): ${oneLine(this.currentUserText)}`)
+        }
+        if (this.currentAssistantText) {
+          log(`[gemini] assistant (in-flight at close): ${oneLine(this.currentAssistantText)}`)
+        }
         if (!settled) {
           finish(new Error(reasonText || "Gemini setup failed"))
           return
@@ -413,6 +420,13 @@ export class GeminiAdapter implements ProviderAdapter {
 
   sendFrame(data: string, mimeType?: string) {
     this.hasVideoInput = true
+    if (this.framesSent === 0 || this.framesSent % 30 === 0) {
+      // Cheap base64-byte estimate (length × 3/4) — actual bytes after base64
+      // decode are slightly less but this is close enough for sizing checks.
+      const approxBytes = Math.round((data.length * 3) / 4)
+      log(`[gemini] frame #${this.framesSent}: ~${(approxBytes / 1024).toFixed(0)} KB`)
+    }
+    this.framesSent++
     this.sendUpstream({
       realtimeInput: {
         video: {
@@ -671,6 +685,7 @@ export class GeminiAdapter implements ProviderAdapter {
     if (content.outputTranscription?.text) {
       if (this.currentUserText) {
         this.transcript.push({ role: "user", text: this.currentUserText })
+        log(`[gemini] user: ${oneLine(this.currentUserText)}`)
         this.sendToClient?.({
           type: "transcript.done",
           text: this.currentUserText,
@@ -734,6 +749,7 @@ export class GeminiAdapter implements ProviderAdapter {
       this.emitLatencyMetrics()
       if (this.currentUserText) {
         this.transcript.push({ role: "user", text: this.currentUserText })
+        log(`[gemini] user: ${oneLine(this.currentUserText)}`)
         this.sendToClient?.({
           type: "transcript.done",
           text: this.currentUserText,
@@ -743,6 +759,7 @@ export class GeminiAdapter implements ProviderAdapter {
       }
       if (this.currentAssistantText) {
         this.transcript.push({ role: "assistant", text: this.currentAssistantText })
+        log(`[gemini] assistant: ${oneLine(this.currentAssistantText)}`)
         this.sendToClient?.({
           type: "transcript.done",
           text: this.currentAssistantText,
@@ -764,6 +781,7 @@ export class GeminiAdapter implements ProviderAdapter {
       }
       if (this.currentUserText) {
         this.transcript.push({ role: "user", text: this.currentUserText })
+        log(`[gemini] user: ${oneLine(this.currentUserText)}`)
         this.sendToClient?.({
           type: "transcript.done",
           text: this.currentUserText,
@@ -773,6 +791,7 @@ export class GeminiAdapter implements ProviderAdapter {
       }
       if (this.currentAssistantText) {
         this.transcript.push({ role: "assistant", text: this.currentAssistantText + "..." })
+        log(`[gemini] assistant (interrupted): ${oneLine(this.currentAssistantText)}`)
         this.sendToClient?.({
           type: "transcript.done",
           text: this.currentAssistantText + "...",
@@ -1025,6 +1044,24 @@ export class GeminiAdapter implements ProviderAdapter {
     })
     this.resetLatencyMarks()
   }
+}
+
+function oneLine(s: string): string {
+  // Collapse whitespace runs into a single space so the line stays log-friendly,
+  // but escape non-printable controls (NULs, lone surrogates, etc.) so anything
+  // exotic that arrived from upstream is visible instead of swallowed by the
+  // terminal.
+  let collapsed = ""
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) {
+      collapsed += /\s/.test(ch) ? " " : `\\u${code.toString(16).padStart(4, "0")}`
+    } else {
+      collapsed += ch
+    }
+  }
+  collapsed = collapsed.replace(/\s+/g, " ").trim()
+  return collapsed.length > 1000 ? `${collapsed.slice(0, 1000)}…` : collapsed
 }
 
 function pickEarliest(a: number | null, b: number | null): number | null {

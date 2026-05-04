@@ -35,7 +35,9 @@ app.get("/test", (req, res) => {
 
 const server = createServer(app)
 
-const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 1_048_576 })
+// 4 MB headroom for screen-share frames — composite + original + strokes-png in
+// a single frame.append message can comfortably exceed the previous 1 MB cap.
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 4 * 1_048_576 })
 
 wss.on("connection", (ws) => {
   new RelaySession(ws)

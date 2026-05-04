@@ -23,6 +23,19 @@ import {
   showCallBar,
   showCallBarContextMenu,
 } from './call-bar'
+import {
+  clearDrawOverlay,
+  createDrawOverlay,
+  destroyDrawOverlay,
+  getDrawOverlayWindow,
+  hideDrawOverlay,
+  onDrawOverlayDisplayBounds,
+  onDrawOverlayModeChanged,
+  onDrawOverlayStrokesChanged,
+  registerDrawOverlayHandlers,
+  setDrawOverlayMode,
+  showDrawOverlay,
+} from './draw-overlay'
 import { serviceManager } from './services/service-manager'
 import {
   applyGeminiKeyToOpenClawConfig,
@@ -91,6 +104,7 @@ app.whenReady().then(async () => {
   registerAuthDeepLink()
   registerIpcHandlers()
   registerScreenCaptureHandlers()
+  registerDrawOverlayHandlers()
   registerTelemetryHandlers()
   const firstLaunch = isFirstLaunch()
   telemetryIdentify()
@@ -132,6 +146,39 @@ app.whenReady().then(async () => {
   // Create the window up front so show/hide is instant when a session
   // opens. The window is hidden until setCallActive(true) fires.
   createCallBar({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+
+  createDrawOverlay({ isDev, rendererUrl: process.env.ELECTRON_RENDERER_URL })
+  onDrawOverlayStrokesChanged((strokes, bounds) => {
+    getMainWindow()?.webContents.send('draw-overlay:strokes', { strokes, bounds })
+  })
+  onDrawOverlayDisplayBounds((bounds) => {
+    getMainWindow()?.webContents.send('draw-overlay:display-bounds', bounds)
+  })
+  onDrawOverlayModeChanged((mode) => {
+    getMainWindow()?.webContents.send('draw-overlay:mode', mode)
+  })
+
+  ipcMain.handle('draw-overlay:show', (e, displayId?: number) => {
+    if (e.sender !== getMainWindow()?.webContents) return
+    showDrawOverlay(typeof displayId === 'number' ? displayId : undefined)
+  })
+  ipcMain.handle('draw-overlay:hide', (e) => {
+    if (e.sender !== getMainWindow()?.webContents) return
+    hideDrawOverlay()
+  })
+  ipcMain.handle('draw-overlay:setMode', (e, mode: unknown) => {
+    const main = getMainWindow()?.webContents
+    const overlay = getDrawOverlayWindow()?.webContents
+    if (e.sender !== main && e.sender !== overlay) return
+    if (mode !== 'idle' && mode !== 'draw') return
+    setDrawOverlayMode(mode)
+  })
+  ipcMain.handle('draw-overlay:clear', (e) => {
+    const main = getMainWindow()?.webContents
+    const overlay = getDrawOverlayWindow()?.webContents
+    if (e.sender !== main && e.sender !== overlay) return
+    clearDrawOverlay()
+  })
 
   registerCallBarHooks({
     onFocusMain: () => {
@@ -241,6 +288,7 @@ app.on('before-quit', async (event) => {
 app.on('will-quit', () => {
   serviceManager.stopAll()
   destroyCallBar()
+  destroyDrawOverlay()
   destroyTray()
   closeDb()
 })

@@ -250,6 +250,88 @@ const electronAPI = {
           appIconDataURL: string | null
         }>
       >,
+    getWindowBounds: (windowId: number) =>
+      ipcRenderer.invoke('screen:getWindowBounds', windowId) as Promise<{
+        x: number
+        y: number
+        width: number
+        height: number
+      } | null>,
+  },
+  drawOverlay: {
+    show: (displayId?: number) =>
+      ipcRenderer.invoke('draw-overlay:show', displayId) as Promise<void>,
+    hide: () => ipcRenderer.invoke('draw-overlay:hide') as Promise<void>,
+    setMode: (mode: 'idle' | 'draw') =>
+      ipcRenderer.invoke('draw-overlay:setMode', mode) as Promise<void>,
+    clear: () => ipcRenderer.invoke('draw-overlay:clear') as Promise<void>,
+    onStrokes: (
+      handler: (payload: {
+        strokes: Array<{
+          id: string
+          color: string
+          width: number
+          points: Array<{ x: number; y: number }>
+        }>
+        bounds: { x: number; y: number; width: number; height: number; scaleFactor: number }
+      }) => void,
+    ) => {
+      const wrapped = (_e: IpcRendererEvent, p: Parameters<typeof handler>[0]) => handler(p)
+      ipcRenderer.on('draw-overlay:strokes', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:strokes', wrapped)
+    },
+    onDisplayBounds: (
+      handler: (bounds: {
+        x: number
+        y: number
+        width: number
+        height: number
+        scaleFactor: number
+      }) => void,
+    ) => {
+      const wrapped = (_e: IpcRendererEvent, b: Parameters<typeof handler>[0]) => handler(b)
+      ipcRenderer.on('draw-overlay:display-bounds', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:display-bounds', wrapped)
+    },
+    onModeChanged: (handler: (mode: 'idle' | 'draw') => void) => {
+      const wrapped = (_e: IpcRendererEvent, mode: 'idle' | 'draw') => handler(mode)
+      ipcRenderer.on('draw-overlay:mode', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:mode', wrapped)
+    },
+
+    // Overlay-renderer side ------------------------------------------------
+    ready: () => ipcRenderer.invoke('draw-overlay:ready') as Promise<void>,
+    sendStrokes: (
+      strokes: Array<{
+        id: string
+        color: string
+        width: number
+        points: Array<{ x: number; y: number }>
+      }>,
+    ) => ipcRenderer.send('draw-overlay:strokes', { strokes }),
+    onMode: (handler: (mode: 'idle' | 'draw') => void) => {
+      const wrapped = (_e: IpcRendererEvent, mode: 'idle' | 'draw') => handler(mode)
+      ipcRenderer.on('draw-overlay:mode', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:mode', wrapped)
+    },
+    onClear: (handler: () => void) => {
+      const wrapped = () => handler()
+      ipcRenderer.on('draw-overlay:clear', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:clear', wrapped)
+    },
+    onBounds: (
+      handler: (bounds: {
+        x: number
+        y: number
+        width: number
+        height: number
+        scaleFactor: number
+      }) => void,
+    ) => {
+      const wrapped = (_e: IpcRendererEvent, b: Parameters<typeof handler>[0]) => handler(b)
+      ipcRenderer.on('draw-overlay:bounds', wrapped)
+      return () => ipcRenderer.removeListener('draw-overlay:bounds', wrapped)
+    },
   },
   logs: {
     reveal: () => ipcRenderer.invoke('logs:reveal') as Promise<{ ok: boolean, path: string }>,

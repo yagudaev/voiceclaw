@@ -1,10 +1,18 @@
 import { ipcMain, desktopCapturer, systemPreferences, shell, session } from 'electron'
+import { openWindows } from 'get-windows'
 
 export type ScreenSourceIPC = {
   id: string
   name: string
   thumbnailDataURL: string | null
   appIconDataURL: string | null
+}
+
+export type WindowBoundsIPC = {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export function registerScreenCaptureHandlers() {
@@ -54,5 +62,25 @@ export function registerScreenCaptureHandlers() {
         .catch(() => callback({}))
     },
     { useSystemPicker: false }
+  )
+
+  ipcMain.handle(
+    'screen:getWindowBounds',
+    async (_e, windowId: unknown): Promise<WindowBoundsIPC | null> => {
+      if (typeof windowId !== 'number' || !Number.isFinite(windowId)) return null
+      try {
+        const all = await openWindows()
+        const found = all.find((w) => w.id === windowId)
+        if (!found) return null
+        return {
+          x: found.bounds.x,
+          y: found.bounds.y,
+          width: found.bounds.width,
+          height: found.bounds.height,
+        }
+      } catch {
+        return null
+      }
+    },
   )
 }

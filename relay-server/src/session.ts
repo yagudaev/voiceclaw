@@ -582,6 +582,7 @@ export class RelaySession {
         this.media.onVideoFrame(
           event.data,
           Math.max(0, Date.now() - this.currentTurnStartMs),
+          event.annotation,
         )
         this.adapter?.sendFrame(event.data, event.mimeType)
         break

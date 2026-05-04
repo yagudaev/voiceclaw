@@ -27,6 +27,19 @@ void (async () => {
     return
   }
 
+  if (view === 'draw-overlay') {
+    const [{ DrawCanvas }] = await Promise.all([
+      import('./draw-overlay/DrawCanvas'),
+      import('./draw-overlay/draw-overlay.css'),
+    ])
+    root.render(
+      <StrictMode>
+        <DrawCanvas />
+      </StrictMode>,
+    )
+    return
+  }
+
   const [{ App }, { initTelemetry }] = await Promise.all([
     import('./App'),
     import('./lib/telemetry'),
