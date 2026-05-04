@@ -17,7 +17,6 @@ const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 // VOICECLAW_GEMINI_CONTEXT_WINDOW if Google's published numbers shift.
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "gemini-3.1-flash-live-preview": 131_072,
-  "gemini-2.5-flash-native-audio-preview-12-2025": 131_072,
 }
 const FALLBACK_CONTEXT_WINDOW = 131_072
 const WATCHDOG_TIMEOUT_MS = 20_000
