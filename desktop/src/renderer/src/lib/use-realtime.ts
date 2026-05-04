@@ -67,6 +67,15 @@ export interface RealtimeCallbacks {
   onSessionEnded?: (summary: string) => void
   onDisconnect?: () => void
   onError?: (message: string, code: number, payload?: AdapterErrorPayload) => void
+  onUsage?: (usage: UsageSnapshot) => void
+}
+
+export interface UsageSnapshot {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  inputAudioTokens?: number
+  outputAudioTokens?: number
 }
 
 export interface RealtimeControls {
@@ -240,6 +249,16 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
 
         case 'session.rotated':
           if (typeof data.sessionId === 'string') setSessionId(data.sessionId)
+          break
+
+        case 'usage.metrics':
+          cb.onUsage?.({
+            promptTokens: data.promptTokens,
+            completionTokens: data.completionTokens,
+            totalTokens: data.totalTokens,
+            inputAudioTokens: data.inputAudioTokens,
+            outputAudioTokens: data.outputAudioTokens,
+          })
           break
 
         case 'error':

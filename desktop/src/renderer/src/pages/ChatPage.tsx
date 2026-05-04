@@ -103,6 +103,13 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
   // current role outside of a setState updater since updaters must stay pure.
   const streamingRoleRef = useRef<'user' | 'assistant'>('assistant')
   const [showLatency, setShowLatency] = useState(false)
+  const [showContextUsage, setShowContextUsage] = useState(false)
+  const [usage, setUsage] = useState<{
+    promptTokens?: number
+    totalTokens?: number
+    inputAudioTokens?: number
+    outputAudioTokens?: number
+  } | null>(null)
   const [connectionError, setConnectionError] = useState('')
   const [adapterError, setAdapterError] = useState<AdapterErrorPayload | null>(null)
   const [activeRealtimeModel, setActiveRealtimeModel] = useState('')
@@ -211,6 +218,7 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
   useEffect(() => {
     loadLatestConversation()
     getSetting('show_latency').then((v) => setShowLatency(v === 'true'))
+    getSetting('show_context_usage').then((v) => setShowContextUsage(v === 'true'))
     getSetting('realtime_volume').then((v) => {
       const parsed = parseFloat(v ?? '')
       if (!Number.isNaN(parsed)) setBaseVolume(Math.max(0, parsed))
@@ -366,6 +374,14 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
       setIsConnecting(false)
       setIsCallActive(false)
       realtimeRef.current?.stop()
+    },
+    onUsage: (snapshot) => {
+      setUsage({
+        promptTokens: snapshot.promptTokens,
+        totalTokens: snapshot.totalTokens,
+        inputAudioTokens: snapshot.inputAudioTokens,
+        outputAudioTokens: snapshot.outputAudioTokens,
+      })
     },
   }
 
@@ -1043,6 +1059,21 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Context usage debug strip */}
+      {showContextUsage && isCallActive && usage && (
+        <div className="px-4 py-1 text-[11px] text-muted-foreground font-mono flex items-center justify-between border-t border-border">
+          <span>
+            context: {formatTokens(usage.promptTokens)} /{' '}
+            {formatTokens(getContextWindowFor(activeRealtimeModel))}
+            {' '}
+            ({formatPercent(usage.promptTokens, getContextWindowFor(activeRealtimeModel))})
+          </span>
+          <span className="text-muted-foreground/70">
+            audio in {formatTokens(usage.inputAudioTokens)} · out {formatTokens(usage.outputAudioTokens)}
+          </span>
+        </div>
+      )}
+
       {/* Screen sharing indicator */}
       {isScreenSharing && (
         <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-[var(--brand-sage)]">
@@ -1338,6 +1369,30 @@ async function defaultRelayUrl(): Promise<string> {
     // fall through
   }
   return 'ws://localhost:8080/ws'
+}
+
+// Mirrors relay-server/src/adapters/gemini.ts MODEL_CONTEXT_WINDOWS. Kept in
+// sync manually — when Google bumps a model, update both. The renderer only
+// needs entries for models the user can actually pick (set in REALTIME_MODELS).
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'gemini-3.1-flash-live-preview': 131_072,
+}
+const FALLBACK_CONTEXT_WINDOW = 131_072
+
+function getContextWindowFor(model: string): number {
+  return MODEL_CONTEXT_WINDOWS[model] ?? FALLBACK_CONTEXT_WINDOW
+}
+
+function formatTokens(n: number | undefined | null): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return '?'
+  if (n < 1000) return String(n)
+  if (n < 100_000) return `${(n / 1000).toFixed(1)}k`
+  return `${Math.round(n / 1000)}k`
+}
+
+function formatPercent(used: number | undefined, limit: number): string {
+  if (used == null || !Number.isFinite(used) || limit <= 0) return '?%'
+  return `${Math.round((used / limit) * 100)}%`
 }
 
 function parseWindowIdFromSourceId(sourceId: string): number | null {
