@@ -234,6 +234,11 @@ const electronAPI = {
         | { ok: true; audioBase64: string; mimeType: string }
         | { ok: false; error: string }
       >,
+    getVoicePreview: (params: { voice: string }) =>
+      ipcRenderer.invoke('identity:getVoicePreview', params) as Promise<
+        | { ok: true; audioBase64: string; mimeType: string }
+        | { ok: false; error: string }
+      >,
   },
   screen: {
     getSources: () =>

@@ -94,6 +94,10 @@ declare global {
           | { ok: true; audioBase64: string; mimeType: string }
           | { ok: false; error: string }
         >
+        getVoicePreview: (params: { voice: string }) => Promise<
+          | { ok: true; audioBase64: string; mimeType: string }
+          | { ok: false; error: string }
+        >
       }
     }
   }
@@ -134,4 +138,6 @@ export const identityApi = {
   save: (patch: AgentIdentityPatch) => window.electronAPI.identity.save(patch),
   speakPreview: (params: { voice: string; text: string }) =>
     window.electronAPI.identity.speakPreview(params),
+  getVoicePreview: (params: { voice: string }) =>
+    window.electronAPI.identity.getVoicePreview(params),
 }

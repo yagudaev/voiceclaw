@@ -18,6 +18,7 @@ import { buildDiagnosticBundle } from './services/diagnostic-bundle'
 import {
   type AgentIdentity,
   readAgentIdentity,
+  getCachedVoicePreview,
   speakGreetingPreview,
   writeAgentIdentity,
 } from './identity'
@@ -536,6 +537,16 @@ export function registerIpcHandlers() {
       const apiKey = getProviderKey('gemini')
       if (!apiKey) return { ok: false as const, error: 'No Gemini key configured.' }
       return speakGreetingPreview({ apiKey, voice: params.voice, text: params.text })
+    },
+  )
+
+  // Static, cached preview used by the Settings voice picker. The clip is
+  // generated once per voice and reused thereafter, so this does NOT hit the
+  // TTS endpoint after the first call (and works without a key once cached).
+  ipcMain.handle(
+    'identity:getVoicePreview',
+    async (_e, params: { voice: string }) => {
+      return getCachedVoicePreview({ apiKey: getProviderKey('gemini'), voice: params.voice })
     },
   )
 

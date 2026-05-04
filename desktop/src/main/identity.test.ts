@@ -93,3 +93,108 @@ describe('readAgentIdentity', () => {
     expect(id.voice).toBe('Charon')
   })
 })
+
+describe('getCachedVoicePreview', () => {
+  let fetchCalls: { url: string; init?: RequestInit }[] = []
+
+  beforeEach(() => {
+    writes.length = 0
+    fileSystem.clear()
+    fetchCalls = []
+    vi.doMock('electron', () => ({
+      app: {
+        getPath: () => '/tmp/voiceclaw-identity-test',
+      },
+      net: {
+        fetch: async (url: string, init?: RequestInit) => {
+          fetchCalls.push({ url, init })
+          return {
+            ok: true,
+            json: async () => ({
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: 'BASE64DATA',
+                          mimeType: 'audio/L16;rate=24000',
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+            text: async () => '',
+          }
+        },
+      },
+    }))
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('electron')
+  })
+
+  it('generates and caches the preview on first request', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    const result = await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
+    expect(result).toEqual({
+      ok: true,
+      audioBase64: 'BASE64DATA',
+      mimeType: 'audio/L16;rate=24000',
+    })
+    expect(fetchCalls).toHaveLength(1)
+    // Cache file written next to identity files
+    const cacheWrite = writes.find((w) => w.path.includes('voice-previews'))
+    expect(cacheWrite).toBeDefined()
+    expect(cacheWrite?.path).toContain('Zephyr.json')
+  })
+
+  it('reuses the cached clip on subsequent calls without hitting the network', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
+    expect(fetchCalls).toHaveLength(1)
+    const second = await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Zephyr' })
+    expect(second).toEqual({
+      ok: true,
+      audioBase64: 'BASE64DATA',
+      mimeType: 'audio/L16;rate=24000',
+    })
+    // No additional network call
+    expect(fetchCalls).toHaveLength(1)
+  })
+
+  it('serves cached previews even when the API key is missing', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Kore' })
+    expect(fetchCalls).toHaveLength(1)
+    const second = await getCachedVoicePreview({ apiKey: null, voice: 'Kore' })
+    expect(second).toEqual({
+      ok: true,
+      audioBase64: 'BASE64DATA',
+      mimeType: 'audio/L16;rate=24000',
+    })
+    expect(fetchCalls).toHaveLength(1)
+  })
+
+  it('returns an error when no cache is present and no API key is configured', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    const result = await getCachedVoicePreview({ apiKey: null, voice: 'Aoede' })
+    expect(result.ok).toBe(false)
+    expect(fetchCalls).toHaveLength(0)
+  })
+
+  it('keeps separate cache entries per voice', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Puck' })
+    await getCachedVoicePreview({ apiKey: 'test-key', voice: 'Charon' })
+    expect(fetchCalls).toHaveLength(2)
+    const cacheWrites = writes.filter((w) => w.path.includes('voice-previews'))
+    const paths = cacheWrites.map((w) => w.path)
+    expect(paths.some((p) => p.includes('Puck.json'))).toBe(true)
+    expect(paths.some((p) => p.includes('Charon.json'))).toBe(true)
+  })
+})

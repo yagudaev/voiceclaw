@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { UpdateState } from '../lib/db'
-import { Wifi, WifiOff, Eye, EyeOff } from 'lucide-react'
+import { Wifi, WifiOff, Eye, EyeOff, Play } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Toggle } from '../components/ui/Toggle'
 import { identityApi, onboarding } from '../lib/onboarding-api'
+import { decodeVoicePreviewAudio } from '../lib/voice-preview'
 import { useTheme, type Theme } from '../lib/use-theme'
 import { enumerateAudioDevices, type AudioDevice } from '../lib/audio-engine'
 import { getSetting, setSetting } from '../lib/db'
@@ -94,6 +95,12 @@ export function SettingsPage() {
   const [agentName, setAgentName] = useState('')
   const [agentDescription, setAgentDescription] = useState('')
   const identityLoadedRef = useRef(false)
+
+  // Voice preview playback (clicking ▶ on a voice card plays a sample
+  // without changing the selection). Errors render inline below the grid.
+  const [previewing, setPreviewing] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState('')
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // Privacy / telemetry
   const [telemetryEnabled, setTelemetryEnabled] = useState(true)
@@ -233,6 +240,59 @@ export function SettingsPage() {
       void setVoiceForProvider(providerForModel(model), v)
     }
   }, [model])
+
+  // Stop in-flight preview audio on unmount.
+  useEffect(() => {
+    return () => {
+      const audio = previewAudioRef.current
+      if (audio) {
+        try {
+          audio.pause()
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [])
+
+  const handleVoicePreview = useCallback(async (voiceId: string) => {
+    setPreviewError('')
+    // Stop any in-flight clip so re-clicking restarts cleanly.
+    const prev = previewAudioRef.current
+    if (prev) {
+      try {
+        prev.pause()
+      } catch {
+        // ignore
+      }
+      previewAudioRef.current = null
+    }
+    setPreviewing(voiceId)
+    try {
+      const result = await identityApi.getVoicePreview({ voice: voiceId })
+      if (!result.ok) {
+        setPreviewError(result.error)
+        setPreviewing(null)
+        return
+      }
+      const audio = decodeVoicePreviewAudio(result.audioBase64, result.mimeType)
+      previewAudioRef.current = audio
+      audio.onended = () => setPreviewing((p) => (p === voiceId ? null : p))
+      audio.onerror = () => {
+        setPreviewError(`Audio playback failed (${result.mimeType}).`)
+        setPreviewing((p) => (p === voiceId ? null : p))
+      }
+      try {
+        await audio.play()
+      } catch (err) {
+        setPreviewError(err instanceof Error ? err.message : 'Could not play audio.')
+        setPreviewing(null)
+      }
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Preview failed.')
+      setPreviewing(null)
+    }
+  }, [])
 
   const updateVolume = useCallback((v: number) => {
     setVolume(v)
@@ -569,20 +629,55 @@ export function SettingsPage() {
         <Card className="p-4 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Voice</h3>
           <div className="grid grid-cols-2 gap-1.5">
-            {(model.startsWith('gemini-') ? GEMINI_VOICES : XAI_VOICES).map((v) => (
-              <button
-                key={v}
-                onClick={() => updateVoice(v)}
-                className={`rounded-md border px-3 py-2 text-sm text-left transition-colors
-                  ${voice === v ? 'border-primary bg-accent font-medium text-foreground' : 'border-input text-muted-foreground hover:bg-accent'}
-                `}
-              >
-                {model.startsWith('gemini-')
-                  ? GEMINI_VOICE_LABELS[v as typeof GEMINI_VOICES[number]]
-                  : XAI_VOICE_LABELS[v as typeof XAI_VOICES[number]]}
-              </button>
-            ))}
+            {(model.startsWith('gemini-') ? GEMINI_VOICES : XAI_VOICES).map((v) => {
+              const isGemini = model.startsWith('gemini-')
+              const label = isGemini
+                ? GEMINI_VOICE_LABELS[v as typeof GEMINI_VOICES[number]]
+                : XAI_VOICE_LABELS[v as typeof XAI_VOICES[number]]
+              const selected = voice === v
+              const isPlaying = previewing === v
+              return (
+                <div
+                  key={v}
+                  className={`flex items-stretch gap-1 rounded-md border transition-colors
+                    ${selected ? 'border-primary bg-accent' : 'border-input'}
+                  `}
+                >
+                  <button
+                    onClick={() => updateVoice(v)}
+                    className={`flex-1 rounded-l-md px-3 py-2 text-left text-sm transition-colors
+                      ${selected ? 'font-medium text-foreground' : 'text-muted-foreground hover:bg-accent'}
+                    `}
+                  >
+                    {label}
+                  </button>
+                  {isGemini ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleVoicePreview(v)
+                      }}
+                      disabled={isPlaying}
+                      aria-label={`Preview ${v} voice`}
+                      title={isPlaying ? 'Playing…' : `Preview ${label}`}
+                      className={`flex w-9 items-center justify-center rounded-r-md border-l border-input
+                        text-muted-foreground transition-colors hover:bg-background hover:text-foreground
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                      `}
+                    >
+                      <Play size={14} className={isPlaying ? 'animate-pulse' : ''} />
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
+          {previewError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {previewError}
+            </p>
+          ) : null}
         </Card>
 
         {/* Audio Devices */}
