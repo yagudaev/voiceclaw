@@ -12,12 +12,12 @@ import { mapAdapterError } from "./error-map.js"
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
-// Per-model input-token budget for the live bidi session. Override via
+// Per-model input-token budget for the live bidi session, sourced from
+// ai.google.dev/gemini-api/docs/models. Override via
 // VOICECLAW_GEMINI_CONTEXT_WINDOW if Google's published numbers shift.
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "gemini-3.1-flash-live-preview": 131_072,
-  "gemini-2.5-flash-live-preview": 32_768,
-  "gemini-2.0-flash-live-preview-04-09": 32_768,
+  "gemini-2.5-flash-native-audio-preview-12-2025": 131_072,
 }
 const FALLBACK_CONTEXT_WINDOW = 131_072
 const WATCHDOG_TIMEOUT_MS = 20_000
