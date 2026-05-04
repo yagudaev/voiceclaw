@@ -679,6 +679,27 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
     void window.electronAPI.drawOverlay.clear()
   }, [])
 
+  const toggleScreenShare = useCallback(() => {
+    if (isScreenSharing) {
+      stopScreenShare()
+    } else {
+      setShowScreenPicker(true)
+    }
+  }, [isScreenSharing, stopScreenShare])
+
+  useEffect(() => {
+    const off = window.electronAPI.shortcuts?.onTriggered((action) => {
+      if (action === 'mute') {
+        if (isCallActive) toggleMute()
+      } else if (action === 'annotate') {
+        if (isScreenSharing) toggleDrawMode()
+      } else if (action === 'screenShare') {
+        if (isCallActive) toggleScreenShare()
+      }
+    })
+    return off
+  }, [isCallActive, isScreenSharing, toggleMute, toggleDrawMode, toggleScreenShare])
+
   function startWindowBoundsPolling(windowId: number) {
     if (windowBoundsPollRef.current) {
       clearInterval(windowBoundsPollRef.current)

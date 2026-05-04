@@ -402,6 +402,34 @@ const electronAPI = {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) as Promise<void>,
   },
+  shortcuts: {
+    list: () =>
+      ipcRenderer.invoke('shortcuts:list') as Promise<
+        Array<{ action: 'mute' | 'annotate' | 'screenShare'; accelerator: string; defaultAccelerator: string }>
+      >,
+    set: (action: 'mute' | 'annotate' | 'screenShare', accelerator: string) =>
+      ipcRenderer.invoke('shortcuts:set', action, accelerator) as Promise<
+        { ok: true; accelerator: string } | { ok: false; error: string }
+      >,
+    clear: (action: 'mute' | 'annotate' | 'screenShare') =>
+      ipcRenderer.invoke('shortcuts:clear', action) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    resetDefaults: () =>
+      ipcRenderer.invoke('shortcuts:resetDefaults') as Promise<
+        Array<{ action: 'mute' | 'annotate' | 'screenShare'; accelerator: string; defaultAccelerator: string }>
+      >,
+    onTriggered: (
+      handler: (action: 'mute' | 'annotate' | 'screenShare') => void,
+    ) => {
+      const wrapped = (
+        _e: IpcRendererEvent,
+        action: 'mute' | 'annotate' | 'screenShare',
+      ) => handler(action)
+      ipcRenderer.on('shortcuts:triggered', wrapped)
+      return () => ipcRenderer.removeListener('shortcuts:triggered', wrapped)
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

@@ -36,6 +36,7 @@ import {
   setDrawOverlayMode,
   showDrawOverlay,
 } from './draw-overlay'
+import { registerShortcutHandlers, unregisterAllShortcuts } from './shortcuts'
 import { serviceManager } from './services/service-manager'
 import {
   applyGeminiKeyToOpenClawConfig,
@@ -105,6 +106,9 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   registerScreenCaptureHandlers()
   registerDrawOverlayHandlers()
+  registerShortcutHandlers((action) => {
+    getMainWindow()?.webContents.send('shortcuts:triggered', action)
+  })
   registerTelemetryHandlers()
   const firstLaunch = isFirstLaunch()
   telemetryIdentify()
@@ -286,6 +290,7 @@ app.on('before-quit', async (event) => {
 })
 
 app.on('will-quit', () => {
+  unregisterAllShortcuts()
   serviceManager.stopAll()
   destroyCallBar()
   destroyDrawOverlay()

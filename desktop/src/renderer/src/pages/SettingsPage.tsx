@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Toggle } from '../components/ui/Toggle'
+import { ShortcutsCard } from '../components/ShortcutsCard'
 import { identityApi, onboarding } from '../lib/onboarding-api'
 import { decodeVoicePreviewAudio } from '../lib/voice-preview'
 import { useTheme, type Theme } from '../lib/use-theme'
@@ -784,6 +785,8 @@ export function SettingsPage() {
             <Toggle checked={callBarEnabled} onChange={toggleCallBar} />
           </div>
         </Card>
+
+        <ShortcutsCard />
 
         {/* Updates */}
         <Card className="p-4 space-y-4">

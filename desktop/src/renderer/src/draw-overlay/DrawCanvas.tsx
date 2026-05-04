@@ -126,6 +126,12 @@ export function DrawCanvas() {
     void window.electronAPI.drawOverlay.setMode('idle')
   }
 
+  function onContextMenu(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (mode !== 'draw') return
+    e.preventDefault()
+    void window.electronAPI.drawOverlay.setMode('idle')
+  }
+
   return (
     <>
       <canvas
@@ -135,6 +141,7 @@ export function DrawCanvas() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onContextMenu={onContextMenu}
       />
       {mode === 'draw' && (
         <div className="draw-overlay__toolbar">
@@ -146,7 +153,7 @@ export function DrawCanvas() {
             className="draw-overlay__button draw-overlay__button--primary"
             onClick={onDoneClick}
           >
-            Done (Esc)
+            Done (Esc / right-click)
           </button>
         </div>
       )}
