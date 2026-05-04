@@ -662,15 +662,28 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     if (msg.usageMetadata) {
-      log(`[gemini] Usage: ${JSON.stringify(msg.usageMetadata)}`)
       const u = msg.usageMetadata
+      const inputAudio = findModalityTokens(u.promptTokensDetails, "AUDIO")
+      const inputVideo = findModalityTokens(u.promptTokensDetails, "VIDEO")
+      const inputText = findModalityTokens(u.promptTokensDetails, "TEXT")
+      const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
+      // promptTokenCount is the cumulative input tokens on the upstream side,
+      // i.e. the size of the model's running context window for this session.
+      // Print it on a single readable line so context growth before a 1007 is
+      // visible without parsing JSON.
+      log(
+        `[gemini] context: prompt=${u.promptTokenCount ?? "?"} ` +
+          `(audio=${inputAudio}, video=${inputVideo}, text=${inputText}) ` +
+          `out=${u.responseTokenCount ?? "?"} (audio=${outputAudio}) ` +
+          `total=${u.totalTokenCount ?? "?"}`,
+      )
       this.sendToClient?.({
         type: "usage.metrics",
         promptTokens: u.promptTokenCount,
         completionTokens: u.responseTokenCount,
         totalTokens: u.totalTokenCount,
-        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
-        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
+        inputAudioTokens: inputAudio,
+        outputAudioTokens: outputAudio,
       })
       return
     }
