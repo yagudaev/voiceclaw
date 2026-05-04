@@ -57,6 +57,8 @@ export class GeminiAdapter implements ProviderAdapter {
   private userSpeaking = false
   private hasVideoInput = false
   private framesSent = 0
+  private videoActive = false
+  private videoIdleTimer: ReturnType<typeof setTimeout> | null = null
   private watchdogEnabled = false
   // Watchdog arms only after the first post-resume ASR text; any generation
   // event clears it.
@@ -420,12 +422,14 @@ export class GeminiAdapter implements ProviderAdapter {
 
   sendFrame(data: string, mimeType?: string) {
     this.hasVideoInput = true
-    if (this.framesSent === 0 || this.framesSent % 30 === 0) {
-      // Cheap base64-byte estimate (length × 3/4) — actual bytes after base64
-      // decode are slightly less but this is close enough for sizing checks.
-      const approxBytes = Math.round((data.length * 3) / 4)
+    const approxBytes = Math.round((data.length * 3) / 4)
+    if (!this.videoActive) {
+      this.videoActive = true
+      log(`[gemini] screen share started (frame #${this.framesSent}: ~${(approxBytes / 1024).toFixed(0)} KB)`)
+    } else if (this.framesSent % 30 === 0) {
       log(`[gemini] frame #${this.framesSent}: ~${(approxBytes / 1024).toFixed(0)} KB`)
     }
+    this.armVideoIdleTimer()
     this.framesSent++
     this.sendUpstream({
       realtimeInput: {
@@ -438,6 +442,19 @@ export class GeminiAdapter implements ProviderAdapter {
     // Do NOT reset the watchdog here — video frames at 1 FPS should not
     // count as user activity. Only audio activity pets the watchdog so the
     // "are you still there?" prompt fires correctly during silent screen sharing.
+  }
+
+  private armVideoIdleTimer() {
+    if (this.videoIdleTimer) clearTimeout(this.videoIdleTimer)
+    // 3 s = three missed 1 FPS frames. Anything past that is almost certainly
+    // the user stopping the share, not a network blip.
+    this.videoIdleTimer = setTimeout(() => {
+      if (this.videoActive) {
+        this.videoActive = false
+        log(`[gemini] screen share stopped (after ${this.framesSent} frame${this.framesSent === 1 ? "" : "s"})`)
+      }
+      this.videoIdleTimer = null
+    }, 3000)
   }
 
   commitAudio() {
@@ -500,6 +517,10 @@ export class GeminiAdapter implements ProviderAdapter {
     this.disconnected = true
     this.clearWatchdog()
     this.clearPostResumeWatchdog()
+    if (this.videoIdleTimer) {
+      clearTimeout(this.videoIdleTimer)
+      this.videoIdleTimer = null
+    }
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
       this.upstream.close()
     }
