@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.44](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.43...desktop-v0.10.44) (2026-05-04)
+
+
+### Features
+
+* **desktop:** xAI voice previews via bundled WAVs (NAN-714) ([#393](https://github.com/yagudaev/voiceclaw/issues/393)) ([a3ca846](https://github.com/yagudaev/voiceclaw/commit/a3ca846bc481b44bb4b411be339fda79ea1ba707))
+
 ## [0.10.43](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.42...desktop-v0.10.43) (2026-05-04)
 
 
