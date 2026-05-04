@@ -1,5 +1,6 @@
 import { app, net } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'path'
 
 export type AgentIdentity = {
@@ -60,6 +61,12 @@ export type VoicePreviewResult =
   | { ok: true; audioBase64: string; mimeType: string }
   | { ok: false; error: string }
 
+// Per-voice in-flight request map. Coalesces concurrent first-clicks for
+// the same voice into a single TTS round-trip + cache write — without it,
+// rapid clicking would fire N redundant network requests and N writes to
+// the same file.
+const inFlightVoicePreviews = new Map<string, Promise<VoicePreviewResult>>()
+
 // Returns a cached preview clip for `voice`, generating + persisting it on
 // first request. Once cached, subsequent calls do NOT hit the Gemini TTS
 // endpoint, so this is safe to call without a configured API key after the
@@ -68,16 +75,31 @@ export async function getCachedVoicePreview(params: {
   apiKey?: string | null
   voice: string
 }): Promise<VoicePreviewResult> {
-  const cached = readVoicePreviewCache(params.voice)
+  const cached = await readVoicePreviewCache(params.voice)
   if (cached) return { ok: true, ...cached }
+  const existing = inFlightVoicePreviews.get(params.voice)
+  if (existing) return existing
   if (!params.apiKey) return { ok: false, error: 'No Gemini key configured.' }
+  const promise = generateAndCacheVoicePreview(params.apiKey, params.voice)
+  inFlightVoicePreviews.set(params.voice, promise)
+  try {
+    return await promise
+  } finally {
+    inFlightVoicePreviews.delete(params.voice)
+  }
+}
+
+async function generateAndCacheVoicePreview(
+  apiKey: string,
+  voice: string,
+): Promise<VoicePreviewResult> {
   const result = await speakGreetingPreview({
-    apiKey: params.apiKey,
-    voice: params.voice,
+    apiKey,
+    voice,
     text: STATIC_PREVIEW_TEXT,
   })
   if (!result.ok) return result
-  writeVoicePreviewCache(params.voice, {
+  await writeVoicePreviewCache(voice, {
     audioBase64: result.audioBase64,
     mimeType: result.mimeType,
   })
@@ -163,30 +185,29 @@ function getVoicePreviewCachePath(voice: string): string {
   return join(getVoicePreviewCacheDir(), `${safe}.json`)
 }
 
-function readVoicePreviewCache(
+async function readVoicePreviewCache(
   voice: string,
-): { audioBase64: string; mimeType: string } | null {
-  const path = getVoicePreviewCachePath(voice)
-  if (!existsSync(path)) return null
+): Promise<{ audioBase64: string; mimeType: string } | null> {
   try {
-    const raw = readFileSync(path, 'utf8')
+    const raw = await readFile(getVoicePreviewCachePath(voice), 'utf8')
     const parsed = JSON.parse(raw) as { audioBase64?: string; mimeType?: string }
     if (typeof parsed.audioBase64 !== 'string' || typeof parsed.mimeType !== 'string') {
       return null
     }
     return { audioBase64: parsed.audioBase64, mimeType: parsed.mimeType }
   } catch {
+    // ENOENT / parse failure / partial write — treat as cache miss.
     return null
   }
 }
 
-function writeVoicePreviewCache(
+async function writeVoicePreviewCache(
   voice: string,
   payload: { audioBase64: string; mimeType: string },
-): void {
+): Promise<void> {
   try {
-    mkdirSync(getVoicePreviewCacheDir(), { recursive: true })
-    writeFileSync(getVoicePreviewCachePath(voice), JSON.stringify(payload), 'utf8')
+    await mkdir(getVoicePreviewCacheDir(), { recursive: true })
+    await writeFile(getVoicePreviewCachePath(voice), JSON.stringify(payload), 'utf8')
   } catch (err) {
     console.warn('[voice-preview] cache write failed', err)
   }

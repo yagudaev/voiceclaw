@@ -38,23 +38,33 @@ export function StepIdentity({
   const [voice, setVoice] = useState(initialIdentity.voice ?? DEFAULT_VOICE)
   const [previewing, setPreviewing] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState('')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const clipRef = useRef<{ audio: HTMLAudioElement; revoke: () => void } | null>(null)
+  const previewTokenRef = useRef(0)
+
+  const stopActiveClip = () => {
+    const clip = clipRef.current
+    if (!clip) return
+    try {
+      clip.audio.pause()
+    } catch {
+      // ignore
+    }
+    clip.revoke()
+    clipRef.current = null
+  }
 
   useEffect(() => {
     return () => {
-      const audio = audioRef.current
-      if (audio) {
-        try {
-          audio.pause()
-        } catch {
-          // ignore
-        }
-      }
+      // Bump the token so any in-flight `handlePreview` ignores its result.
+      previewTokenRef.current += 1
+      stopActiveClip()
     }
   }, [])
 
   const handlePreview = async (voiceId: string) => {
     if (previewMode) return
+    const token = ++previewTokenRef.current
+    stopActiveClip()
     setPreviewError('')
     setPreviewing(voiceId)
     try {
@@ -62,6 +72,7 @@ export function StepIdentity({
         voice: voiceId,
         text: `Hi, I'm ${name.trim() || DEFAULT_NAME}.`,
       })
+      if (token !== previewTokenRef.current) return
       if (!result.ok) {
         console.error('[voice-preview] api error', result.error)
         setPreviewError(result.error)
@@ -69,22 +80,30 @@ export function StepIdentity({
         return
       }
       console.info('[voice-preview] got audio', { voiceId, mimeType: result.mimeType, bytes: result.audioBase64.length })
-      const audio = decodeVoicePreviewAudio(result.audioBase64, result.mimeType)
-      audioRef.current = audio
-      audio.onended = () => setPreviewing((p) => (p === voiceId ? null : p))
-      audio.onerror = (e) => {
-        console.error('[voice-preview] audio element error', e, 'mimeType:', result.mimeType)
-        setPreviewError(`Audio playback failed (${result.mimeType}). Try a different voice.`)
+      const clip = decodeVoicePreviewAudio(result.audioBase64, result.mimeType)
+      clipRef.current = clip
+      const finish = () => {
+        if (clipRef.current === clip) {
+          clip.revoke()
+          clipRef.current = null
+        }
         setPreviewing((p) => (p === voiceId ? null : p))
       }
+      clip.audio.onended = finish
+      clip.audio.onerror = (e) => {
+        console.error('[voice-preview] audio element error', e, 'mimeType:', result.mimeType)
+        setPreviewError(`Audio playback failed (${result.mimeType}). Try a different voice.`)
+        finish()
+      }
       try {
-        await audio.play()
+        await clip.audio.play()
       } catch (err) {
         console.error('[voice-preview] audio.play() rejected', err)
         setPreviewError(err instanceof Error ? err.message : 'Could not play audio.')
-        setPreviewing(null)
+        finish()
       }
     } catch (err) {
+      if (token !== previewTokenRef.current) return
       console.error('[voice-preview] handler threw', err)
       setPreviewError(err instanceof Error ? err.message : 'Preview failed.')
       setPreviewing(null)

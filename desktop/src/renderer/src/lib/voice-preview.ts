@@ -1,15 +1,21 @@
-// Shared helpers for decoding the inline base64 audio returned by the
-// Gemini TTS preview endpoints (used by Onboarding's StepIdentity and the
-// Settings voice picker).
+export type VoicePreviewClip = {
+  audio: HTMLAudioElement
+  // Releases any blob: URL backing this clip. Callers MUST invoke `revoke`
+  // once playback is finished or the clip is replaced — otherwise PCM
+  // previews leak renderer memory across clicks.
+  revoke: () => void
+}
 
-export function decodeVoicePreviewAudio(base64: string, mimeType: string): HTMLAudioElement {
+export function decodeVoicePreviewAudio(base64: string, mimeType: string): VoicePreviewClip {
   if (mimeType.startsWith('audio/L16') || mimeType.startsWith('audio/pcm')) {
     const sampleRate = parsePcmSampleRate(mimeType) ?? 24000
     const wav = pcmToWav(base64, sampleRate)
     const blob = new Blob([wav], { type: 'audio/wav' })
-    return new Audio(URL.createObjectURL(blob))
+    const url = URL.createObjectURL(blob)
+    return { audio: new Audio(url), revoke: () => URL.revokeObjectURL(url) }
   }
-  return new Audio(`data:${mimeType};base64,${base64}`)
+  // data: URLs are owned by the engine and don't need revocation.
+  return { audio: new Audio(`data:${mimeType};base64,${base64}`), revoke: () => {} }
 }
 
 // ---------------------------------------------------------------------------

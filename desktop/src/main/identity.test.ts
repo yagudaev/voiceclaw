@@ -13,6 +13,22 @@ vi.mock('fs', () => ({
   },
 }))
 
+vi.mock('node:fs/promises', () => ({
+  mkdir: async () => undefined,
+  readFile: async (path: string) => {
+    if (!fileSystem.has(path)) {
+      const err = new Error('ENOENT') as NodeJS.ErrnoException
+      err.code = 'ENOENT'
+      throw err
+    }
+    return fileSystem.get(path) ?? ''
+  },
+  writeFile: async (path: string, content: string) => {
+    writes.push({ path, content })
+    fileSystem.set(path, content)
+  },
+}))
+
 vi.mock('electron', () => ({
   app: {
     getPath: () => '/tmp/voiceclaw-identity-test',
@@ -196,5 +212,19 @@ describe('getCachedVoicePreview', () => {
     const paths = cacheWrites.map((w) => w.path)
     expect(paths.some((p) => p.includes('Puck.json'))).toBe(true)
     expect(paths.some((p) => p.includes('Charon.json'))).toBe(true)
+  })
+
+  it('coalesces concurrent first-clicks for the same voice into one TTS call', async () => {
+    const { getCachedVoicePreview } = await import('./identity')
+    const [a, b, c] = await Promise.all([
+      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
+      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
+      getCachedVoicePreview({ apiKey: 'test-key', voice: 'Leda' }),
+    ])
+    expect(a.ok).toBe(true)
+    expect(b.ok).toBe(true)
+    expect(c.ok).toBe(true)
+    // All three resolve with the same payload but only one network call ran.
+    expect(fetchCalls).toHaveLength(1)
   })
 })

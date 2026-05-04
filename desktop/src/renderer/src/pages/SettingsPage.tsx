@@ -100,7 +100,10 @@ export function SettingsPage() {
   // without changing the selection). Errors render inline below the grid.
   const [previewing, setPreviewing] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState('')
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  const previewClipRef = useRef<{ audio: HTMLAudioElement; revoke: () => void } | null>(null)
+  // Monotonic token used to invalidate stale in-flight preview requests
+  // when the user clicks another voice (or unmounts) before the IPC returns.
+  const previewTokenRef = useRef(0)
 
   // Privacy / telemetry
   const [telemetryEnabled, setTelemetryEnabled] = useState(true)
@@ -241,54 +244,69 @@ export function SettingsPage() {
     }
   }, [model])
 
-  // Stop in-flight preview audio on unmount.
+  // Stop + release any in-flight preview clip on unmount.
   useEffect(() => {
     return () => {
-      const audio = previewAudioRef.current
-      if (audio) {
+      previewTokenRef.current += 1
+      const clip = previewClipRef.current
+      if (clip) {
         try {
-          audio.pause()
+          clip.audio.pause()
         } catch {
           // ignore
         }
+        clip.revoke()
+        previewClipRef.current = null
       }
     }
   }, [])
 
   const handleVoicePreview = useCallback(async (voiceId: string) => {
-    setPreviewError('')
-    // Stop any in-flight clip so re-clicking restarts cleanly.
-    const prev = previewAudioRef.current
+    const token = ++previewTokenRef.current
+    // Stop + release the previous clip so re-clicking restarts cleanly and
+    // we don't leak the blob: URL backing a PCM preview.
+    const prev = previewClipRef.current
     if (prev) {
       try {
-        prev.pause()
+        prev.audio.pause()
       } catch {
         // ignore
       }
-      previewAudioRef.current = null
+      prev.revoke()
+      previewClipRef.current = null
     }
+    setPreviewError('')
     setPreviewing(voiceId)
     try {
       const result = await identityApi.getVoicePreview({ voice: voiceId })
+      if (token !== previewTokenRef.current) return
       if (!result.ok) {
         setPreviewError(result.error)
         setPreviewing(null)
         return
       }
-      const audio = decodeVoicePreviewAudio(result.audioBase64, result.mimeType)
-      previewAudioRef.current = audio
-      audio.onended = () => setPreviewing((p) => (p === voiceId ? null : p))
-      audio.onerror = () => {
-        setPreviewError(`Audio playback failed (${result.mimeType}).`)
+      const clip = decodeVoicePreviewAudio(result.audioBase64, result.mimeType)
+      previewClipRef.current = clip
+      const finish = () => {
+        if (previewClipRef.current === clip) {
+          clip.revoke()
+          previewClipRef.current = null
+        }
         setPreviewing((p) => (p === voiceId ? null : p))
       }
+      clip.audio.onended = finish
+      clip.audio.onerror = () => {
+        setPreviewError(`Audio playback failed (${result.mimeType}).`)
+        finish()
+      }
       try {
-        await audio.play()
+        await clip.audio.play()
       } catch (err) {
         setPreviewError(err instanceof Error ? err.message : 'Could not play audio.')
-        setPreviewing(null)
+        finish()
       }
     } catch (err) {
+      if (token !== previewTokenRef.current) return
       setPreviewError(err instanceof Error ? err.message : 'Preview failed.')
       setPreviewing(null)
     }
