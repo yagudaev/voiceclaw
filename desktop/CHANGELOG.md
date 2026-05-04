@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.45](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.44...desktop-v0.10.45) (2026-05-04)
+
+
+### Bug Fixes
+
+* **desktop:** bundle Gemini voice previews; rip out lazy cache (NAN-715) ([#395](https://github.com/yagudaev/voiceclaw/issues/395)) ([8242694](https://github.com/yagudaev/voiceclaw/commit/82426944a6e6f8cd3eff817b6c453886dab514b3))
+
 ## [0.10.44](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.43...desktop-v0.10.44) (2026-05-04)
 
 
