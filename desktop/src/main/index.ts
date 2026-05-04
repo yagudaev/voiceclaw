@@ -107,6 +107,13 @@ app.whenReady().then(async () => {
   registerScreenCaptureHandlers()
   registerDrawOverlayHandlers()
   registerShortcutHandlers((action) => {
+    // Screen-share toggles the picker modal which lives in the main window.
+    // If VoiceClaw is in the background when the shortcut fires, the modal
+    // would render off-screen — bring the window forward first so the user
+    // can actually pick a source.
+    if (action === 'screenShare') {
+      showMainWindow()
+    }
     getMainWindow()?.webContents.send('shortcuts:triggered', action)
   })
   registerTelemetryHandlers()
