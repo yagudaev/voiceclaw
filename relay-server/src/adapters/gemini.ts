@@ -15,11 +15,11 @@ const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 // Per-model input-token budget for the live bidi session. Override via
 // VOICECLAW_GEMINI_CONTEXT_WINDOW if Google's published numbers shift.
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  "gemini-3.1-flash-live-preview": 32_768,
+  "gemini-3.1-flash-live-preview": 131_072,
   "gemini-2.5-flash-live-preview": 32_768,
   "gemini-2.0-flash-live-preview-04-09": 32_768,
 }
-const FALLBACK_CONTEXT_WINDOW = 32_768
+const FALLBACK_CONTEXT_WINDOW = 131_072
 const WATCHDOG_TIMEOUT_MS = 20_000
 const SETUP_TIMEOUT_MS = 15_000
 const MAX_RECONNECT_ATTEMPTS = 2
