@@ -12,6 +12,14 @@ import { mapAdapterError } from "./error-map.js"
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 const DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
+// Per-model input-token budget for the live bidi session. Override via
+// VOICECLAW_GEMINI_CONTEXT_WINDOW if Google's published numbers shift.
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  "gemini-3.1-flash-live-preview": 32_768,
+  "gemini-2.5-flash-live-preview": 32_768,
+  "gemini-2.0-flash-live-preview-04-09": 32_768,
+}
+const FALLBACK_CONTEXT_WINDOW = 32_768
 const WATCHDOG_TIMEOUT_MS = 20_000
 const SETUP_TIMEOUT_MS = 15_000
 const MAX_RECONNECT_ATTEMPTS = 2
@@ -669,13 +677,18 @@ export class GeminiAdapter implements ProviderAdapter {
       const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
       // promptTokenCount is the cumulative input tokens on the upstream side,
       // i.e. the size of the model's running context window for this session.
-      // Print it on a single readable line so context growth before a 1007 is
-      // visible without parsing JSON.
+      // Show it as a fraction of the model's known limit so a climb toward
+      // the ceiling is obvious in the log.
+      const model = this.config?.model || DEFAULT_MODEL
+      const limit = contextWindowFor(model)
+      const used = u.promptTokenCount ?? 0
+      const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
       log(
-        `[gemini] context: prompt=${u.promptTokenCount ?? "?"} ` +
-          `(audio=${inputAudio}, video=${inputVideo}, text=${inputText}) ` +
-          `out=${u.responseTokenCount ?? "?"} (audio=${outputAudio}) ` +
-          `total=${u.totalTokenCount ?? "?"}`,
+        `[gemini] context: ${formatTokens(used)} / ${formatTokens(limit)} (${pct}%) ` +
+          `audio=${formatTokens(inputAudio)}, ` +
+          `video=${formatTokens(inputVideo)}, ` +
+          `text=${formatTokens(inputText)} | ` +
+          `out ${formatTokens(u.responseTokenCount ?? 0)} (audio=${formatTokens(outputAudio)})`,
       )
       this.sendToClient?.({
         type: "usage.metrics",
@@ -1083,6 +1096,22 @@ export class GeminiAdapter implements ProviderAdapter {
     })
     this.resetLatencyMarks()
   }
+}
+
+function contextWindowFor(model: string): number {
+  const override = process.env.VOICECLAW_GEMINI_CONTEXT_WINDOW
+  if (override) {
+    const n = Number.parseInt(override, 10)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return MODEL_CONTEXT_WINDOWS[model] ?? FALLBACK_CONTEXT_WINDOW
+}
+
+function formatTokens(n: number | undefined | null): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return "?"
+  if (n < 1000) return String(n)
+  if (n < 100_000) return `${(n / 1000).toFixed(1)}k`
+  return `${Math.round(n / 1000)}k`
 }
 
 function oneLine(s: string): string {
