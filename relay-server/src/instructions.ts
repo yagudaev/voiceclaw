@@ -2,6 +2,7 @@
 // Loads agent identity from brain agent workspace, adds conversation rules and context
 
 import { readFileSync, existsSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import type { SessionConfigEvent } from "./types.js"
@@ -134,7 +135,14 @@ export function buildInstructions(config: SessionConfigEvent): string {
   }
 
   const instructions = parts.join("\n\n")
-  log(`[instructions] Full prompt (${instructions.length} chars):\n---\n${instructions}\n---`)
+  // Fingerprint instead of full text: prompt drift is visible across
+  // reconnects without re-printing the whole thing every time. Set
+  // VOICECLAW_LOG_FULL_PROMPT=1 to dump the full prompt instead.
+  const sha = createHash("sha256").update(instructions).digest("hex").slice(0, 8)
+  log(`[instructions] System prompt: ${instructions.length} chars, sha=${sha}`)
+  if (process.env.VOICECLAW_LOG_FULL_PROMPT === "1") {
+    log(`[instructions] Full prompt:\n---\n${instructions}\n---`)
+  }
   return instructions
 }
 
