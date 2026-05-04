@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.43](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.42...desktop-v0.10.43) (2026-05-04)
+
+
+### Features
+
+* **desktop:** voice preview button in Settings (NAN-713) ([#391](https://github.com/yagudaev/voiceclaw/issues/391)) ([2944366](https://github.com/yagudaev/voiceclaw/commit/2944366711e75a520c2f0e7608c96a79f0dc1a93))
+
 ## [0.10.42](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.41...desktop-v0.10.42) (2026-05-01)
 
 
