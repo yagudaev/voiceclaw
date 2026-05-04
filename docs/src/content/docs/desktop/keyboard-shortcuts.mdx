@@ -1,0 +1,52 @@
+---
+title: Keyboard shortcuts
+description: Global hotkeys for muting, annotating, screen-sharing, and clearing your strokes — they fire even when VoiceClaw isn't the focused app.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+VoiceClaw exposes a small set of global keyboard shortcuts so you can drive a call without having to bring the app to the front. They register with the operating system at launch — you can hit them while you're focused on Chrome, your IDE, anything — and they stay out of your way otherwise.
+
+## Defaults
+
+| Action | Default | When it fires |
+|---|---|---|
+| Toggle mute | `Ctrl + M` | While a call is active |
+| Toggle annotate (drawing) | `Ctrl + A` | While screen-sharing |
+| Clear annotations | `Ctrl + Shift + A` | While screen-sharing |
+| Toggle screen share | `Ctrl + S` | While a call is active |
+
+If you're not in the right state for an action — for example, you press `Ctrl + A` outside a screen-share — the shortcut is silently ignored. The buttons in the chat strip and the in-overlay toolbar do the same things.
+
+<Aside type="caution">
+On macOS, `Ctrl + S` is **not** the standard "Save" shortcut (that's `⌘ + S`). VoiceClaw deliberately uses `Ctrl` so it doesn't collide with normal app shortcuts. If `Ctrl + S` ever steals from another app you care about, rebind it from Settings.
+</Aside>
+
+## Rebinding or unbinding
+
+Open **Settings → Keyboard Shortcuts**. Each row has:
+
+- A binding chip showing the current combination (e.g. `Ctrl M`, `⇧ ⌘ K`).
+- A **Clear** button that unbinds the action — pressing the old combo will do nothing until you set a new one.
+
+To rebind, **click the binding chip** and press the combination you want. Modifier-only presses (just `Shift`, just `Ctrl`) are ignored — you have to include a real key. `Esc` cancels the recording. If the combination is owned by the operating system or another running app, you'll see an inline error and the previous binding stays in place.
+
+A **Reset defaults** button at the top of the card restores all four shortcuts to the table above.
+
+## What gets triggered
+
+- **Toggle mute.** Same as clicking the mic button in the call controls or the call-bar's context menu. Works mid-turn.
+- **Toggle annotate.** Enters drawing mode (cursor becomes a crosshair, the floating toolbar appears at the top of the shared display) or exits it. The annotated frames get composited into what the model sees.
+- **Clear annotations.** Erases every stroke currently on the overlay. Subsequent frames sent to the model contain no strokes.
+- **Toggle screen share.** If you're not sharing, opens the source picker. If you're already sharing, stops the share immediately.
+
+## Caveats
+
+- Shortcuts are **global**. If two apps fight over the same combination, the one that registered first usually wins, but this is a best-effort behavior at the OS level.
+- The bindings live in the local desktop database and don't sync between machines yet.
+- Quitting VoiceClaw releases all of its bindings. Other apps' shortcuts are never touched.
+
+## See also
+
+- [Drawing on your screen](/desktop/screen-annotations/) — the feature most of these shortcuts drive.
+- [Floating call bar](/desktop/call-bar/) — another always-visible surface during a call.

@@ -1,0 +1,77 @@
+---
+title: Drawing on your screen
+description: Circle, underline, or scribble on whatever you're sharing — the strokes are baked into the frames sent to Gemini, so the model sees exactly what you're pointing at.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+When you're on a Gemini Live call and screen-sharing, VoiceClaw lets you draw on the shared region with two tools: **Draw** (freehand) and **Clear**. The strokes are composited directly into the captured JPEG frames before they're sent upstream, so the model sees them — there's no separate annotation channel for it to ignore.
+
+This is meant for pointing things out by gesture instead of by description. "Look at this" beats "the third item from the left in the second column."
+
+## Starting a session
+
+You need an active Gemini Live call (Grok Voice doesn't accept video). Start the call, click the screen-share button in the call controls, pick either a full display or a specific window. Once the share is running you'll see the share strip near the bottom of the chat with three buttons:
+
+- **Draw** — toggle annotation mode on or off.
+- **Clear** — erase every stroke on the overlay.
+- **Stop** — end the screen-share entirely.
+
+While **Draw** is on, a transparent overlay sits over the shared display. The cursor turns into a crosshair and a small floating toolbar appears at the top of the screen with **Clear** and **Done (Esc / right-click)** buttons.
+
+## Leaving draw mode
+
+Three equivalent ways:
+
+- Press **Esc**.
+- **Right-click** anywhere on the overlay.
+- Click **Done** in the floating toolbar.
+
+You can also click **Drawing** in the chat-strip toolbar to flip back. All four end up in the same idle state — the overlay becomes click-through again so you can keep using your apps.
+
+## Sharing a full display vs. a window
+
+Both work, but the experience differs slightly:
+
+- **Full display.** Strokes line up perfectly with whatever you draw on top of, because the overlay covers the same display the capture is recording.
+- **Single window.** The overlay still covers the whole display, but the captured frames are cropped to the window's bounds. VoiceClaw polls the window's screen-rect once a second so strokes track the window if you move or resize it. Strokes drawn outside the window's rect are clipped and not visible to the model.
+
+<Aside type="note">
+Window tracking uses macOS public APIs to look up the window by its `CGWindowID`. If a window is hidden, minimized, or on a different Space, bounds lookups fall back to the display rectangle — strokes will still composite, just less precisely.
+</Aside>
+
+## Keyboard shortcuts
+
+You don't have to use the chat strip. From anywhere — even another app — you can press the global shortcuts:
+
+- `Ctrl + A` — toggle annotate.
+- `Ctrl + Shift + A` — clear all strokes.
+- `Ctrl + S` — toggle screen share.
+- `Ctrl + M` — toggle mute (handy mid-drawing).
+
+All four are configurable from [Settings → Keyboard Shortcuts](/desktop/keyboard-shortcuts/).
+
+## What the model sees
+
+Each captured frame goes through this path:
+
+1. The video element samples a frame at 1 Hz.
+2. VoiceClaw scales it down to 1536 px on the long edge and paints any current strokes on top.
+3. The composited JPEG is sent to Gemini as the user video input.
+
+The strokes are part of the JPEG bytes — Gemini doesn't have a special "annotation" mode, it just sees a screenshot with extra paint. That's deliberate: any model that accepts video input will pick them up without changes on its end.
+
+## Trace artifacts
+
+If you're debugging or want to inspect what was sent, every annotated tick also writes two sibling files into the per-turn trace directory:
+
+- `NNNN.jpeg` — the composite (this is what Gemini saw).
+- `NNNN.original.jpeg` — the un-annotated capture.
+- `NNNN.strokes.png` — the strokes-only canvas with a transparent background.
+
+The directory lives alongside the relay's per-session media. See [Tracing UI](/tracing/) for how to load a session and step through frames.
+
+## See also
+
+- [Keyboard shortcuts](/desktop/keyboard-shortcuts/)
+- [Floating call bar](/desktop/call-bar/)

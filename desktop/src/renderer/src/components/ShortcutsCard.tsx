@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from './ui/Card'
 import { Button } from './ui/Button'
 
-type ShortcutAction = 'mute' | 'annotate' | 'screenShare'
+type ShortcutAction = 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare'
 
 type ShortcutEntry = {
   action: ShortcutAction
@@ -13,12 +13,14 @@ type ShortcutEntry = {
 const ACTION_LABEL: Record<ShortcutAction, string> = {
   mute: 'Toggle mute',
   annotate: 'Toggle annotate (drawing)',
+  clearAnnotations: 'Clear annotations',
   screenShare: 'Toggle screen share',
 }
 
 const ACTION_DESCRIPTION: Record<ShortcutAction, string> = {
   mute: 'Mute or unmute the microphone during an active call.',
   annotate: 'Enter or leave drawing mode while screen-sharing.',
+  clearAnnotations: 'Erase every stroke currently drawn on the overlay.',
   screenShare: 'Start or stop screen-sharing during an active call.',
 }
 

@@ -6,15 +6,21 @@ import { getDb } from './db'
 // screen-share. Defaults are seeded on first launch; the Settings UI lets the
 // user rebind or clear each one.
 
-export type ShortcutAction = 'mute' | 'annotate' | 'screenShare'
+export type ShortcutAction = 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare'
 
-export const SHORTCUT_ACTIONS: ShortcutAction[] = ['mute', 'annotate', 'screenShare']
+export const SHORTCUT_ACTIONS: ShortcutAction[] = [
+  'mute',
+  'annotate',
+  'clearAnnotations',
+  'screenShare',
+]
 
 const SETTING_PREFIX = 'shortcut_accelerator_'
 
 const DEFAULTS: Record<ShortcutAction, string> = {
   mute: 'Control+M',
   annotate: 'Control+A',
+  clearAnnotations: 'Control+Shift+A',
   screenShare: 'Control+S',
 }
 

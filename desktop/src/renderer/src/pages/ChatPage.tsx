@@ -693,12 +693,21 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
         if (isCallActive) toggleMute()
       } else if (action === 'annotate') {
         if (isScreenSharing) toggleDrawMode()
+      } else if (action === 'clearAnnotations') {
+        if (isScreenSharing) clearStrokes()
       } else if (action === 'screenShare') {
         if (isCallActive) toggleScreenShare()
       }
     })
     return off
-  }, [isCallActive, isScreenSharing, toggleMute, toggleDrawMode, toggleScreenShare])
+  }, [
+    isCallActive,
+    isScreenSharing,
+    toggleMute,
+    toggleDrawMode,
+    clearStrokes,
+    toggleScreenShare,
+  ])
 
   function startWindowBoundsPolling(windowId: number) {
     if (windowBoundsPollRef.current) {
