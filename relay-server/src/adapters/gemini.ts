@@ -657,8 +657,13 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private handleServerContent(content: any) {
-    const keys = Object.keys(content).join(", ")
-    log(`[gemini] serverContent: ${keys}`)
+    // Per-chunk modelTurn / outputTranscription deltas would log ~30 lines
+    // per assistant response — we already emit "[gemini] user: ..." and
+    // "[gemini] assistant: ..." on flush, plus distinct log lines for
+    // turn boundaries and "Response interrupted by user" further down.
+    // Surface only the meaningful state transitions here, drop the rest.
+    if (content.generationComplete) log(`[gemini] generationComplete`)
+    if (content.turnComplete) log(`[gemini] turnComplete`)
 
     // Any generation-side activity means the resumed session's turn controller
     // is healthy — cancel the post-resume watchdog.
