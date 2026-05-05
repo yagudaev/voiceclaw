@@ -52,7 +52,7 @@ export function MessageBubble({
         onContextMenu={handleContextMenu}
         title={exactTime}
         className={`
-          max-w-[80%] rounded-md px-4 py-2.5 text-sm leading-relaxed
+          max-w-[80%] min-w-0 rounded-md px-4 py-2.5 text-sm leading-relaxed break-words
           ${isUser
             ? 'bg-primary text-primary-foreground'
             : 'bg-card text-foreground border border-border'

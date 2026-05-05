@@ -1034,7 +1034,7 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
         {messages.length === 0 && !isCallActive && (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
             <div className="mb-5 flex size-16 items-center justify-center rounded-md border border-border bg-card text-foreground vc-panel-shadow">
@@ -1076,7 +1076,7 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
           <div className={`flex ${streamingRole === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
             <div
               className={`
-                max-w-[80%] rounded-md px-4 py-2.5 text-sm leading-relaxed
+                max-w-[80%] min-w-0 rounded-md px-4 py-2.5 text-sm leading-relaxed break-words
                 ${streamingRole === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-card text-foreground border border-border'
