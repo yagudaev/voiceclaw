@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.46](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.45...desktop-v0.10.46) (2026-05-05)
+
+
+### Bug Fixes
+
+* **relay:** drop OpenAI summarizer dep, route summarization through active provider ([#398](https://github.com/yagudaev/voiceclaw/issues/398)) ([2573000](https://github.com/yagudaev/voiceclaw/commit/2573000a5e1f0f69f46888559570e91482d48497))
+
 ## [0.10.45](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.44...desktop-v0.10.45) (2026-05-04)
 
 
