@@ -478,11 +478,13 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
     setIsMuted(false)
     setOutputMuted(false)
     setActiveRealtimeModel('')
+    window.electronAPI?.callBar?.sendMuted?.(false)
   }, [realtime])
 
   const toggleMute = useCallback(() => {
     const next = !isMuted
     setIsMuted(next)
+    window.electronAPI?.callBar?.sendMuted?.(next)
     realtime.setMuted(next)
   }, [isMuted, realtime])
 

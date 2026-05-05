@@ -129,6 +129,27 @@ body.call-bar-preview .call-bar {
   cursor: pointer;
 }
 
+.call-bar.is-muted .call-bar__mark {
+  color: var(--brand-ink-muted);
+}
+
+/* Mute badge --------------------------------------------------------- */
+
+.call-bar__mute-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  color: var(--brand-paper);
+  pointer-events: none;
+}
+
 /* Waveform pips ------------------------------------------------------- */
 
 .call-bar__waveform {

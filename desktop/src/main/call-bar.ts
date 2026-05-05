@@ -26,6 +26,7 @@ let callBar: BrowserWindow | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 let isReady = false
 let queuedVisibility: boolean | null = null
+let queuedMuted: boolean | null = null
 let levelTimer: ReturnType<typeof setInterval> | null = null
 let pendingLevels = { input: 0, output: 0 }
 
@@ -168,6 +169,10 @@ export function markCallBarReady(): void {
     broadcastVisibility(queuedVisibility)
     queuedVisibility = null
   }
+  if (queuedMuted !== null) {
+    broadcastMuted(queuedMuted)
+    queuedMuted = null
+  }
 }
 
 // Accept raw input/output RMS levels from the main renderer and let
@@ -175,6 +180,15 @@ export function markCallBarReady(): void {
 // renderer calls this on a ~30 Hz interval while a session is live.
 export function setAudioLevels(input: number, output: number): void {
   pendingLevels = { input, output }
+}
+
+export function broadcastMuted(muted: boolean): void {
+  if (!callBar || callBar.isDestroyed()) return
+  if (!isReady) {
+    queuedMuted = muted
+    return
+  }
+  callBar.webContents.send('call-bar:muted', muted)
 }
 
 export function showCallBarContextMenu(): void {

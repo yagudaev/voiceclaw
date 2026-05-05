@@ -90,6 +90,10 @@ const electronAPI = {
     sendAudioLevels: (input: number, output: number) =>
       ipcRenderer.send('call-bar:audio-levels', { input, output }),
 
+    // Main-renderer side: notify call-bar of mute state changes so the
+    // bar can render a visible indicator and zero its input meter.
+    sendMuted: (muted: boolean) => ipcRenderer.send('call-bar:muted', muted),
+
     // Main-renderer side: listen for UX requests forwarded from the
     // call-bar context menu so the main UI can actually mute / hang up.
     onMuteToggleRequest: (handler: () => void) => {
@@ -119,6 +123,11 @@ const electronAPI = {
       ) => handler(payload)
       ipcRenderer.on('call-bar:audio-levels', wrapped)
       return () => ipcRenderer.removeListener('call-bar:audio-levels', wrapped)
+    },
+    onMuted: (handler: (muted: boolean) => void) => {
+      const wrapped = (_e: IpcRendererEvent, muted: boolean) => handler(muted)
+      ipcRenderer.on('call-bar:muted', wrapped)
+      return () => ipcRenderer.removeListener('call-bar:muted', wrapped)
     },
   },
   db: {

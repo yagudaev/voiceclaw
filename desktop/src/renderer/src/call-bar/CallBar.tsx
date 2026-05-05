@@ -16,6 +16,7 @@ declare global {
         onAudioLevels?: (
           handler: (payload: { input: number; output: number }) => void,
         ) => () => void
+        onMuted?: (handler: (muted: boolean) => void) => () => void
       }
     }
   }
@@ -31,12 +32,17 @@ export function CallBar() {
   const [visible, setVisible] = useState(previewMode)
   const [speaker, setSpeaker] = useState<Speaker>(previewMode ? 'user' : 'idle')
   const [levels, setLevels] = useState<number[]>([0, 0, 0])
+  const [muted, setMuted] = useState(false)
 
   // Ref mirror for the IPC handler — React 19 setters can't be read
   // synchronously, and we need the previous levels to feed a small IIR
   // decay so bars fall gracefully instead of snapping to zero.
   const levelsRef = useRef(levels)
   levelsRef.current = levels
+  // Same reason: the audio-levels IPC handler runs ~30 Hz and needs to
+  // read the current muted state without waiting for a re-render.
+  const mutedRef = useRef(muted)
+  mutedRef.current = muted
 
   // Mark the document so the scoped call-bar styles (transparent bg,
   // token overrides, no-overflow) apply without clobbering the main
@@ -74,8 +80,16 @@ export function CallBar() {
     })
 
     const unsubLevels = api.onAudioLevels?.((payload) => {
-      setSpeaker(resolveSpeaker(payload.input, payload.output))
-      setLevels(spreadLevel(levelsRef.current, payload.input, payload.output))
+      // While muted, the mic might still register RMS energy on the renderer
+      // side, but Gemini isn't hearing it — collapse input to 0 so the bar
+      // doesn't imply the user is being heard when they're not.
+      const input = mutedRef.current ? 0 : payload.input
+      setSpeaker(resolveSpeaker(input, payload.output))
+      setLevels(spreadLevel(levelsRef.current, input, payload.output))
+    })
+
+    const unsubMuted = api.onMuted?.((m) => {
+      setMuted(m)
     })
 
     // Tell main we're ready — it may have queued a visibility event
@@ -85,6 +99,7 @@ export function CallBar() {
     return () => {
       unsubVisibility?.()
       unsubLevels?.()
+      unsubMuted?.()
     }
   }, [])
 
@@ -103,6 +118,7 @@ export function CallBar() {
     speaker === 'user' ? 'is-user-speaking' : '',
     speaker === 'ai' ? 'is-ai-speaking' : '',
     speaker === 'idle' ? 'is-idle' : '',
+    muted ? 'is-muted' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -119,6 +135,12 @@ export function CallBar() {
       />
 
       <VoiceClawMark className="call-bar__mark" />
+
+      {muted && (
+        <div className="call-bar__mute-badge" aria-label="Microphone muted">
+          <MicOffGlyph />
+        </div>
+      )}
 
       <div className="call-bar__waveform">
         {levels.map((lvl, i) => (
@@ -189,4 +211,29 @@ function clampHeight(level: number): number {
 function isPreview(): boolean {
   if (typeof window === 'undefined') return false
   return new URLSearchParams(window.location.search).get('preview') === '1'
+}
+
+function MicOffGlyph() {
+  // Inline SVG so the call-bar bundle stays free of any icon-pack import
+  // and the glyph color can inherit from CSS.
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="2" y1="2" x2="22" y2="22" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+      <path d="M15 9.34V4a3 3 0 0 0-5.94-.6" />
+      <path d="M5 10v2a7 7 0 0 0 12 4.95" />
+      <path d="M19 10v2a7 7 0 0 1-.11 1.23" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+    </svg>
+  )
 }

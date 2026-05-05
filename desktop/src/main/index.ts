@@ -13,6 +13,7 @@ import {
   showMainWindow,
 } from './window-lifecycle'
 import {
+  broadcastMuted,
   createCallBar,
   destroyCallBar,
   focusMainFromCallBar,
@@ -219,6 +220,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('call-bar:open-context-menu', () => {
     showCallBarContextMenu()
+  })
+
+  ipcMain.on('call-bar:muted', (_e, muted: unknown) => {
+    broadcastMuted(Boolean(muted))
   })
 
   ipcMain.on('call-bar:audio-levels', (_e, payload: { input: number; output: number }) => {
