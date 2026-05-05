@@ -129,18 +129,19 @@ body.call-bar-preview .call-bar {
   cursor: pointer;
 }
 
-.call-bar.is-muted .call-bar__mark {
-  color: var(--brand-ink-muted);
-}
-
 /* Mute badge --------------------------------------------------------- */
 
+/* Sits centered over the waveform region — that's the "energy" the user
+   is most likely to glance at, and replacing it with a static muted mic
+   makes the off-air state unambiguous. The brand mark above it stays at
+   normal color so the bar still reads as "on a call". */
 .call-bar__mute-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 14px;
-  height: 14px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -148,6 +149,14 @@ body.call-bar-preview .call-bar {
   background: var(--brand-accent);
   color: var(--brand-paper);
   pointer-events: none;
+  z-index: 2;
+}
+
+/* Hide the waveform completely while muted so the badge doesn't sit on
+   top of bouncing bars (output activity still reads through the mark
+   color shift if needed). */
+.call-bar.is-muted .call-bar__waveform {
+  visibility: hidden;
 }
 
 /* Waveform pips ------------------------------------------------------- */
