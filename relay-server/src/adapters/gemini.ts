@@ -621,14 +621,19 @@ export class GeminiAdapter implements ProviderAdapter {
     if (msg.usageMetadata && (msg.serverContent || msg.toolCall)) {
       const u = msg.usageMetadata
       this.logUsage(u)
-      this.sendToClient?.({
-        type: "usage.metrics",
-        promptTokens: u.promptTokenCount,
-        completionTokens: u.responseTokenCount,
-        totalTokens: u.totalTokenCount,
-        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
-        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
-      })
+      // Only forward to the client when there's a meaningful prompt count.
+      // Per-chunk updates carry only an output-audio delta and would make the
+      // UI strip flicker between real values and zeros.
+      if ((u.promptTokenCount ?? 0) > 0) {
+        this.sendToClient?.({
+          type: "usage.metrics",
+          promptTokens: u.promptTokenCount,
+          completionTokens: u.responseTokenCount,
+          totalTokens: u.totalTokenCount,
+          inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
+          outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
+        })
+      }
     }
 
     if (msg.serverContent) {
@@ -688,27 +693,34 @@ export class GeminiAdapter implements ProviderAdapter {
     if (msg.usageMetadata) {
       const u = msg.usageMetadata
       this.logUsage(u)
-      this.sendToClient?.({
-        type: "usage.metrics",
-        promptTokens: u.promptTokenCount,
-        completionTokens: u.responseTokenCount,
-        totalTokens: u.totalTokenCount,
-        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
-        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
-      })
+      if ((u.promptTokenCount ?? 0) > 0) {
+        this.sendToClient?.({
+          type: "usage.metrics",
+          promptTokens: u.promptTokenCount,
+          completionTokens: u.responseTokenCount,
+          totalTokens: u.totalTokenCount,
+          inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
+          outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
+        })
+      }
       return
     }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private logUsage(u: any) {
+    // Gemini Live emits usageMetadata per audio chunk during a turn — most of
+    // those carry only a tiny responseTokenCount and tell us nothing about
+    // the running context window. Skip them; log only the turn-boundary
+    // updates that include the cumulative prompt count.
+    const used = u.promptTokenCount ?? 0
+    if (used <= 0) return
     const inputAudio = findModalityTokens(u.promptTokensDetails, "AUDIO")
     const inputVideo = findModalityTokens(u.promptTokensDetails, "VIDEO")
     const inputText = findModalityTokens(u.promptTokensDetails, "TEXT")
     const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
     const model = this.config?.model || DEFAULT_MODEL
     const limit = contextWindowFor(model)
-    const used = u.promptTokenCount ?? 0
     const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
     log(
       `[gemini] context: ${formatTokens(used)} / ${formatTokens(limit)} (${pct}%) ` +
