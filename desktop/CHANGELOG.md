@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.47](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.46...desktop-v0.10.47) (2026-05-05)
+
+
+### Features
+
+* **desktop:** disable image attachments on Grok Voice (NAN-718) ([#400](https://github.com/yagudaev/voiceclaw/issues/400)) ([ddd436c](https://github.com/yagudaev/voiceclaw/commit/ddd436c32ec4e0840d5b4c6490f541e122f745d3))
+
 ## [0.10.46](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.45...desktop-v0.10.46) (2026-05-05)
 
 

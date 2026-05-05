@@ -1,6 +1,6 @@
 {
   "name": "voiceclaw-desktop",
-  "version": "0.10.46",
+  "version": "0.10.47",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
@@ -22,7 +22,6 @@
     "archiver": "^7.0.1",
     "better-sqlite3": "^12.9.0",
     "electron-updater": "^6.6.2",
-    "get-windows": "^9.3.0",
     "posthog-js": "^1.372.1",
     "posthog-node": "^5.30.4",
     "react": "^19.1.0",
