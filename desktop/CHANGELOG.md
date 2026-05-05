@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.48](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.47...desktop-v0.10.48) (2026-05-05)
+
+
+### Bug Fixes
+
+* restore get-windows dep + escape MDX braces to unblock CI ([#403](https://github.com/yagudaev/voiceclaw/issues/403)) ([f96df38](https://github.com/yagudaev/voiceclaw/commit/f96df38198e08b0c9dbe874208a253de286cacd5))
+
 ## [0.10.47](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.46...desktop-v0.10.47) (2026-05-05)
 
 
