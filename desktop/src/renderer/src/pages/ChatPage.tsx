@@ -705,7 +705,13 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
 
   useEffect(() => {
     const off = window.electronAPI.shortcuts?.onTriggered((action) => {
-      if (action === 'mute') {
+      if (action === 'toggleCall') {
+        if (isCallActive) {
+          endCall()
+        } else if (!isConnecting) {
+          void startCall()
+        }
+      } else if (action === 'mute') {
         if (isCallActive) toggleMute()
       } else if (action === 'annotate') {
         if (isScreenSharing) toggleDrawMode()
@@ -718,7 +724,10 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
     return off
   }, [
     isCallActive,
+    isConnecting,
     isScreenSharing,
+    startCall,
+    endCall,
     toggleMute,
     toggleDrawMode,
     clearStrokes,

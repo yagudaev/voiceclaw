@@ -11,6 +11,7 @@ VoiceClaw exposes a small set of global keyboard shortcuts so you can drive a ca
 
 | Action | Default | When it fires |
 |---|---|---|
+| Start or end a call | `Ctrl + J` | Any time |
 | Toggle mute | `Ctrl + M` | While a call is active |
 | Toggle annotate (drawing) | `Ctrl + A` | While screen-sharing |
 | Clear annotations | `Ctrl + Shift + A` | While screen-sharing |
@@ -31,10 +32,11 @@ Open **Settings → Keyboard Shortcuts**. Each row has:
 
 To rebind, **click the binding chip** and press the combination you want. Modifier-only presses (just `Shift`, just `Ctrl`) are ignored — you have to include a real key. `Esc` cancels the recording. If the combination is owned by the operating system or another running app, you'll see an inline error and the previous binding stays in place.
 
-A **Reset defaults** button at the top of the card restores all four shortcuts to the table above.
+A **Reset defaults** button at the top of the card restores all five shortcuts to the table above.
 
 ## What gets triggered
 
+- **Start or end a call.** If no call is active, starts a new realtime session with the current provider. If a call is in flight, ends it. The chat window comes to the front when this fires from another app so you can see the call state.
 - **Toggle mute.** Same as clicking the mic button in the call controls or the call-bar's context menu. Works mid-turn.
 - **Toggle annotate.** Enters drawing mode (cursor becomes a crosshair, the floating toolbar appears at the top of the shared display) or exits it. The annotated frames get composited into what the model sees.
 - **Clear annotations.** Erases every stroke currently on the overlay. Subsequent frames sent to the model contain no strokes.

@@ -406,38 +406,38 @@ const electronAPI = {
     list: () =>
       ipcRenderer.invoke('shortcuts:list') as Promise<
         Array<{
-          action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare'
+          action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall'
           accelerator: string
           defaultAccelerator: string
         }>
       >,
     set: (
-      action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare',
+      action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall',
       accelerator: string,
     ) =>
       ipcRenderer.invoke('shortcuts:set', action, accelerator) as Promise<
         { ok: true; accelerator: string } | { ok: false; error: string }
       >,
-    clear: (action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare') =>
+    clear: (action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall') =>
       ipcRenderer.invoke('shortcuts:clear', action) as Promise<
         { ok: true } | { ok: false; error: string }
       >,
     resetDefaults: () =>
       ipcRenderer.invoke('shortcuts:resetDefaults') as Promise<
         Array<{
-          action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare'
+          action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall'
           accelerator: string
           defaultAccelerator: string
         }>
       >,
     onTriggered: (
       handler: (
-        action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare',
+        action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall',
       ) => void,
     ) => {
       const wrapped = (
         _e: IpcRendererEvent,
-        action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare',
+        action: 'mute' | 'annotate' | 'clearAnnotations' | 'screenShare' | 'toggleCall',
       ) => handler(action)
       ipcRenderer.on('shortcuts:triggered', wrapped)
       return () => ipcRenderer.removeListener('shortcuts:triggered', wrapped)
