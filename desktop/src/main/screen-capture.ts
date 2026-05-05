@@ -15,7 +15,11 @@ export type WindowBoundsIPC = {
   height: number
 }
 
-export function registerScreenCaptureHandlers() {
+type SenderPredicate = (sender: Electron.WebContents) => boolean
+
+export function registerScreenCaptureHandlers(
+  isTrustedSender: SenderPredicate = () => true,
+) {
   ipcMain.handle('screen:getSources', async (): Promise<ScreenSourceIPC[]> => {
     if (process.platform === 'darwin') {
       const status = systemPreferences.getMediaAccessStatus('screen')
@@ -66,7 +70,11 @@ export function registerScreenCaptureHandlers() {
 
   ipcMain.handle(
     'screen:getWindowBounds',
-    async (_e, windowId: unknown): Promise<WindowBoundsIPC | null> => {
+    async (e, windowId: unknown): Promise<WindowBoundsIPC | null> => {
+      // Window geometry is sensitive enough that we don't want any preload-
+      // exposed renderer (e.g. an embedded webview, or a future overlay
+      // window with a third-party iframe) calling this.
+      if (!isTrustedSender(e.sender)) return null
       if (typeof windowId !== 'number' || !Number.isFinite(windowId)) return null
       try {
         const all = await openWindows()

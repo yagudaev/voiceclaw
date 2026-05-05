@@ -218,14 +218,16 @@ function transformStrokes(
   frameWidth: number,
   frameHeight: number,
 ): ScaledStroke[] {
-  // Strokes arrive in display-CSS-px (overlay window sits at the display
-  // origin). Captured frame px depends on the source:
-  //   - display: frame = whole display, scale = frame_w / display_w
-  //   - window with bounds known: subtract the window's screen-origin and
-  //     scale by frame_w / window_w; points outside the window's rect
-  //     fall outside the canvas and get clipped on draw.
-  //   - window with bounds unknown: best-effort fall back to display
-  //     scaling. The strokes will be wrong, but we don't crash.
+  // Strokes arrive in overlay-CSS-px relative to the overlay window's top-
+  // left, which sits at displayBounds.x/y in screen-coordinate space. To get
+  // absolute screen-px we add the display origin first; then per source kind:
+  //   - display: scale = frame_w / display_w (origin cancels)
+  //   - window with bounds known: subtract the window's absolute screen-origin
+  //     and scale by frame_w / window_w; points outside the window's rect fall
+  //     outside the canvas and get clipped on draw.
+  //   - window with bounds unknown: best-effort fall back to display scaling.
+  //     The strokes will be wrong, but we don't crash.
+  const display = context.displayBounds
   if (context.kind === 'window' && context.windowBounds) {
     const win = context.windowBounds
     const scaleX = frameWidth / win.width
@@ -235,12 +237,11 @@ function transformStrokes(
       color: s.color,
       width: Math.max(1, s.width * widthScale),
       points: s.points.map((p) => ({
-        x: (p.x - win.x) * scaleX,
-        y: (p.y - win.y) * scaleY,
+        x: (p.x + display.x - win.x) * scaleX,
+        y: (p.y + display.y - win.y) * scaleY,
       })),
     }))
   }
-  const display = context.displayBounds
   const scaleX = frameWidth / display.width
   const scaleY = frameHeight / display.height
   const widthScale = (scaleX + scaleY) / 2

@@ -103,9 +103,15 @@ app.whenReady().then(async () => {
     resetOnboarding()
   }
 
+  // Predicate shared across handlers that should only accept calls from the
+  // chat / settings renderer — never from the call-bar, draw-overlay, or any
+  // future webview.
+  const isMainRendererSender = (sender: Electron.WebContents) =>
+    sender === getMainWindow()?.webContents
+
   registerAuthDeepLink()
   registerIpcHandlers()
-  registerScreenCaptureHandlers()
+  registerScreenCaptureHandlers(isMainRendererSender)
   registerDrawOverlayHandlers()
   registerShortcutHandlers((action) => {
     // Actions whose visible feedback lives inside the main window need it
@@ -115,7 +121,7 @@ app.whenReady().then(async () => {
       showMainWindow()
     }
     getMainWindow()?.webContents.send('shortcuts:triggered', action)
-  })
+  }, isMainRendererSender)
   registerTelemetryHandlers()
   const firstLaunch = isFirstLaunch()
   telemetryIdentify()
@@ -222,13 +228,15 @@ app.whenReady().then(async () => {
     showCallBarContextMenu()
   })
 
-  ipcMain.on('call-bar:muted', (_e, muted: unknown) => {
+  ipcMain.on('call-bar:muted', (e, muted: unknown) => {
+    if (e.sender !== getMainWindow()?.webContents) return
     broadcastMuted(Boolean(muted))
   })
 
-  ipcMain.on('call-bar:audio-levels', (_e, payload: { input: number; output: number }) => {
+  ipcMain.on('call-bar:audio-levels', (e, payload: { input: number; output: number }) => {
     // Use .on instead of .handle — we don't need a reply, and this
     // fires up to 30 Hz.
+    if (e.sender !== getMainWindow()?.webContents) return
     setAudioLevels(
       typeof payload?.input === 'number' ? payload.input : 0,
       typeof payload?.output === 'number' ? payload.output : 0,

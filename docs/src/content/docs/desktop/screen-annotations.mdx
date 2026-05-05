@@ -55,7 +55,7 @@ All four are configurable from [Settings → Keyboard Shortcuts](/desktop/keyboa
 
 Each captured frame goes through this path:
 
-1. The video element samples a frame at 1 Hz.
+1. The video element samples one frame a second.
 2. VoiceClaw scales it down to 1536 px on the long edge and paints any current strokes on top.
 3. The composited JPEG is sent to Gemini as the user video input.
 

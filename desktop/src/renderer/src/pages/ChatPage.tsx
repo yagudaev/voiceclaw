@@ -657,7 +657,13 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
       })
       setIsScreenSharing(true)
       setScreenSourceName(source.name)
-      void window.electronAPI.drawOverlay.show()
+      // For display sources the chromeMediaSourceId is "screen:<displayId>:0";
+      // pulling the displayId out and forwarding it to the overlay keeps the
+      // transparent canvas on the same monitor as the captured frame so
+      // strokes line up on multi-display setups.
+      const displayId =
+        sourceKind === 'display' ? parseDisplayIdFromSourceId(source.id) : null
+      void window.electronAPI.drawOverlay.show(displayId ?? undefined)
       if (sourceKind === 'window') {
         const windowId = parseWindowIdFromSourceId(source.id)
         if (windowId !== null) {
@@ -684,6 +690,10 @@ export function ChatPage({ onNavigateToSettings }: ChatPageProps = {}) {
       clearInterval(windowBoundsPollRef.current)
       windowBoundsPollRef.current = null
     }
+    // Clear before hide — the overlay window stays alive across shares,
+    // so its own strokesRef would otherwise repaint stale annotations the
+    // moment the next share starts and the user begins drawing again.
+    void window.electronAPI.drawOverlay.clear()
     void window.electronAPI.drawOverlay.hide()
   }, [])
 
@@ -1404,6 +1414,14 @@ function formatTokens(n: number | undefined | null): string {
 function formatPercent(used: number | undefined, limit: number): string {
   if (used == null || !Number.isFinite(used) || limit <= 0) return '?%'
   return `${Math.round((used / limit) * 100)}%`
+}
+
+function parseDisplayIdFromSourceId(sourceId: string): number | null {
+  // chromeMediaSourceId for screens is "screen:<electronDisplayId>:0".
+  const match = /^screen:(\d+):/.exec(sourceId)
+  if (!match) return null
+  const id = Number.parseInt(match[1], 10)
+  return Number.isFinite(id) ? id : null
 }
 
 function parseWindowIdFromSourceId(sourceId: string): number | null {

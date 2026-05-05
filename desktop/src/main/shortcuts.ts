@@ -36,31 +36,49 @@ let registered: Partial<Record<ShortcutAction, string>> = {}
 
 export function registerShortcutHandlers(
   onTriggeredCallback: (action: ShortcutAction) => void,
+  isTrustedSender: (sender: Electron.WebContents) => boolean = () => true,
 ): void {
   onTriggered = onTriggeredCallback
   seedDefaults()
   applyAll()
 
-  ipcMain.handle('shortcuts:list', () => listShortcuts())
+  // shortcuts:* handlers mutate global OS shortcut state. Restrict to the
+  // trusted (settings/main) renderer so an embedded webview or compromised
+  // overlay can't rebind keys system-wide.
+  const denyUntrusted = (sender: Electron.WebContents) =>
+    isTrustedSender(sender) ? null : { ok: false as const, error: 'not allowed' }
 
-  ipcMain.handle('shortcuts:set', (_e, action: ShortcutAction, accelerator: string) => {
+  ipcMain.handle('shortcuts:list', (e) => {
+    if (!isTrustedSender(e.sender)) return []
+    return listShortcuts()
+  })
+
+  ipcMain.handle('shortcuts:set', (e, action: ShortcutAction, accelerator: string) => {
+    const denied = denyUntrusted(e.sender)
+    if (denied) return denied
     if (!SHORTCUT_ACTIONS.includes(action)) return { ok: false, error: 'unknown action' }
     if (!isPlausibleAccelerator(accelerator)) {
       return { ok: false, error: 'invalid accelerator' }
     }
-    saveAccelerator(action, accelerator)
+    // Register first; only persist on success so a failed binding never
+    // leaves the DB pointing at an unregistered accelerator.
     const result = applyOne(action, accelerator)
-    return result.ok ? { ok: true, accelerator } : result
+    if (!result.ok) return result
+    saveAccelerator(action, accelerator)
+    return { ok: true, accelerator }
   })
 
-  ipcMain.handle('shortcuts:clear', (_e, action: ShortcutAction) => {
+  ipcMain.handle('shortcuts:clear', (e, action: ShortcutAction) => {
+    const denied = denyUntrusted(e.sender)
+    if (denied) return denied
     if (!SHORTCUT_ACTIONS.includes(action)) return { ok: false, error: 'unknown action' }
     saveAccelerator(action, '')
     unregisterOne(action)
     return { ok: true }
   })
 
-  ipcMain.handle('shortcuts:resetDefaults', () => {
+  ipcMain.handle('shortcuts:resetDefaults', (e) => {
+    if (!isTrustedSender(e.sender)) return []
     for (const action of SHORTCUT_ACTIONS) {
       saveAccelerator(action, DEFAULTS[action])
     }
@@ -162,12 +180,33 @@ function listShortcuts(): Array<{
   }))
 }
 
+const MODIFIER_TOKENS = new Set([
+  'control',
+  'ctrl',
+  'command',
+  'cmd',
+  'commandorcontrol',
+  'cmdorctrl',
+  'alt',
+  'option',
+  'altgr',
+  'shift',
+  'meta',
+  'super',
+])
+
 function isPlausibleAccelerator(s: string): boolean {
   if (typeof s !== 'string') return false
-  if (s.length === 0 || s.length > 64) return false
-  // Loose validation: at least one '+' separator implies a modifier+key combo,
-  // which is what Electron's globalShortcut expects. Single function keys
-  // (F1..F24) are also acceptable.
-  if (/^F\d{1,2}$/i.test(s.trim())) return true
-  return /\+/.test(s)
+  const trimmed = s.trim()
+  if (trimmed.length === 0 || trimmed.length > 64) return false
+  // Lone function key (F1..F24) — no modifier required.
+  if (/^F([1-9]|1\d|2[0-4])$/i.test(trimmed)) return true
+  const parts = trimmed.split('+').map((p) => p.trim())
+  // Reject trailing/leading '+', empty segments, and modifier-only combos
+  // like "Command+" or "Shift+". The final token must be a real key, not a
+  // modifier name.
+  if (parts.some((p) => p.length === 0)) return false
+  const last = parts[parts.length - 1]
+  if (MODIFIER_TOKENS.has(last.toLowerCase())) return false
+  return parts.length >= 1 && last.length > 0
 }
