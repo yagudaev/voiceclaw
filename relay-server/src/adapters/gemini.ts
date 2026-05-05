@@ -614,6 +614,23 @@ export class GeminiAdapter implements ProviderAdapter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private handleServerMessage(msg: any) {
+    // usageMetadata can ship in the same envelope as serverContent (e.g. on
+    // turnComplete). Process it before the early-returns below so we don't
+    // drop it. The dedicated usageMetadata-only branch further down covers
+    // messages where it arrives standalone.
+    if (msg.usageMetadata && (msg.serverContent || msg.toolCall)) {
+      const u = msg.usageMetadata
+      this.logUsage(u)
+      this.sendToClient?.({
+        type: "usage.metrics",
+        promptTokens: u.promptTokenCount,
+        completionTokens: u.responseTokenCount,
+        totalTokens: u.totalTokenCount,
+        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
+        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
+      })
+    }
+
     if (msg.serverContent) {
       this.handleServerContent(msg.serverContent)
       return
@@ -670,35 +687,36 @@ export class GeminiAdapter implements ProviderAdapter {
 
     if (msg.usageMetadata) {
       const u = msg.usageMetadata
-      const inputAudio = findModalityTokens(u.promptTokensDetails, "AUDIO")
-      const inputVideo = findModalityTokens(u.promptTokensDetails, "VIDEO")
-      const inputText = findModalityTokens(u.promptTokensDetails, "TEXT")
-      const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
-      // promptTokenCount is the cumulative input tokens on the upstream side,
-      // i.e. the size of the model's running context window for this session.
-      // Show it as a fraction of the model's known limit so a climb toward
-      // the ceiling is obvious in the log.
-      const model = this.config?.model || DEFAULT_MODEL
-      const limit = contextWindowFor(model)
-      const used = u.promptTokenCount ?? 0
-      const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
-      log(
-        `[gemini] context: ${formatTokens(used)} / ${formatTokens(limit)} (${pct}%) ` +
-          `audio=${formatTokens(inputAudio)}, ` +
-          `video=${formatTokens(inputVideo)}, ` +
-          `text=${formatTokens(inputText)} | ` +
-          `out ${formatTokens(u.responseTokenCount ?? 0)} (audio=${formatTokens(outputAudio)})`,
-      )
+      this.logUsage(u)
       this.sendToClient?.({
         type: "usage.metrics",
         promptTokens: u.promptTokenCount,
         completionTokens: u.responseTokenCount,
         totalTokens: u.totalTokenCount,
-        inputAudioTokens: inputAudio,
-        outputAudioTokens: outputAudio,
+        inputAudioTokens: findModalityTokens(u.promptTokensDetails, "AUDIO"),
+        outputAudioTokens: findModalityTokens(u.responseTokensDetails, "AUDIO"),
       })
       return
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private logUsage(u: any) {
+    const inputAudio = findModalityTokens(u.promptTokensDetails, "AUDIO")
+    const inputVideo = findModalityTokens(u.promptTokensDetails, "VIDEO")
+    const inputText = findModalityTokens(u.promptTokensDetails, "TEXT")
+    const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
+    const model = this.config?.model || DEFAULT_MODEL
+    const limit = contextWindowFor(model)
+    const used = u.promptTokenCount ?? 0
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
+    log(
+      `[gemini] context: ${formatTokens(used)} / ${formatTokens(limit)} (${pct}%) ` +
+        `audio=${formatTokens(inputAudio)}, ` +
+        `video=${formatTokens(inputVideo)}, ` +
+        `text=${formatTokens(inputText)} | ` +
+        `out ${formatTokens(u.responseTokenCount ?? 0)} (audio=${formatTokens(outputAudio)})`,
+    )
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
