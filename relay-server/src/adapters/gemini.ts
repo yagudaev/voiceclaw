@@ -716,7 +716,11 @@ export class GeminiAdapter implements ProviderAdapter {
     const used = u.promptTokenCount ?? 0
     if (used <= 0) return
     const inputAudio = findModalityTokens(u.promptTokensDetails, "AUDIO")
-    const inputVideo = findModalityTokens(u.promptTokensDetails, "VIDEO")
+    // Gemini Live counts realtimeInput.video frames under the IMAGE modality
+    // (each JPEG is tokenized as a still). Fall back to VIDEO for any model
+    // that reports it as a stream instead.
+    const inputVideo =
+      sumModalityTokens(u.promptTokensDetails, ["IMAGE", "VIDEO"])
     const inputText = findModalityTokens(u.promptTokensDetails, "TEXT")
     const outputAudio = findModalityTokens(u.responseTokensDetails, "AUDIO")
     const model = this.config?.model || DEFAULT_MODEL
@@ -1219,6 +1223,23 @@ function findModalityTokens(
   modality: string,
 ): number | undefined {
   return details?.find((d) => d.modality === modality)?.tokenCount
+}
+
+function sumModalityTokens(
+  details: { modality?: string, tokenCount?: number }[] | undefined,
+  modalities: string[],
+): number | undefined {
+  if (!details) return undefined
+  let sum = 0
+  let any = false
+  for (const m of modalities) {
+    const n = findModalityTokens(details, m)
+    if (typeof n === "number") {
+      sum += n
+      any = true
+    }
+  }
+  return any ? sum : undefined
 }
 
 function parseStatusFromErrorMessage(message: string): number | null {
