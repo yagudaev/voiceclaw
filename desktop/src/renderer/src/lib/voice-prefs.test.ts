@@ -31,6 +31,12 @@ describe('providerForModel', () => {
     expect(providerForModel('grok-voice-think-fast-1.0')).toBe('xai')
   })
 
+  it('maps gpt-realtime models to openai', () => {
+    expect(providerForModel('gpt-realtime-2')).toBe('openai')
+    expect(providerForModel('gpt-realtime-mini')).toBe('openai')
+    expect(providerForModel('gpt-realtime')).toBe('openai')
+  })
+
   it('maps gemini models (and unknown) to gemini', () => {
     expect(providerForModel('gemini-3.1-flash-live-preview')).toBe('gemini')
     expect(providerForModel(null)).toBe('gemini')
@@ -46,6 +52,10 @@ describe('defaultVoiceFor', () => {
   it('defaults Gemini to Zephyr', () => {
     expect(defaultVoiceFor('gemini')).toBe('Zephyr')
   })
+
+  it('defaults OpenAI to marin', () => {
+    expect(defaultVoiceFor('openai')).toBe('marin')
+  })
 })
 
 describe('isVoiceForProvider', () => {
@@ -54,6 +64,9 @@ describe('isVoiceForProvider', () => {
     expect(isVoiceForProvider('gemini', 'ara')).toBe(false)
     expect(isVoiceForProvider('xai', 'ara')).toBe(true)
     expect(isVoiceForProvider('xai', 'Zephyr')).toBe(false)
+    expect(isVoiceForProvider('openai', 'marin')).toBe(true)
+    expect(isVoiceForProvider('openai', 'cedar')).toBe(true)
+    expect(isVoiceForProvider('openai', 'Zephyr')).toBe(false)
   })
 })
 

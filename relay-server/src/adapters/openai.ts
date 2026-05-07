@@ -1,4 +1,9 @@
-// OpenAI Realtime adapter — translates relay protocol ↔ OpenAI Realtime WebSocket events
+// OpenAI Realtime adapter — translates relay protocol ↔ OpenAI Realtime GA events.
+// Wire format follows the GA (v2) spec: nested `audio` config, `output_modalities`,
+// session `type: "realtime"`, no `OpenAI-Beta` header. Event names follow GA
+// (`response.output_audio.*`, `response.output_audio_transcript.*`); legacy beta
+// names are still accepted for the xAI subclass which speaks the OpenAI-compatible
+// beta dialect.
 
 import WebSocket from "ws"
 import type { IncomingMessage } from "node:http"
@@ -11,8 +16,9 @@ import { log, error as logError } from "../log.js"
 import { mapAdapterError } from "./error-map.js"
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
-const DEFAULT_MODEL = "gpt-realtime-mini"
+const DEFAULT_MODEL = "gpt-realtime-2"
 const DEFAULT_VOICE = "marin"
+const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
 
 export interface OpenAICompatibleAdapterOptions {
   providerName?: string
@@ -73,7 +79,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.apiKeyEnv = options.apiKeyEnv ?? "OPENAI_API_KEY"
     this.defaultModel = options.defaultModel ?? DEFAULT_MODEL
     this.defaultVoice = options.defaultVoice ?? DEFAULT_VOICE
-    this.authHeaders = options.authHeaders ?? { "OpenAI-Beta": "realtime=v1" }
+    this.authHeaders = options.authHeaders ?? {}
     this.sessionFormat = options.sessionFormat ?? "openai"
   }
 
@@ -567,6 +573,8 @@ export class OpenAIAdapter implements ProviderAdapter {
             event.type !== "conversation.item.created" &&
             event.type !== "response.text.delta" &&
             event.type !== "response.text.done" &&
+            event.type !== "response.output_text.delta" &&
+            event.type !== "response.output_text.done" &&
             event.type !== "response.audio.done" &&
             event.type !== "response.output_audio.done" &&
             event.type !== "response.function_call_arguments.delta") {
@@ -708,22 +716,23 @@ export class OpenAIAdapter implements ProviderAdapter {
     instructions: string,
     tools: ReturnType<typeof getTools>,
   ): Record<string, unknown> {
-    const common = {
-      instructions,
-      voice: config.voice || this.defaultVoice,
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 800,
-      },
-      tools,
-      tool_choice: tools.length > 0 ? "auto" : "none",
+    const voice = config.voice || this.defaultVoice
+    const model = config.model || this.defaultModel
+    const turnDetection = {
+      type: "server_vad",
+      threshold: 0.5,
+      prefix_padding_ms: 300,
+      silence_duration_ms: 800,
     }
+    const toolChoice = tools.length > 0 ? "auto" : "none"
 
     if (this.sessionFormat === "xai") {
       return {
-        ...common,
+        instructions,
+        voice,
+        turn_detection: turnDetection,
+        tools,
+        tool_choice: toolChoice,
         audio: {
           input: { format: { type: "audio/pcm", rate: 24000 } },
           output: { format: { type: "audio/pcm", rate: 24000 } },
@@ -732,14 +741,23 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
 
     return {
-      ...common,
-      modalities: ["text", "audio"],
-      input_audio_format: "pcm16",
-      output_audio_format: "pcm16",
-      input_audio_transcription: {
-        model: "gpt-4o-mini-transcribe",
+      type: "realtime",
+      model,
+      instructions,
+      output_modalities: ["audio"],
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: 24000 },
+          turn_detection: turnDetection,
+          transcription: { model: DEFAULT_TRANSCRIPTION_MODEL },
+        },
+        output: {
+          format: { type: "audio/pcm", rate: 24000 },
+          voice,
+        },
       },
-      temperature: 0.8,
+      tools,
+      tool_choice: toolChoice,
     }
   }
 }

@@ -5,7 +5,7 @@ import { getProviderForRealtimeModel } from './use-realtime'
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
 const DEFAULT_VOICE_FOR_GEMINI = 'Zephyr'
 const DEFAULT_VOICE_FOR_XAI = 'eve'
-const DEFAULT_VOICE_FOR_OPENAI = 'alloy'
+const DEFAULT_VOICE_FOR_OPENAI = 'marin'
 
 const TITLE_INSTRUCTIONS = `\
 You generate short conversation titles. When asked, reply with ONLY the title — \

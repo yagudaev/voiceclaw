@@ -13,9 +13,14 @@ export const GEMINI_VOICES = [
 
 export const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
+// OpenAI Realtime GA voices. `marin` and `cedar` were added with GA and
+// are noticeably warmer than the legacy set; the rest carry over.
+export const OPENAI_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+
 export type GeminiVoice = typeof GEMINI_VOICES[number]
 export type XAIVoice = typeof XAI_VOICES[number]
-export type ProviderId = 'gemini' | 'xai'
+export type OpenAIVoice = typeof OPENAI_VOICES[number]
+export type ProviderId = 'gemini' | 'xai' | 'openai'
 
 export const VOICES_BY_PROVIDER_KEY = 'realtime_voices_by_provider'
 export const LEGACY_VOICE_KEY = 'realtime_voice'
@@ -23,15 +28,18 @@ export const LEGACY_VOICE_KEY = 'realtime_voice'
 export const DEFAULT_VOICES: Record<ProviderId, string> = {
   gemini: 'Zephyr',
   xai: 'ara',
+  openai: 'marin',
 }
 
 export function providerForModel(model: string | null | undefined): ProviderId {
   if (model && model.startsWith('grok-voice-')) return 'xai'
+  if (model && model.startsWith('gpt-realtime')) return 'openai'
   return 'gemini'
 }
 
 export function isVoiceForProvider(provider: ProviderId, voice: string): boolean {
   if (provider === 'xai') return (XAI_VOICES as readonly string[]).includes(voice)
+  if (provider === 'openai') return (OPENAI_VOICES as readonly string[]).includes(voice)
   return (GEMINI_VOICES as readonly string[]).includes(voice)
 }
 
@@ -89,5 +97,6 @@ function seedFromLegacy(legacy: string | null): Record<string, string> {
   if (!legacy) return {}
   if (isVoiceForProvider('gemini', legacy)) return { gemini: legacy }
   if (isVoiceForProvider('xai', legacy)) return { xai: legacy }
+  if (isVoiceForProvider('openai', legacy)) return { openai: legacy }
   return {}
 }

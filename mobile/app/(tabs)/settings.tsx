@@ -45,8 +45,28 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Zephyr: 'Zephyr (F)',
 }
 
-type RealtimeModel = 'gemini-3.1-flash-live-preview' | 'grok-voice-think-fast-1.0'
+const OPENAI_REALTIME_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+const OPENAI_REALTIME_VOICE_LABELS: Record<typeof OPENAI_REALTIME_VOICES[number], string> = {
+  marin: 'Marin (F)',
+  cedar: 'Cedar (M)',
+  alloy: 'Alloy (N)',
+  echo: 'Echo (M)',
+  shimmer: 'Shimmer (F)',
+}
+
+type RealtimeModel =
+  | 'gemini-3.1-flash-live-preview'
+  | 'grok-voice-think-fast-1.0'
+  | 'gpt-realtime-2'
+  | 'gpt-realtime-mini'
 const DEFAULT_REALTIME_MODEL: RealtimeModel = 'gemini-3.1-flash-live-preview'
+
+const REALTIME_MODEL_OPTIONS: { label: string, value: RealtimeModel }[] = [
+  { label: 'Gemini 3.1 Flash Live', value: 'gemini-3.1-flash-live-preview' },
+  { label: 'Grok Voice Think Fast 1.0', value: 'grok-voice-think-fast-1.0' },
+  { label: 'GPT Realtime 2', value: 'gpt-realtime-2' },
+  { label: 'GPT Realtime Mini', value: 'gpt-realtime-mini' },
+]
 
 export default function SettingsScreen() {
   const { colorScheme } = useColorScheme()
@@ -313,13 +333,17 @@ export default function SettingsScreen() {
     if (loadedRef.current) saveImmediate('realtime_model', v)
     // Reset voice to a sensible default when switching providers
     const isGemini = v.startsWith('gemini-')
-    const currentIsGemini = realtimeVoice.charAt(0) === realtimeVoice.charAt(0).toUpperCase() && GEMINI_VOICES.includes(realtimeVoice as typeof GEMINI_VOICES[number])
+    const currentIsGemini = GEMINI_VOICES.includes(realtimeVoice as typeof GEMINI_VOICES[number])
     const isXAI = v.startsWith('grok-voice-')
     const currentIsXAI = XAI_VOICES.includes(realtimeVoice as typeof XAI_VOICES[number])
+    const isOpenAI = v.startsWith('gpt-realtime')
+    const currentIsOpenAI = OPENAI_REALTIME_VOICES.includes(realtimeVoice as typeof OPENAI_REALTIME_VOICES[number])
     if (isGemini && !currentIsGemini) {
       updateRealtimeVoice('Zephyr')
     } else if (isXAI && !currentIsXAI) {
       updateRealtimeVoice('eve')
+    } else if (isOpenAI && !currentIsOpenAI) {
+      updateRealtimeVoice('marin')
     }
   }, [saveImmediate, realtimeVoice, updateRealtimeVoice])
 
@@ -490,10 +514,7 @@ export default function SettingsScreen() {
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">Model</Text>
                 <OptionGroup
-                  options={[
-                    { label: 'Gemini 3.1 Flash Live', value: 'gemini-3.1-flash-live-preview' as const },
-                    { label: 'Grok Voice Think Fast 1.0', value: 'grok-voice-think-fast-1.0' as const },
-                  ]}
+                  options={REALTIME_MODEL_OPTIONS}
                   value={realtimeModel}
                   onChange={updateRealtimeModel}
                 />
@@ -504,6 +525,12 @@ export default function SettingsScreen() {
                 {realtimeModel.startsWith('gemini-') ? (
                   <OptionGroup
                     options={GEMINI_VOICES.map((v) => ({ label: GEMINI_VOICE_LABELS[v], value: v }))}
+                    value={realtimeVoice}
+                    onChange={updateRealtimeVoice}
+                  />
+                ) : realtimeModel.startsWith('gpt-realtime') ? (
+                  <OptionGroup
+                    options={OPENAI_REALTIME_VOICES.map((v) => ({ label: OPENAI_REALTIME_VOICE_LABELS[v], value: v }))}
                     value={realtimeVoice}
                     onChange={updateRealtimeVoice}
                   />
@@ -774,7 +801,7 @@ export default function SettingsScreen() {
 }
 
 function isRealtimeModel(model: string | null): model is RealtimeModel {
-  return model === 'gemini-3.1-flash-live-preview' || model === 'grok-voice-think-fast-1.0'
+  return REALTIME_MODEL_OPTIONS.some((opt) => opt.value === model)
 }
 
 function normalizeRealtimeModel(model: string | null): RealtimeModel {
@@ -784,6 +811,9 @@ function normalizeRealtimeModel(model: string | null): RealtimeModel {
 function normalizeRealtimeVoice(model: RealtimeModel, voice: string | null): string {
   if (model.startsWith('grok-voice-')) {
     return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+  if (model.startsWith('gpt-realtime')) {
+    return voice && (OPENAI_REALTIME_VOICES as readonly string[]).includes(voice) ? voice : 'marin'
   }
 
   return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'

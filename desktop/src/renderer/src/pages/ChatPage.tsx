@@ -78,7 +78,12 @@ import { groupMessages } from '../lib/message-grouping'
 import { streamTextChat } from '../lib/text-chat'
 
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
-const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
+const REALTIME_MODELS = [
+  'gemini-3.1-flash-live-preview',
+  'grok-voice-think-fast-1.0',
+  'gpt-realtime-2',
+  'gpt-realtime-mini',
+] as const
 
 interface ChatPageProps {
   onNavigateToSettings?: () => void
@@ -1417,6 +1422,9 @@ async function defaultRelayUrl(): Promise<string> {
 // needs entries for models the user can actually pick (set in REALTIME_MODELS).
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'gemini-3.1-flash-live-preview': 131_072,
+  'gpt-realtime-2': 32_000,
+  'gpt-realtime-mini': 32_000,
+  'grok-voice-think-fast-1.0': 131_072,
 }
 const FALLBACK_CONTEXT_WINDOW = 131_072
 

@@ -31,9 +31,15 @@ const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?
 const THINKING_MESSAGE_ID = -2
 const LISTENING_MESSAGE_ID = -3
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
-const REALTIME_MODELS = ['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const
+const REALTIME_MODELS = [
+  'gemini-3.1-flash-live-preview',
+  'grok-voice-think-fast-1.0',
+  'gpt-realtime-2',
+  'gpt-realtime-mini',
+] as const
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
+const OPENAI_REALTIME_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \
@@ -1366,6 +1372,9 @@ function normalizeRealtimeModel(model: string | null): typeof REALTIME_MODELS[nu
 function normalizeRealtimeVoice(model: typeof REALTIME_MODELS[number], voice: string | null): string {
   if (model.startsWith('grok-voice-')) {
     return voice && (XAI_VOICES as readonly string[]).includes(voice) ? voice : 'eve'
+  }
+  if (model.startsWith('gpt-realtime')) {
+    return voice && (OPENAI_REALTIME_VOICES as readonly string[]).includes(voice) ? voice : 'marin'
   }
 
   return voice && (GEMINI_VOICES as readonly string[]).includes(voice) ? voice : 'Zephyr'

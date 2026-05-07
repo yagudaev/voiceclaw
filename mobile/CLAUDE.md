@@ -138,5 +138,7 @@ are unreachable through the UI. If `voice_mode` in SQLite is `vapi` or
 `custom` (from a previous version), Settings migrates it to `realtime`
 on load.
 
-Default model: `gemini-3.1-flash-live-preview`. GPT Realtime entries
-are shown disabled ("Coming Soon") to mirror the desktop.
+Default model: `gemini-3.1-flash-live-preview`. GPT Realtime 2 and
+GPT Realtime Mini are selectable in Settings — the relay speaks the
+OpenAI Realtime GA wire format (`type: "realtime"`, nested `audio`
+config, `output_modalities`, no `OpenAI-Beta` header).

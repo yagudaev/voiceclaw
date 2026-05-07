@@ -50,6 +50,7 @@ const FALLBACK_PRICING: PricingCatalog = {
 
   // OpenAI Realtime
   "gpt-realtime": { id: "gpt-realtime", cost: { input: 32, output: 64, cache_read: 0.4 } },
+  "gpt-realtime-2": { id: "gpt-realtime-2", cost: { input: 32, output: 64, cache_read: 0.4 } },
   "gpt-realtime-mini": { id: "gpt-realtime-mini", cost: { input: 10, output: 20, cache_read: 0.3 } },
 
   // Anthropic Claude (text)

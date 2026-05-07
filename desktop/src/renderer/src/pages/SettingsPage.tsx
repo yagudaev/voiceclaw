@@ -14,6 +14,7 @@ import { enumerateAudioDevices, type AudioDevice } from '../lib/audio-engine'
 import { getSetting, setSetting } from '../lib/db'
 import {
   GEMINI_VOICES,
+  OPENAI_VOICES,
   XAI_VOICES,
   getVoiceForProvider,
   isVoiceForProvider,
@@ -45,8 +46,34 @@ const XAI_VOICE_LABELS: Record<typeof XAI_VOICES[number], string> = {
   leo: 'Leo (M)',
 }
 
-type RealtimeModel = 'gemini-3.1-flash-live-preview' | 'grok-voice-think-fast-1.0'
+const OPENAI_VOICE_LABELS: Record<typeof OPENAI_VOICES[number], string> = {
+  marin: 'Marin (F)',
+  cedar: 'Cedar (M)',
+  alloy: 'Alloy (N)',
+  echo: 'Echo (M)',
+  shimmer: 'Shimmer (F)',
+}
+
+type RealtimeModel =
+  | 'gemini-3.1-flash-live-preview'
+  | 'grok-voice-think-fast-1.0'
+  | 'gpt-realtime-2'
+  | 'gpt-realtime-mini'
 const DEFAULT_REALTIME_MODEL: RealtimeModel = 'gemini-3.1-flash-live-preview'
+
+const REALTIME_MODEL_LABELS: Record<RealtimeModel, string> = {
+  'gemini-3.1-flash-live-preview': 'Gemini 3.1 Flash Live',
+  'grok-voice-think-fast-1.0': 'Grok Voice Think Fast 1.0',
+  'gpt-realtime-2': 'GPT Realtime 2',
+  'gpt-realtime-mini': 'GPT Realtime Mini',
+}
+
+const REALTIME_MODELS: readonly RealtimeModel[] = [
+  'gemini-3.1-flash-live-preview',
+  'grok-voice-think-fast-1.0',
+  'gpt-realtime-2',
+  'gpt-realtime-mini',
+]
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -628,7 +655,7 @@ export function SettingsPage() {
         <Card className="p-4 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Model</h3>
           <div className="space-y-1.5">
-            {(['gemini-3.1-flash-live-preview', 'grok-voice-think-fast-1.0'] as const).map((m) => {
+            {REALTIME_MODELS.map((m) => {
               return (
                 <button
                   key={m}
@@ -644,7 +671,7 @@ export function SettingsPage() {
                     {model === m && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                   </div>
                   <span className={`text-sm ${model === m ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                    {m === 'gemini-3.1-flash-live-preview' ? 'Gemini 3.1 Flash Live' : 'Grok Voice Think Fast 1.0'}
+                    {REALTIME_MODEL_LABELS[m]}
                   </span>
                 </button>
               )
@@ -656,11 +683,18 @@ export function SettingsPage() {
         <Card className="p-4 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Voice</h3>
           <div className="grid grid-cols-2 gap-1.5">
-            {(model.startsWith('gemini-') ? GEMINI_VOICES : XAI_VOICES).map((v) => {
-              const isGemini = model.startsWith('gemini-')
-              const label = isGemini
+            {(providerForModel(model) === 'gemini'
+              ? GEMINI_VOICES
+              : providerForModel(model) === 'openai'
+                ? OPENAI_VOICES
+                : XAI_VOICES
+            ).map((v) => {
+              const provider = providerForModel(model)
+              const label = provider === 'gemini'
                 ? GEMINI_VOICE_LABELS[v as typeof GEMINI_VOICES[number]]
-                : XAI_VOICE_LABELS[v as typeof XAI_VOICES[number]]
+                : provider === 'openai'
+                  ? OPENAI_VOICE_LABELS[v as typeof OPENAI_VOICES[number]]
+                  : XAI_VOICE_LABELS[v as typeof XAI_VOICES[number]]
               const selected = voice === v
               const isPlaying = previewing === v
               return (
@@ -1108,7 +1142,7 @@ function maskKey(key: string): string {
 }
 
 function isRealtimeModel(model: string | null): model is RealtimeModel {
-  return model === 'gemini-3.1-flash-live-preview' || model === 'grok-voice-think-fast-1.0'
+  return REALTIME_MODELS.includes(model as RealtimeModel)
 }
 
 function normalizeRealtimeModel(model: string | null): RealtimeModel {
