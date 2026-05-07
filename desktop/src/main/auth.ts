@@ -6,7 +6,7 @@ import { getMainWindow } from './window-lifecycle'
 // Desktop sign-in flow:
 //
 //   1. Renderer asks main to start sign-in. We open the browser to
-//      https://getvoiceclaw.com/api/auth/google/start?target=desktop.
+//      https://cloud.getvoiceclaw.com/api/auth/google/start?target=desktop.
 //   2. Browser completes Google OAuth, the website redirects back to
 //      voiceclaw://auth/callback?ticket=…
 //   3. macOS hands the URL to this process via the open-url event. We
@@ -16,7 +16,7 @@ import { getMainWindow } from './window-lifecycle'
 //      wizard can mark the user as signed-in and advance.
 
 export const DEEP_LINK_SCHEME = 'voiceclaw'
-const DEFAULT_AUTH_BASE_URL = 'https://getvoiceclaw.com'
+const DEFAULT_AUTH_BASE_URL = 'https://cloud.getvoiceclaw.com'
 
 export function registerAuthDeepLink(): void {
   // Register the custom scheme with macOS. argv handling for non-mac
