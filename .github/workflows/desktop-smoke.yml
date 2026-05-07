@@ -75,6 +75,7 @@ jobs:
       - name: Build services + electron-vite + stage
         working-directory: desktop
         run: |
+          set -x
           node scripts/build-services.mjs
           yarn build
           node scripts/stage-app.mjs
