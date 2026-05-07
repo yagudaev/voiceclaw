@@ -10,7 +10,7 @@
 
 set -u
 
-PORTS=(8080 4318 4319 3000)
+PORTS=(8080 4318 4319 3000 5173)
 GRACE_SECONDS=2
 
 for port in "${PORTS[@]}"; do
