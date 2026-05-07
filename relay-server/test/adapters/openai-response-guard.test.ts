@@ -19,7 +19,10 @@ describe("OpenAIAdapter response lifecycle", () => {
     expect(getCaptured(adapter)).toEqual([{ type: "response.create" }])
   })
 
-  it("cancels the active response before creating a replacement when a tool result arrives", () => {
+  it("queues response.create after a tool result without canceling the active response", () => {
+    // The function_call lives inside the current response; canceling it would
+    // cut the model's still-streaming audio mid-sentence. Just queue the next
+    // create and let response.done land naturally.
     const adapter = new OpenAIAdapter()
     setUpCapture(adapter)
 
@@ -37,7 +40,6 @@ describe("OpenAIAdapter response lifecycle", () => {
           output: "{\"ok\":true}",
         },
       },
-      { type: "response.cancel" },
     ])
 
     resetCaptured(adapter)
@@ -45,7 +47,7 @@ describe("OpenAIAdapter response lifecycle", () => {
     expect(getCaptured(adapter)).toEqual([{ type: "response.create" }])
   })
 
-  it("shares a single pending response.cancel across multiple tool results", () => {
+  it("emits one function_call_output per tool result and only one response.create after response.done", () => {
     const adapter = new OpenAIAdapter()
     setUpCapture(adapter)
 
@@ -64,7 +66,6 @@ describe("OpenAIAdapter response lifecycle", () => {
           output: "{\"ok\":1}",
         },
       },
-      { type: "response.cancel" },
       {
         type: "conversation.item.create",
         item: {
@@ -74,6 +75,10 @@ describe("OpenAIAdapter response lifecycle", () => {
         },
       },
     ])
+
+    resetCaptured(adapter)
+    emit(adapter, { type: "response.done" })
+    expect(getCaptured(adapter)).toEqual([{ type: "response.create" }])
   })
 
   it("clears active-response state on error so a new response can start", () => {

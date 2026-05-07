@@ -174,13 +174,16 @@ export class OpenAIAdapter implements ProviderAdapter {
         output,
       },
     })
+    // The function_call lives inside the current response; in GA, queuing
+    // its output doesn't stop the response and we must NOT send
+    // response.cancel — that would cut the model's still-streaming audio
+    // mid-sentence (and on async tools like ask_brain the relay sends a
+    // "searching…" placeholder right after the call lands, so this race is
+    // common). Just queue the next response.create; flushPendingResponseCreate
+    // fires it after response.done lands naturally.
     if (this.isResponseActive) {
-      log(`[${this.providerName}] Tool result (${callId}) arrived mid-response, canceling current response before continuing`)
+      log(`[${this.providerName}] Tool result (${callId}) queued; will fire response.create after response.done`)
       this.pendingResponseCreate = true
-      if (!this.pendingResponseCancel) {
-        this.pendingResponseCancel = true
-        this.sendUpstream({ type: "response.cancel" })
-      }
     } else {
       this.requestResponse(`tool:${callId}`)
     }
