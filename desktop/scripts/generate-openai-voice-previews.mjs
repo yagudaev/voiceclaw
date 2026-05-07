@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { setTimeout as sleep } from "node:timers/promises"
 
-const VOICES = ["marin", "cedar", "alloy", "echo", "shimmer"]
+const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]
 const PROMPT_TEXT = "Hi, I'm here."
 const TTS_URL = "https://api.openai.com/v1/audio/speech"
 const TTS_MODEL = "gpt-4o-mini-tts"

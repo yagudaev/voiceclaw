@@ -442,9 +442,14 @@ export class OpenAIAdapter implements ProviderAdapter {
         this.resetWatchdog()
         break
 
-      // Transcripts
+      // Transcripts (audio modality) and text-only output. GA emits
+      // response.output_text.* when the model replies in text — we treat
+      // those identically to audio transcripts so downstream sees a
+      // single "assistant said this" stream regardless of modality.
       case "response.audio_transcript.delta":
       case "response.output_audio_transcript.delta":
+      case "response.text.delta":
+      case "response.output_text.delta":
         if (this.firstTextDeltaAtMs == null) {
           this.firstTextDeltaAtMs = Date.now()
         }
@@ -456,13 +461,17 @@ export class OpenAIAdapter implements ProviderAdapter {
         break
       case "response.audio_transcript.done":
       case "response.output_audio_transcript.done":
-        this.transcript.push({ role: "assistant", text: event.transcript })
+      case "response.text.done":
+      case "response.output_text.done": {
+        const finalText = event.transcript ?? event.text ?? ""
+        if (finalText) this.transcript.push({ role: "assistant", text: finalText })
         this.sendToClient?.({
           type: "transcript.done",
-          text: event.transcript,
+          text: finalText,
           role: "assistant",
         })
         break
+      }
 
       // User speech transcription (streaming deltas)
       case "conversation.item.input_audio_transcription.delta":
@@ -571,10 +580,6 @@ export class OpenAIAdapter implements ProviderAdapter {
             event.type !== "input_audio_buffer.committed" &&
             event.type !== "input_audio_buffer.cleared" &&
             event.type !== "conversation.item.created" &&
-            event.type !== "response.text.delta" &&
-            event.type !== "response.text.done" &&
-            event.type !== "response.output_text.delta" &&
-            event.type !== "response.output_text.done" &&
             event.type !== "response.audio.done" &&
             event.type !== "response.output_audio.done" &&
             event.type !== "response.function_call_arguments.delta") {

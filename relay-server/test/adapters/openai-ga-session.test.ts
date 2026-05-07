@@ -56,35 +56,53 @@ describe("OpenAIAdapter session.update wire format (Realtime GA)", () => {
 describe("OpenAIAdapter upstream event renames (GA)", () => {
   it("forwards GA audio deltas (response.output_audio.delta) as audio.delta to the client", () => {
     const adapter = new OpenAIAdapter()
-    const out: Record<string, unknown>[] = []
-    ;(adapter as unknown as { sendToClient: (e: Record<string, unknown>) => void }).sendToClient = (e) => {
-      out.push(e)
-    }
+    const out = captureClientEvents(adapter)
     emit(adapter, { type: "response.output_audio.delta", delta: "AAA=" })
     expect(out).toEqual([{ type: "audio.delta", data: "AAA=" }])
   })
 
   it("forwards GA assistant transcript deltas (response.output_audio_transcript.delta)", () => {
     const adapter = new OpenAIAdapter()
-    const out: Record<string, unknown>[] = []
-    ;(adapter as unknown as { sendToClient: (e: Record<string, unknown>) => void }).sendToClient = (e) => {
-      out.push(e)
-    }
+    const out = captureClientEvents(adapter)
     emit(adapter, { type: "response.output_audio_transcript.delta", delta: "hello" })
     expect(out).toEqual([{ type: "transcript.delta", text: "hello", role: "assistant" }])
+  })
+
+  it("forwards GA text-only output (response.output_text.delta) as transcript deltas", () => {
+    const adapter = new OpenAIAdapter()
+    const out = captureClientEvents(adapter)
+    emit(adapter, { type: "response.output_text.delta", delta: "hi" })
+    emit(adapter, { type: "response.output_text.done", text: "hi there" })
+    expect(out).toEqual([
+      { type: "transcript.delta", text: "hi", role: "assistant" },
+      { type: "transcript.done", text: "hi there", role: "assistant" },
+    ])
   })
 })
 
 function buildSession(adapter: OpenAIAdapter, config: Record<string, unknown>): SessionConfig {
-  return (adapter as unknown as {
+  const internals = adapter as unknown as {
     buildSessionConfig: (
       cfg: Record<string, unknown>,
       instructions: string,
       tools: unknown[],
     ) => SessionConfig
-  }).buildSessionConfig(config, "test-instructions", [])
+  }
+  return internals.buildSessionConfig(config, "test-instructions", [])
+}
+
+function captureClientEvents(adapter: OpenAIAdapter): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  const internals = adapter as unknown as { sendToClient: (e: Record<string, unknown>) => void }
+  internals.sendToClient = (e) => {
+    out.push(e)
+  }
+  return out
 }
 
 function emit(adapter: OpenAIAdapter, event: Record<string, unknown>) {
-  ;(adapter as unknown as { handleUpstreamEvent: (e: Record<string, unknown>) => void }).handleUpstreamEvent(event)
+  const internals = adapter as unknown as {
+    handleUpstreamEvent: (e: Record<string, unknown>) => void
+  }
+  internals.handleUpstreamEvent(event)
 }

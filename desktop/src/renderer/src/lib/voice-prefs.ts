@@ -14,8 +14,19 @@ export const GEMINI_VOICES = [
 export const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
 // OpenAI Realtime GA voices. `marin` and `cedar` were added with GA and
-// are noticeably warmer than the legacy set; the rest carry over.
-export const OPENAI_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+// are noticeably warmer than the legacy TTS-1 set; the rest carry over.
+export const OPENAI_VOICES = [
+  'marin',
+  'cedar',
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+] as const
 
 export type GeminiVoice = typeof GEMINI_VOICES[number]
 export type XAIVoice = typeof XAI_VOICES[number]

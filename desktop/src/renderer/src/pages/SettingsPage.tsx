@@ -50,8 +50,13 @@ const OPENAI_VOICE_LABELS: Record<typeof OPENAI_VOICES[number], string> = {
   marin: 'Marin (F)',
   cedar: 'Cedar (M)',
   alloy: 'Alloy (N)',
+  ash: 'Ash (M)',
+  ballad: 'Ballad (M)',
+  coral: 'Coral (F)',
   echo: 'Echo (M)',
+  sage: 'Sage (N)',
   shimmer: 'Shimmer (F)',
+  verse: 'Verse (M)',
 }
 
 type RealtimeModel =

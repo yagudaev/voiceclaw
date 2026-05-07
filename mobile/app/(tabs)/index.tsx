@@ -39,7 +39,18 @@ const REALTIME_MODELS = [
 ] as const
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr'] as const
 const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
-const OPENAI_REALTIME_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+const OPENAI_REALTIME_VOICES = [
+  'marin',
+  'cedar',
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+] as const
 
 const VOICE_SYSTEM_PROMPT = `\
 You are on a live voice call. Keep responses concise and conversational — short \

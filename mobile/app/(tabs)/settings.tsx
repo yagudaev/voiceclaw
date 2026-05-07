@@ -45,13 +45,29 @@ const GEMINI_VOICE_LABELS: Record<typeof GEMINI_VOICES[number], string> = {
   Zephyr: 'Zephyr (F)',
 }
 
-const OPENAI_REALTIME_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+const OPENAI_REALTIME_VOICES = [
+  'marin',
+  'cedar',
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+] as const
 const OPENAI_REALTIME_VOICE_LABELS: Record<typeof OPENAI_REALTIME_VOICES[number], string> = {
   marin: 'Marin (F)',
   cedar: 'Cedar (M)',
   alloy: 'Alloy (N)',
+  ash: 'Ash (M)',
+  ballad: 'Ballad (M)',
+  coral: 'Coral (F)',
   echo: 'Echo (M)',
+  sage: 'Sage (N)',
   shimmer: 'Shimmer (F)',
+  verse: 'Verse (M)',
 }
 
 type RealtimeModel =

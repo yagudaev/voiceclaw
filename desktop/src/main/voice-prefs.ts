@@ -13,7 +13,18 @@ export const GEMINI_VOICES = [
 
 export const XAI_VOICES = ['eve', 'ara', 'rex', 'sal', 'leo'] as const
 
-export const OPENAI_VOICES = ['marin', 'cedar', 'alloy', 'echo', 'shimmer'] as const
+export const OPENAI_VOICES = [
+  'marin',
+  'cedar',
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+] as const
 
 export type ProviderId = 'gemini' | 'xai' | 'openai'
 
