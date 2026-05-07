@@ -49,6 +49,11 @@ export class OpenAIAdapter implements ProviderAdapter {
   private rotationTimer: ReturnType<typeof setTimeout> | null = null
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null
   private isRotating = false
+  // Set when WE initiate disconnect/rotation. Suppresses the close-handler's
+  // error path so the user doesn't see a red "Connection closed unexpectedly"
+  // banner when they intentionally hang up — `ws.close()` without an explicit
+  // code surfaces as 1005 (no-status), which would otherwise look like a fault.
+  private isClosing = false
   private isResponseActive = false
   private pendingResponseCancel = false
   private pendingResponseCreate = false
@@ -110,8 +115,23 @@ export class OpenAIAdapter implements ProviderAdapter {
     this.resetWatchdog()
   }
 
-  sendFrame(_data: string, _mimeType?: string) {
-    // OpenAI Realtime does not support video input
+  sendFrame(data: string, mimeType?: string) {
+    // GA added image input via `input_image` content items. xAI's beta
+    // dialect doesn't speak this shape, so the xAI subclass keeps the
+    // legacy no-op behavior by overriding this method.
+    if (this.sessionFormat !== "openai") return
+    const mt = mimeType || "image/jpeg"
+    log(`[${this.providerName}] Injecting image via conversation.item.create (${data.length} b64 chars, ${mt})`)
+    this.sendUpstream({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_image", image_url: `data:${mt};base64,${data}` }],
+      },
+    })
+    // Don't fire response.create here — the caller decides when to ask
+    // the model to speak (typically after a sibling text.input arrives).
   }
 
   injectContext(text: string) {
@@ -182,9 +202,10 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   disconnect() {
+    this.isClosing = true
     this.clearTimers()
     if (this.upstream && this.upstream.readyState !== WebSocket.CLOSED) {
-      this.upstream.close()
+      this.upstream.close(1000, "client disconnected")
     }
     this.upstream = null
     this.sendToClient = null
@@ -194,6 +215,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const apiKey = process.env[this.apiKeyEnv]
     if (!apiKey) throw new Error(`${this.providerName} API key not configured`)
 
+    this.isClosing = false
     this.resetResponseState()
 
     const model = config.model || this.defaultModel
@@ -256,7 +278,11 @@ export class OpenAIAdapter implements ProviderAdapter {
       this.upstream.on("close", (code, reason) => {
         const reasonText = reason instanceof Buffer ? reason.toString("utf8") : String(reason)
         log(`[${this.providerName}] Upstream closed: ${code} ${reasonText}`)
-        if (!this.isRotating && code !== 1000) {
+        // Treat 1000 (normal) and 1005 (no-status — our own ws.close()
+        // round-tripped) as clean. Anything else, only when we did not
+        // initiate the close ourselves, gets surfaced to the client.
+        const isCleanCode = code === 1000 || code === 1005
+        if (!this.isRotating && !this.isClosing && !isCleanCode) {
           const mapped = mapAdapterError(this.providerName, null, reasonText || null)
           this.sendToClient?.({
             type: "error",

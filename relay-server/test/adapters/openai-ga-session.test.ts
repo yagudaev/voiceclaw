@@ -78,6 +78,29 @@ describe("OpenAIAdapter upstream event renames (GA)", () => {
       { type: "transcript.done", text: "hi there", role: "assistant" },
     ])
   })
+
+  it("sendFrame injects an input_image conversation item for openai (GA)", () => {
+    const adapter = new OpenAIAdapter()
+    const captured = captureUpstream(adapter)
+    adapter.sendFrame("AAA=", "image/png")
+    expect(captured).toEqual([
+      {
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_image", image_url: "data:image/png;base64,AAA=" }],
+        },
+      },
+    ])
+  })
+
+  it("sendFrame is a no-op when sessionFormat is xai (legacy beta dialect)", () => {
+    const adapter = new OpenAIAdapter({ sessionFormat: "xai" })
+    const captured = captureUpstream(adapter)
+    adapter.sendFrame("AAA=", "image/png")
+    expect(captured).toEqual([])
+  })
 })
 
 function buildSession(adapter: OpenAIAdapter, config: Record<string, unknown>): SessionConfig {
@@ -96,6 +119,16 @@ function captureClientEvents(adapter: OpenAIAdapter): Record<string, unknown>[] 
   const internals = adapter as unknown as { sendToClient: (e: Record<string, unknown>) => void }
   internals.sendToClient = (e) => {
     out.push(e)
+  }
+  return out
+}
+
+function captureUpstream(adapter: OpenAIAdapter): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  const internals = adapter as unknown as { sendUpstream: (e: Record<string, unknown>) => boolean }
+  internals.sendUpstream = (e) => {
+    out.push(e)
+    return true
   }
   return out
 }

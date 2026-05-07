@@ -1,3 +1,8 @@
+export interface TextChatImageInput {
+  base64: string
+  mimeType?: string
+}
+
 export interface TextChatOptions {
   serverUrl: string
   apiKey: string
@@ -9,6 +14,10 @@ export interface TextChatOptions {
   instructionsOverride?: string
   conversationHistory?: { role: 'user' | 'assistant', text: string, timestamp?: number }[]
   deviceContext?: { timezone?: string, locale?: string, deviceModel?: string }
+  // Images to send alongside the user text. Forwarded as frame.append events
+  // before the text.input so they land in the same model turn (the openai
+  // adapter injects each as an input_image conversation item).
+  images?: TextChatImageInput[]
 }
 
 export interface TextChatCallbacks {
@@ -68,6 +77,11 @@ export function streamTextChat(
 
     switch (data.type) {
       case 'session.ready':
+        if (opts.images && opts.images.length > 0) {
+          for (const img of opts.images) {
+            ws?.send(JSON.stringify({ type: 'frame.append', data: img.base64, mimeType: img.mimeType ?? 'image/jpeg' }))
+          }
+        }
         ws?.send(JSON.stringify({ type: 'text.input', text }))
         break
       case 'transcript.delta':
