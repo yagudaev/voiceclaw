@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.50](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.49...desktop-v0.10.50) (2026-05-08)
+
+
+### Bug Fixes
+
+* **desktop:** clip phantom scrollbars from messages container ([#404](https://github.com/yagudaev/voiceclaw/issues/404)) ([4d3c3a9](https://github.com/yagudaev/voiceclaw/commit/4d3c3a985117a9fbc5a38dfe3729a53a99ae484b))
+
 ## [0.10.49](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.48...desktop-v0.10.49) (2026-05-08)
 
 
