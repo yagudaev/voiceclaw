@@ -39,7 +39,11 @@ for (const entry of readdirSync(extracted)) {
 rmSync(packDir, { recursive: true, force: true })
 
 console.log("[openclaw-bundle] installing production dependencies")
-execSync("npm install --omit=dev --no-audit --no-fund --no-package-lock --ignore-scripts", {
+// `oxlint` declares an optional peer on `oxlint-tsgolint >= 0.22.1` but
+// the lockfile's resolved version is older; npm's strict peer resolver
+// fails the install. The dep is optional and not actually required for
+// runtime, so let npm pick whichever is already there.
+execSync("npm install --omit=dev --no-audit --no-fund --no-package-lock --ignore-scripts --legacy-peer-deps", {
   cwd: stagingDir,
   stdio: "inherit",
 })
