@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.51](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.50...desktop-v0.10.51) (2026-05-08)
+
+
+### Bug Fixes
+
+* **desktop:** align composer fields and dedupe burst timestamps ([#415](https://github.com/yagudaev/voiceclaw/issues/415)) ([ba72cf2](https://github.com/yagudaev/voiceclaw/commit/ba72cf28ff408d2fc474a4d6ea752c7f35baf017))
+
 ## [0.10.50](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.49...desktop-v0.10.50) (2026-05-08)
 
 
