@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.49](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.48...desktop-v0.10.49) (2026-05-08)
+
+
+### Features
+
+* rewrite OpenAI Realtime adapter for GA (v2) ([#408](https://github.com/yagudaev/voiceclaw/issues/408)) ([7fee230](https://github.com/yagudaev/voiceclaw/commit/7fee230e5efbb44b111e177b044fb0e5ae01e45a))
+
 ## [0.10.48](https://github.com/yagudaev/voiceclaw/compare/desktop-v0.10.47...desktop-v0.10.48) (2026-05-05)
 
 
