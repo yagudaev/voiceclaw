@@ -82,8 +82,6 @@ describe('groupMessages', () => {
       typeof out[number],
       { kind: 'separator' }
     >[]
-    // First separator is the day label for msg 1; the three subsequent
-    // role-transition separators all resolve to "just now" and collapse to one.
     expect(seps).toHaveLength(2)
     expect(seps[1].label).toBe('just now')
     const messages = out.filter((i) => i.kind === 'message')

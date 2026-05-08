@@ -43,10 +43,9 @@ export function groupMessages(
       msg.created_at - prev.created_at < burstThreshold
 
     if (!sameBurst) {
-      const label =
-        prev == null || !sameDay
-          ? formatDaySeparator(msg.created_at, now)
-          : formatBurstSeparator(msg.created_at, now)
+      const label = !sameDay
+        ? formatDaySeparator(msg.created_at, now)
+        : formatBurstSeparator(msg.created_at, now)
       if (label !== lastSeparatorLabel) {
         out.push({ kind: 'separator', label, timestamp: msg.created_at })
         lastSeparatorLabel = label
