@@ -30,6 +30,7 @@ export function groupMessages(
   const out: GroupedItem[] = []
 
   let burstStart = 0
+  let lastSeparatorLabel: string | null = null
   for (let i = 0; i < sorted.length; i++) {
     const msg = sorted[i]
     const prev = i > 0 ? sorted[i - 1] : null
@@ -42,18 +43,13 @@ export function groupMessages(
       msg.created_at - prev.created_at < burstThreshold
 
     if (!sameBurst) {
-      if (prev == null || !sameDay) {
-        out.push({
-          kind: 'separator',
-          label: formatDaySeparator(msg.created_at, now),
-          timestamp: msg.created_at,
-        })
-      } else {
-        out.push({
-          kind: 'separator',
-          label: formatBurstSeparator(msg.created_at, now),
-          timestamp: msg.created_at,
-        })
+      const label =
+        prev == null || !sameDay
+          ? formatDaySeparator(msg.created_at, now)
+          : formatBurstSeparator(msg.created_at, now)
+      if (label !== lastSeparatorLabel) {
+        out.push({ kind: 'separator', label, timestamp: msg.created_at })
+        lastSeparatorLabel = label
       }
       burstStart = i
     }

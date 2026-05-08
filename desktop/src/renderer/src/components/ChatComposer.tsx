@@ -83,7 +83,7 @@ export function ChatComposer({
             className="inline-flex"
           >
             <Button
-              variant="default"
+              variant="secondary"
               size="icon"
               onClick={onAttach}
               disabled={disabled || Boolean(attachDisabledReason)}
@@ -104,7 +104,7 @@ export function ChatComposer({
           placeholder={placeholder ?? 'Type a message — Enter sends, Shift+Enter for newline'}
           aria-label="Type a message"
           className="
-            flex-1 resize-none rounded-md border border-input bg-background px-3 py-2
+            flex-1 resize-none rounded-md border border-input bg-background px-3 py-2.5
             text-sm text-foreground placeholder:text-muted-foreground leading-5
             focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50
             disabled:opacity-50 disabled:cursor-not-allowed

@@ -1,7 +1,7 @@
 const MIN_ROWS = 1
 const MAX_ROWS = 6
 const LINE_HEIGHT_PX = 20
-const VERTICAL_PADDING_PX = 16
+const VERTICAL_PADDING_PX = 20
 
 export function normalizeComposerText(value: string): string {
   return value.replace(/[ \t\r\n]+$/u, '')
