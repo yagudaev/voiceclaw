@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
+import { installStartupCrashHandlers } from './startup-crash'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerScreenCaptureHandlers } from './screen-capture'
 import { closeDb, getDb } from './db'
@@ -65,6 +66,23 @@ import {
 } from './telemetry'
 
 const isDev = !app.isPackaged
+
+// Hook process-level error handlers as the FIRST thing the app does so a
+// startup crash (missing native module, broken DB schema, bad env) renders
+// as the friendly dialog instead of Electron's raw-stack default. Static
+// imports are hoisted, so this runs after the import graph evaluates but
+// before any other top-level code or `whenReady` work.
+installStartupCrashHandlers()
+
+// Dev escape hatch: VOICECLAW_FORCE_CRASH=1 yarn dev throws once whenReady
+// fires so the graceful crash UI can be exercised end-to-end. We wait for
+// whenReady so dialog rendering has a live run loop — the same condition
+// real startup crashes (db schema, missing module on require, etc.) hit.
+if (isDev && process.env.VOICECLAW_FORCE_CRASH === '1') {
+  app.whenReady().then(() => {
+    throw new Error('VOICECLAW_FORCE_CRASH triggered')
+  })
+}
 
 // Prevent multiple instances so the tray stays singular.
 const hasLock = app.requestSingleInstanceLock()
