@@ -9,7 +9,7 @@ type WizardStepId =
   | 'provider'
   | 'brain'
   | 'identity'
-  | 'testcall'
+  | 'introduction'
 
 type OnboardingPayload = {
   signedIn?: boolean
@@ -248,6 +248,11 @@ const electronAPI = {
         | { ok: true; audioBase64: string; mimeType: string }
         | { ok: false; error: string }
       >,
+  },
+  user: {
+    get: () => ipcRenderer.invoke('user:get') as Promise<{ name: string; bio: string }>,
+    save: (patch: { name?: string; bio?: string }) =>
+      ipcRenderer.invoke('user:save', patch) as Promise<{ name: string; bio: string }>,
   },
   screen: {
     getSources: () =>

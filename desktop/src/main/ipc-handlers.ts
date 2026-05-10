@@ -22,6 +22,11 @@ import {
   speakGreetingPreview,
   writeAgentIdentity,
 } from './identity'
+import {
+  type UserProfile,
+  readUserProfile,
+  writeUserProfile,
+} from './user-profile'
 import { getAllocatedPorts } from './ports'
 import {
   type OnboardingPayload,
@@ -549,6 +554,18 @@ export function registerIpcHandlers() {
       return speakGreetingPreview({ apiKey, voice: params.voice, text: params.text })
     },
   )
+
+  // User profile (name, bio) — persisted as USER.md in the bundled
+  // openclaw workspace. The relay's instruction builder loads this file
+  // alongside SOUL/IDENTITY so the agent knows who the user is.
+  ipcMain.handle('user:get', () => readUserProfile())
+  ipcMain.handle('user:save', (_e, patch: Partial<UserProfile>) => {
+    const saved = writeUserProfile(patch)
+    serviceManager.restart('relay', () => buildRelayEnv()).catch((err) => {
+      console.warn('[relay] restart after user profile save failed', err)
+    })
+    return saved
+  })
 
   // Static voice preview used by the Settings voice picker. The clips
   // ship with the app under resources/voice-previews/<provider>/ — this

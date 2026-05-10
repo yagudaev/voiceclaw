@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './brand.css'
 import { StepWelcome } from './StepWelcome'
 import { StepSignIn } from './StepSignIn'
@@ -6,14 +6,20 @@ import { StepPermissions } from './StepPermissions'
 import { StepProvider } from './StepProvider'
 import { StepBrain } from './StepBrain'
 import { StepIdentity } from './StepIdentity'
-import { StepTestCall } from './StepTestCall'
-import { identityApi } from '../../lib/onboarding-api'
+import { StepIntroduction } from './StepIntroduction'
+import {
+  identityApi,
+  userApi,
+  type ProviderId,
+  type UserProfile,
+} from '../../lib/onboarding-api'
 import {
   onboarding,
   type OnboardingPayload,
   type OnboardingState,
   type WizardStepId,
 } from '../../lib/onboarding-api'
+import { isVoiceForProvider } from '../../lib/voice-prefs'
 
 export type { WizardStepId }
 
@@ -24,8 +30,12 @@ const STEPS: WizardStepId[] = [
   'provider',
   'brain',
   'identity',
-  'testcall',
+  'introduction',
 ]
+
+const DEFAULT_AGENT_NAME = 'Pam'
+const DEFAULT_VOICE = 'Zephyr'
+const DEFAULT_USER: UserProfile = { name: 'Friend', bio: '' }
 
 type Props = {
   initialState?: OnboardingState
@@ -40,7 +50,20 @@ type Props = {
 export function OnboardingWizard({ initialState, onComplete, previewMode = false }: Props) {
   const [stepId, setStepId] = useState<WizardStepId>(initialState?.currentStep ?? 'welcome')
   const [payload, setPayload] = useState<OnboardingPayload>(initialState?.payload ?? {})
+  const [existingUser, setExistingUser] = useState<UserProfile>(DEFAULT_USER)
   const currentIndex = STEPS.indexOf(stepId)
+
+  useEffect(() => {
+    if (previewMode) return
+    void (async () => {
+      try {
+        const u = await userApi.get()
+        setExistingUser(u)
+      } catch (err) {
+        console.warn('[onboarding] user load failed', err)
+      }
+    })()
+  }, [previewMode])
 
   const persist = useCallback(
     async (nextStep: WizardStepId, patch: OnboardingPayload = {}) => {
@@ -81,10 +104,11 @@ export function OnboardingWizard({ initialState, onComplete, previewMode = false
       if (!previewMode) {
         try {
           if (Object.keys(patch).length > 0) {
-            await onboarding.updateStep('testcall', patch)
+            await onboarding.updateStep('introduction', patch)
           }
           await onboarding.complete()
-          await window.electronAPI.db.setSetting('pending_greeting', 'true')
+          // After the introduction step the agent has already greeted the
+          // user out loud — no need to re-greet on first chat load.
         } catch (err) {
           console.warn('[onboarding] complete failed', err)
         }
@@ -163,22 +187,35 @@ export function OnboardingWizard({ initialState, onComplete, previewMode = false
           previewMode={previewMode}
         />
       )
-    case 'testcall':
+    case 'introduction': {
+      const agentName = payload.identity?.name?.trim() || DEFAULT_AGENT_NAME
+      const voice = payload.identity?.voice || DEFAULT_VOICE
+      const providerId: ProviderId = payload.provider ?? providerFromVoice(voice)
       return (
-        <StepTestCall
+        <StepIntroduction
           onContinue={() => finish()}
           onBack={back}
           onStartOver={startOver}
-          providerId={payload.provider ?? 'gemini'}
+          agentName={agentName}
+          voice={voice}
+          providerId={providerId}
+          initialUser={existingUser}
           previewMode={previewMode}
         />
       )
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function providerFromVoice(voice: string): ProviderId {
+  if (isVoiceForProvider('xai', voice)) return 'xai'
+  if (isVoiceForProvider('openai', voice)) return 'openai'
+  return 'gemini'
+}
 
 function mergePayload(
   current: OnboardingPayload,

@@ -39,6 +39,10 @@ export interface RealtimeConfig {
     deviceModel?: string
   }
   instructionsOverride?: string
+  // Replaces the agent identity portion of the system prompt with this string.
+  // The relay still applies conversation rules and device context. Used by
+  // short-lived sessions like onboarding intro that need a tight script.
+  systemPromptOverride?: string
   conversationHistory?: { role: 'user' | 'assistant', text: string, timestamp?: number, relativeMs?: number }[]
   tracingEnabled?: boolean
 }
@@ -327,6 +331,7 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
             sessionKey: config.sessionKey,
             deviceContext: config.deviceContext,
             instructionsOverride: config.instructionsOverride,
+            systemPromptOverride: config.systemPromptOverride,
             conversationHistory: config.conversationHistory,
           }),
         )

@@ -36,6 +36,11 @@ export interface SessionConfigEvent {
   }
   watchdog?: "enabled" | "disabled"
   instructionsOverride?: string
+  // Replaces the auto-loaded agent identity (SOUL/IDENTITY/USER) with this
+  // string when set. Conversation rules and device context still apply.
+  // Use for short-lived sessions with their own script (e.g. onboarding intro,
+  // title generation) where the persona prompt would steer the model wrong.
+  systemPromptOverride?: string
   conversationHistory?: { role: "user" | "assistant", text: string, timestamp?: number, relativeMs?: number }[]
 }
 

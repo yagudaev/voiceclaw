@@ -8,7 +8,7 @@ export type WizardStepId =
   | 'provider'
   | 'brain'
   | 'identity'
-  | 'testcall'
+  | 'introduction'
 
 export type ProviderId = 'gemini' | 'openai' | 'xai'
 
@@ -23,6 +23,16 @@ export type AgentIdentityPatch = {
   name?: string
   description?: string
   voice?: string
+}
+
+export type UserProfile = {
+  name: string
+  bio: string
+}
+
+export type UserProfilePatch = {
+  name?: string
+  bio?: string
 }
 
 export type OnboardingPayload = {
@@ -99,6 +109,10 @@ declare global {
           | { ok: false; error: string }
         >
       }
+      user: {
+        get: () => Promise<UserProfile>
+        save: (patch: UserProfilePatch) => Promise<UserProfile>
+      }
     }
   }
 }
@@ -140,4 +154,9 @@ export const identityApi = {
     window.electronAPI.identity.speakPreview(params),
   getVoicePreview: (params: { voice: string }) =>
     window.electronAPI.identity.getVoicePreview(params),
+}
+
+export const userApi = {
+  get: () => window.electronAPI.user.get(),
+  save: (patch: UserProfilePatch) => window.electronAPI.user.save(patch),
 }

@@ -5,9 +5,9 @@ description: How VoiceClaw's first-run wizard guides users through sign-in, perm
 
 import { Aside, Steps } from '@astrojs/starlight/components'
 
-The first time you open VoiceClaw on a Mac, a six-step wizard runs before the main app appears. It captures the bare minimum the app needs to make a real call: a working API key, the right macOS permissions, and a chosen brain. Each step writes its result to SQLite as it advances, so quitting mid-flow drops you back exactly where you left off the next time you launch.
+The first time you open VoiceClaw on a Mac, a seven-step wizard runs before the main app appears. It captures the bare minimum the app needs to make a real call: a working API key, the right macOS permissions, a chosen brain, an agent persona, and — in the new final step — a live voice introduction so the agent learns who you are. Each step writes its result to SQLite (or the brain workspace, for identity and user profile) as it advances, so quitting mid-flow drops you back exactly where you left off the next time you launch.
 
-## The six steps
+## The seven steps
 
 <Steps>
 
@@ -21,12 +21,14 @@ The first time you open VoiceClaw on a Mac, a six-step wizard runs before the ma
 
 5. **Brain.** Four options: bundled OpenClaw, detected Claude CLI, detected Codex CLI, and a custom HTTP endpoint. Detection happens via `which claude` / `which codex` with homebrew paths injected into `PATH` so login-item launches still resolve.
 
-6. **Smoke test.** Auto-runs a single `generateContent` round trip against your saved Gemini key with the prompt `"Say 'Hi, I'm VoiceClaw' in five words."`. The reply renders in the transcript bubble; latency lands in the route footer. This step is intentionally text-only for v0.1 — full bidirectional Live audio ships in a follow-up.
+6. **Voice (agent identity).** Pick the agent's name, a one-line vibe, and a voice. The selection writes `IDENTITY.md` into `~/Library/Application Support/VoiceClaw/openclaw/workspace/` and restarts the relay so the next session loads the new persona.
+
+7. **Hello (live introduction).** Replaces the old text-only smoke test. The agent immediately greets the user out loud in their chosen voice, asks for their name, then asks for a brief bio. Each user response auto-populates a corresponding form field (with a typed-input fallback per field). On *Done*, the captured `name` and `bio` are written to `USER.md` in the same workspace so the relay's instruction builder can include them in every future session's system prompt.
 
 </Steps>
 
-<Aside type="note" title="Future: real voice on step 6">
-The text-only smoke call is a deliberate descope. The implementation lives in `desktop/src/main/provider-keys.ts:geminiSmokeCall` with a `TODO(voice-test-call)` marker pointing at the follow-up Linear ticket where the bidirectional audio path will land.
+<Aside type="note" title="Why a USER.md file">
+The relay's `loadAgentIdentity()` reads `IDENTITY.md`, `SOUL.md`, and now `USER.md` from the brain workspace at session start. A new field `systemPromptOverride` on the relay's session config lets the introduction step swap in a tight onboarding script (and `brainAgent: 'none'`) so the agent stays on-script instead of trying to call `ask_brain` mid-greeting.
 </Aside>
 
 ## What gets saved and where
@@ -60,6 +62,17 @@ CREATE TABLE devices (
 ```
 
 Plaintext API keys and device tokens **never** touch disk. Electron's `safeStorage` wraps them with the macOS Keychain before they reach SQLite, so a stolen `voiceclaw.db` file alone can't recover them.
+
+Persona and user-profile data live alongside the brain workspace as plain markdown:
+
+```text
+~/Library/Application Support/VoiceClaw/openclaw/workspace/
+├── SOUL.md       # bundled — agent vibe / boundaries / tone (read-only)
+├── IDENTITY.md   # written by the Voice step — Name / Vibe / Voice
+└── USER.md       # written by the Hello step — Name / About
+```
+
+Both files are written with mode `0600`. `loadAgentIdentity()` in the relay reads them on every session start; pure markdown means you can hand-edit either to nudge the agent's persona or update what it knows about you.
 
 ## Resetting onboarding for testing
 

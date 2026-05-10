@@ -82,7 +82,8 @@ export default defineConfig({
           items: [
             { slug: 'relay-server' },
             { slug: 'desktop-app' },
-            { slug: 'desktop/onboarding', label: 'Desktop: onboarding wizard' },
+            { slug: 'desktop/first-run', label: 'Desktop: first-run setup' },
+            { slug: 'desktop/onboarding', label: 'Desktop: onboarding wizard (internals)' },
             { slug: 'desktop/call-bar', label: 'Desktop: floating call bar' },
             { slug: 'desktop/volume-control', label: 'Desktop: agent volume control' },
             { slug: 'desktop/chat-actions', label: 'Desktop: chat actions (right-click menu)' },

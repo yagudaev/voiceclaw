@@ -15,7 +15,7 @@ export type WizardStepId =
   | 'provider'
   | 'brain'
   | 'identity'
-  | 'testcall'
+  | 'introduction'
 
 export type OnboardingPayload = {
   signedIn?: boolean
@@ -86,7 +86,7 @@ export function getOnboardingState(): OnboardingState {
   }
 
   return {
-    currentStep: row.currentStep,
+    currentStep: migrateStepId(row.currentStep),
     payload: parsePayload(row.payload),
     completedAt: row.completedAt,
   }
@@ -168,6 +168,14 @@ function parsePayload(raw: string): OnboardingPayload {
   } catch {
     return {}
   }
+}
+
+function migrateStepId(step: string): WizardStepId {
+  // The introduction step replaced the legacy 'testcall' placeholder. Remap
+  // any persisted value so a user mid-wizard during the upgrade lands on the
+  // new step instead of an unknown id.
+  if (step === 'testcall') return 'introduction'
+  return step as WizardStepId
 }
 
 function mergePayload(

@@ -97,7 +97,10 @@ const BRAIN_MEMORY_ASYNC_TAIL = `**While ask_brain is still running** (5–20 se
 export function buildInstructions(config: SessionConfigEvent): string {
   const parts: string[] = []
 
-  if (config.brainAgent !== "none") {
+  if (config.systemPromptOverride) {
+    log(`[instructions] systemPromptOverride active (${config.systemPromptOverride.length} chars)`)
+    parts.push(config.systemPromptOverride)
+  } else if (config.brainAgent !== "none") {
     const identity = loadAgentIdentity(config.provider)
     log(`[instructions] Loaded agent identity (${identity.length} chars): ${identity.substring(0, 100)}...`)
     parts.push(identity)
@@ -151,11 +154,14 @@ export function buildInstructions(config: SessionConfigEvent): string {
 function loadAgentIdentity(provider: SessionConfigEvent["provider"]): string {
   const profile = loadAgentProfile()
   const soul = loadFile("SOUL.md")
+  const userBlock = loadUserBlock()
 
   if (provider === "openai" || provider === "xai") {
-    return buildOpenAIVoiceIdentity(profile, soul)
+    const openAIIdentity = buildOpenAIVoiceIdentity(profile, soul)
+    return userBlock ? `${openAIIdentity}\n\n${userBlock}` : openAIIdentity
   }
 
+  let geminiIdentity: string
   if (soul) {
     // Strip meta lines that don't apply to voice (markdown links, "this file is yours" footer)
     const cleaned = soul
@@ -164,10 +170,43 @@ function loadAgentIdentity(provider: SessionConfigEvent["provider"]): string {
       .replace(/---[\s\S]*$/, "") // remove trailing --- and everything after
       .trim()
 
-    return `You are ${profile.name}, a personal AI assistant in voice mode. You are the same ${profile.name} from text chat, just speaking instead of typing.\n\n${cleaned}`
+    geminiIdentity = `You are ${profile.name}, a personal AI assistant in voice mode. You are the same ${profile.name} from text chat, just speaking instead of typing.\n\n${cleaned}`
+  } else {
+    geminiIdentity = `You are ${profile.name}, a personal AI assistant in voice mode. Keep your responses conversational and concise.`
   }
 
-  return `You are ${profile.name}, a personal AI assistant in voice mode. Keep your responses conversational and concise.`
+  return userBlock ? `${geminiIdentity}\n\n${userBlock}` : geminiIdentity
+}
+
+function loadUserBlock(): string | null {
+  const user = loadFile("USER.md")
+  if (!user) return null
+  const name = readMarkdownSection(user, "Name") || "Friend"
+  const about = readMarkdownSection(user, "About") || ""
+  if (name === "Friend" && !about) return null
+  const lines: string[] = ["## About the user"]
+  lines.push(`- **Name:** ${name}`)
+  if (about) lines.push(`- **About:** ${about}`)
+  return lines.join("\n")
+}
+
+function readMarkdownSection(content: string, heading: string): string {
+  const lines = content.split("\n")
+  const target = `## ${heading}`.toLowerCase()
+  let inSection = false
+  const captured: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.toLowerCase().startsWith("## ")) {
+      if (inSection) break
+      inSection = trimmed.toLowerCase() === target
+      continue
+    }
+    if (inSection) captured.push(line)
+  }
+  const body = captured.join("\n").trim()
+  if (!body || body === "_(not provided)_") return ""
+  return body
 }
 
 function loadAgentProfile() {

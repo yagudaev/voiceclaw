@@ -72,6 +72,32 @@ describe('ensureBundledRelayDefaults', () => {
   })
 })
 
+describe('getOnboardingState — step migration', () => {
+  beforeEach(() => {
+    settings.clear()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+  })
+
+  it("remaps a stored 'testcall' cursor to 'introduction'", async () => {
+    const { getOnboardingState } = await import('./onboarding')
+    const originalGet = fakeStmt.get
+    fakeStmt.get = ((..._args: unknown[]) => ({
+      currentStep: 'testcall',
+      payload: '{}',
+      completedAt: null,
+    })) as typeof fakeStmt.get
+    try {
+      const state = getOnboardingState()
+      expect(state.currentStep).toBe('introduction')
+    } finally {
+      fakeStmt.get = originalGet
+    }
+  })
+})
+
 describe('getBundledRelayApiKey', () => {
   beforeEach(() => {
     settings.clear()

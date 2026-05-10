@@ -15,7 +15,8 @@ const ONBOARDING_STEP_IDS: WizardStepId[] = [
   'permissions',
   'provider',
   'brain',
-  'testcall',
+  'identity',
+  'introduction',
 ]
 
 export function App() {

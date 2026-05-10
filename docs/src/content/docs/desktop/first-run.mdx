@@ -1,0 +1,73 @@
+---
+title: First-run setup
+description: A walk-through of the seven-step setup wizard the first time you open VoiceClaw — including the new "say hi" step where the agent introduces itself and learns your name.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+The first time you open VoiceClaw, a setup wizard runs before the app appears. It takes a couple of minutes. By the end, your agent knows who they are, who you are, and is ready to talk.
+
+You can quit and resume any time — the wizard remembers where you stopped.
+
+## The seven steps
+
+<Steps>
+
+1. **Welcome.** A short hello and a *Let's set up* button.
+
+2. **Sign in (optional).** Hook VoiceClaw up to a Google account if you want sync. Skip it if you don't — your API keys work fine on their own.
+
+3. **Permissions.** Grant microphone access (required) and screen recording (optional, only used when you explicitly start a screen share). The wizard polls macOS while you're on this step, so flipping a switch in System Settings flips the row in the wizard without you having to come back and click anything.
+
+4. **Provider key.** Pick **Gemini**, **OpenAI**, or **Grok**, paste your API key, and tab out. We make a quick read-only call to confirm the key works before saving it. Keys are stored in your Mac's Keychain — they never sit in plain text on disk.
+
+5. **Brain.** Pick where the agent's "thinking" runs. Most people use the **bundled OpenClaw** option, which Just Works. If you have the **Claude CLI** or **Codex CLI** installed, the wizard auto-detects them and offers them as alternatives. There's also a *Custom* option for self-hosted brain endpoints.
+
+6. **Voice.** Give the agent a name (default: *Pam*), a one-line vibe ("Friendly, calm, helps me stay on top of things"), and pick a voice. Hit *Say hello* on any voice in the list to preview it. You can change all of this later in Settings.
+
+7. **Hello.** Now the new bit. The agent immediately calls you in the voice you picked and says something like:
+
+   > **Pam:** "Hi! I'm Pam. Nice to meet you — what should I call you?"
+
+   Talk back. Their transcript and yours show up in a chat-style panel on the left. As you answer, the **Your name** and **About you** fields on the right fill in automatically. Fix any typos, then hit *Done*.
+
+   Don't want to talk right now? Hit *Skip for now* — Pam will work fine without it. You can always re-run the wizard from Settings → Debug.
+
+</Steps>
+
+![The Hello step, mid-conversation. The agent has asked for your name and your bio is being filled in below.](/voiceclaw/onboarding-introduction.png)
+
+## What the agent remembers
+
+Whatever you put in **Your name** and **About you** is written to a markdown file at:
+
+```text
+~/Library/Application Support/VoiceClaw/openclaw/workspace/USER.md
+```
+
+The relay reads that file at the start of every session, so the first thing your agent will say on the next call is *"Hey Michael, what's up?"* — not the generic "Hi, how can I help?" you'd get from a stock assistant.
+
+You can hand-edit `USER.md` any time to update what the agent knows about you. Or:
+
+- **Re-run the wizard.** Settings → Debug → *Re-run onboarding wizard*. The Hello step pre-populates with the values you saved last time, so you can keep them or replace them.
+- **Reset the wizard cursor.** *Start over* in the top-bar of the wizard resets you to step 1. Saved API keys, the brain choice, and your USER.md stay intact.
+
+## If the voice intro doesn't work
+
+Most failures fall into one of three buckets:
+
+- **Microphone permission denied.** The Hello step shows *Voice unavailable — use the form*. Type your name and bio into the fields on the right and hit *Done*. The agent will know who you are next time you call them.
+- **Quiet environment / no mic available.** Same fallback. Click *Type your answer instead* on either field and type it manually.
+- **Provider key is missing or wrong.** The wizard's Provider step blocks you from advancing without a working key, so this shouldn't happen — but if it does, re-run the wizard and re-paste the key.
+
+If the agent gets stuck mid-sentence or starts repeating itself, hit *Skip for now*. The wizard will save defaults and you can fix things from Settings later.
+
+## Privacy
+
+- **API keys** are encrypted with macOS Keychain and stored locally. They never leave your Mac except in the API calls you explicitly make.
+- **Audio** is streamed to whichever provider you picked (Google, OpenAI, or xAI). It is *not* stored on Anthropic's or VoiceClaw's servers — VoiceClaw doesn't run any servers; it talks to your chosen provider directly.
+- **`USER.md`** is a plain text file in your user data directory. Nothing in VoiceClaw uploads it; the only thing that reads it is the local relay process when it builds your agent's system prompt.
+
+<Aside type="tip" title="Renaming the agent">
+You can change the agent's name, voice, or vibe any time in Settings → Voice. The change writes a new `IDENTITY.md`; the relay restarts and the next call uses the new persona. `USER.md` is unaffected.
+</Aside>
