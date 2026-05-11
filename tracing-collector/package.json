@@ -13,12 +13,12 @@
     "hoistingLimits": "workspaces"
   },
   "dependencies": {
-    "@opentelemetry/otlp-transformer": "^0.215.0",
+    "@opentelemetry/otlp-transformer": "^0.217.0",
     "better-sqlite3": "^12.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.7.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
