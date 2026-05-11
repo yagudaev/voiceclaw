@@ -68,6 +68,7 @@ export default defineConfig({
         baseUrl: 'https://github.com/yagudaev/voiceclaw/edit/main/docs/',
       },
       sidebar: [
+        { label: '← VoiceClaw home', link: 'https://getvoiceclaw.com' },
         { label: 'Home', slug: 'index' },
         {
           label: 'Getting Started',

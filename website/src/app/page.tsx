@@ -26,6 +26,7 @@ import {
 } from "@/lib/downloads"
 
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
+const DOCS_URL = "https://docs.getvoiceclaw.com"
 const MAC_DOWNLOAD_URL = "/download"
 const TESTFLIGHT_SIGNUP_URL = ""
 const DEMO_EMBED_URL = "https://www.youtube.com/embed/iAS7vj2vRaA"
@@ -65,6 +66,9 @@ function Header({
           <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="#work">
             How it works
           </Link>
+          <a className="hidden hover:text-[var(--brand-ink)] sm:inline" href={DOCS_URL}>
+            Docs
+          </a>
           <Link className="hidden hover:text-[var(--brand-ink)] sm:inline" href="/download">
             Download
           </Link>
@@ -417,6 +421,9 @@ function Footer() {
       <div className="mx-auto flex max-w-7xl flex-col justify-between gap-5 text-sm text-[var(--brand-muted)] sm:flex-row sm:items-center">
         <BrandWordmark />
         <div className="flex gap-5">
+          <a href={DOCS_URL} className="hover:text-[var(--brand-ink)]">
+            Docs
+          </a>
           <Link href="/brand" className="hover:text-[var(--brand-ink)]">
             Brand guidelines
           </Link>
