@@ -7,7 +7,7 @@ import { Aside, Steps } from '@astrojs/starlight/components'
 
 VoiceClaw uses [release-please](https://github.com/googleapis/release-please) to version its packages and maintain a changelog. You never hand-bump a `version` field or hand-write a changelog entry — release-please does both, driven entirely by your PR titles.
 
-This page is the **contributor** view: how your PR title turns into a version bump. For the maintainer view — what happens after the tag fires, signing, notarizing, publishing the DMG — see [Releasing the desktop app](/voiceclaw/desktop/releasing/).
+This page is the **contributor** view: how your PR title turns into a version bump. For the maintainer view — what happens after the tag fires, signing, notarizing, publishing the DMG — see [Releasing the desktop app](/desktop/releasing/).
 
 ## The flow in one picture
 
@@ -82,7 +82,7 @@ fix(website): correct /download status code
    - Pushes a git tag per bumped package (see [tag scheme](#tag-scheme) below).
    - Creates a GitHub Release for each tag with the changelog body.
 
-5. For desktop releases: the `v*.*.*` tag push triggers [`release-desktop.yml`](https://github.com/yagudaev/voiceclaw/blob/main/.github/workflows/release-desktop.yml), which builds, signs, notarizes, and attaches the DMG to the same GitHub Release. See [Releasing the desktop app](/voiceclaw/desktop/releasing/) for that half of the story.
+5. For desktop releases: the `v*.*.*` tag push triggers [`release-desktop.yml`](https://github.com/yagudaev/voiceclaw/blob/main/.github/workflows/release-desktop.yml), which builds, signs, notarizes, and attaches the DMG to the same GitHub Release. See [Releasing the desktop app](/desktop/releasing/) for that half of the story.
 
 </Steps>
 

@@ -17,7 +17,7 @@ the model only sees `ask_brain` and `echo_tool`, and behaviour is unchanged.
 
 `ask_brain` is powerful but heavy. Each call hits the brain gateway, which can
 spawn a multi-step agent run, hit local exec gates, and stream back tokens. Per
-the [Brain Agent](/voiceclaw/relay-server#brain-agent) section, a `searching`
+the [Brain Agent](/relay-server#brain-agent) section, a `searching`
 status comes back immediately so the model can verbally bridge ("Let me check
 on that..."), and the result is injected into the next turn. This is the right
 shape for things like "create a task" or "what did I decide about X" — but it's

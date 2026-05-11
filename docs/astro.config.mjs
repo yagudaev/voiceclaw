@@ -3,8 +3,7 @@ import starlight from '@astrojs/starlight'
 import mermaid from 'astro-mermaid'
 
 export default defineConfig({
-  site: 'https://yagudaev.github.io',
-  base: '/voiceclaw',
+  site: 'https://docs.getvoiceclaw.com',
   integrations: [
     mermaid({
       theme: 'dark',
