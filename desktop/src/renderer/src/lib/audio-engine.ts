@@ -1,9 +1,5 @@
-// Web Audio API engine for microphone capture and audio playback.
-// Uses AudioWorklet for mic capture (runs on a separate audio thread),
-// with a ScriptProcessorNode fallback for environments that lack support.
-
 export const SAMPLE_RATE = 24000
-const FRAME_SIZE = 2400 // 100ms at 24kHz
+const FRAME_SIZE = 2400
 
 export type AudioDevice = {
   deviceId: string
@@ -16,24 +12,18 @@ export class AudioEngine {
   private micStream: MediaStream | null = null
   private source: MediaStreamAudioSourceNode | null = null
   private gainNode: GainNode | null = null
-  private playbackQueue: Float32Array[] = []
-  private activeSource: AudioBufferSourceNode | null = null
-  private isPlaying = false
+  private liveSources: Set<AudioBufferSourceNode> = new Set()
+  private nextStartTime = 0
   private muted = false
   private currentRms = 0
   private outputVolume = 1
   private outputMuted = false
 
-  // Output (AI voice) level meter — an AnalyserNode tapped off the
-  // playback gain. Cheap enough to keep always-on so the call bar can
-  // light up when the assistant is talking.
   private outputAnalyser: AnalyserNode | null = null
   private outputAnalyserBuf: Float32Array | null = null
 
-  // AudioWorklet path
   private workletNode: AudioWorkletNode | null = null
 
-  // ScriptProcessorNode fallback path
   private processor: ScriptProcessorNode | null = null
   private captureBuffer = new Float32Array(0)
 
@@ -43,15 +33,11 @@ export class AudioEngine {
   ) {
     this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE })
 
-    // Gain node for playback volume
     this.gainNode = this.audioCtx.createGain()
     this.gainNode.connect(this.audioCtx.destination)
     this.applyOutputGain()
 
-    // Tap the gain for an output level meter. The analyser lives on the
-    // gain's post-volume signal so the reading reflects what the user
-    // is actually hearing (useful for visualization; the call bar bars
-    // match perceived loudness this way).
+    // Tap the gain post-volume so the level meter reflects what the user hears.
     this.outputAnalyser = this.audioCtx.createAnalyser()
     this.outputAnalyser.fftSize = 512
     this.outputAnalyserBuf = new Float32Array(this.outputAnalyser.fftSize)
@@ -100,18 +86,32 @@ export class AudioEngine {
   playAudio(base64: string) {
     if (!this.audioCtx || !this.gainNode) return
 
-    const float32 = pcm16Base64ToFloat32(base64)
-    this.playbackQueue.push(float32)
-    if (!this.isPlaying) this.drainPlaybackQueue()
+    const samples = pcm16Base64ToFloat32(base64)
+    if (samples.length === 0) return
+
+    const buffer = this.audioCtx.createBuffer(1, samples.length, SAMPLE_RATE)
+    buffer.copyToChannel(samples, 0)
+
+    const source = this.audioCtx.createBufferSource()
+    source.buffer = buffer
+    source.connect(this.gainNode)
+
+    const startAt = Math.max(this.audioCtx.currentTime, this.nextStartTime)
+    source.start(startAt)
+    this.nextStartTime = startAt + buffer.duration
+
+    this.liveSources.add(source)
+    source.onended = () => {
+      this.liveSources.delete(source)
+    }
   }
 
   stopPlayback() {
-    this.playbackQueue = []
-    this.isPlaying = false
-    if (this.activeSource) {
-      try { this.activeSource.stop() } catch { /* already stopped */ }
-      this.activeSource = null
+    this.nextStartTime = 0
+    for (const source of this.liveSources) {
+      try { source.stop() } catch { /* already stopped */ }
     }
+    this.liveSources.clear()
   }
 
   setVolume(volume: number) {
@@ -142,7 +142,6 @@ export class AudioEngine {
 
   setMuted(muted: boolean) {
     this.muted = muted
-    // Forward mute state to the worklet thread
     this.workletNode?.port.postMessage({ type: 'mute', value: muted })
   }
 
@@ -172,8 +171,6 @@ export class AudioEngine {
     this.gainNode = null
   }
 
-  // --- Private: capture strategies ---
-
   private startWorkletCapture(onAudioData: (base64: string) => void) {
     if (!this.audioCtx || !this.source) return
 
@@ -189,12 +186,10 @@ export class AudioEngine {
       }
     }
 
-    // Forward initial mute state
     this.workletNode.port.postMessage({ type: 'mute', value: this.muted })
 
     this.source.connect(this.workletNode)
-    // AudioWorkletNode must be connected to destination (even silently)
-    // so the audio graph keeps processing.
+    // Worklet must be connected to destination (even silently) so the graph keeps pulling.
     this.workletNode.connect(this.audioCtx.destination)
   }
 
@@ -207,14 +202,12 @@ export class AudioEngine {
     this.processor.onaudioprocess = (e) => {
       const input = e.inputBuffer.getChannelData(0)
 
-      // Compute RMS for level meter
       let sum = 0
       for (let i = 0; i < input.length; i++) sum += input[i] * input[i]
       this.currentRms = Math.sqrt(sum / input.length)
 
       if (this.muted) return
 
-      // Accumulate and emit FRAME_SIZE chunks
       const merged = new Float32Array(this.captureBuffer.length + input.length)
       merged.set(this.captureBuffer)
       merged.set(input, this.captureBuffer.length)
@@ -235,26 +228,6 @@ export class AudioEngine {
     if (!this.gainNode) return
     this.gainNode.gain.value = this.outputMuted ? 0 : this.outputVolume
   }
-
-  private drainPlaybackQueue() {
-    if (!this.audioCtx || !this.gainNode || this.playbackQueue.length === 0) {
-      this.isPlaying = false
-      return
-    }
-    this.isPlaying = true
-    const samples = this.playbackQueue.shift()!
-    const buffer = this.audioCtx.createBuffer(1, samples.length, SAMPLE_RATE)
-    buffer.copyToChannel(samples, 0)
-    const source = this.audioCtx.createBufferSource()
-    source.buffer = buffer
-    source.connect(this.gainNode)
-    source.onended = () => {
-      if (this.activeSource === source) this.activeSource = null
-      this.drainPlaybackQueue()
-    }
-    this.activeSource = source
-    source.start()
-  }
 }
 
 export async function enumerateAudioDevices(): Promise<AudioDevice[]> {
@@ -267,8 +240,6 @@ export async function enumerateAudioDevices(): Promise<AudioDevice[]> {
       kind: d.kind as 'audioinput' | 'audiooutput',
     }))
 }
-
-// --- Helpers ---
 
 async function tryRegisterWorklet(ctx: AudioContext): Promise<boolean> {
   try {
