@@ -8486,11 +8486,11 @@ __metadata:
   linkType: hard
 
 "brace-expansion@npm:^5.0.2, brace-expansion@npm:^5.0.5":
-  version: 5.0.5
-  resolution: "brace-expansion@npm:5.0.5"
+  version: 5.0.6
+  resolution: "brace-expansion@npm:5.0.6"
   dependencies:
     balanced-match: "npm:^4.0.2"
-  checksum: 10/f259b2ddf04489da9512ad637ba6b4ef2d77abd4445d20f7f1714585f153435200a53fa6a2e4a5ee974df14ddad4cd16421f6f803e96e8b452bd48598878d0ee
+  checksum: 10/a7acf120fefa79e9d7c9c92898114f57c07596a3920197f3c5917e6a628b04220a5f7f9618c30bdd973a6576a32113b99f9c3f1c8245ccc399dd2a9a718d81d8
   languageName: node
   linkType: hard
 
@@ -19074,16 +19074,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-screens@npm:~4.24.0":
-  version: 4.24.0
-  resolution: "react-native-screens@npm:4.24.0"
+"react-native-screens@npm:~4.25.0":
+  version: 4.25.1
+  resolution: "react-native-screens@npm:4.25.1"
   dependencies:
     react-freeze: "npm:^1.0.0"
     warn-once: "npm:^0.1.0"
   peerDependencies:
     react: "*"
-    react-native: "*"
-  checksum: 10/1ac705f7c0c37f62f0c29c5bf477b4a2360c37dec6b689e7fa9a768cc8a08d828ac7260d168a60638d207e0be21ae22bb3f170d55f0ae97837c2053ba8e38aff
+    react-native: ">=0.82.0"
+  checksum: 10/b5ffdbf2a39407220564fdc41c7165f91defc51459ee1cce08a19e972a7a9af9608a18d93ffc6f04b3e969fc278ccaf3011175d1087d0a64dbe8e81d0bd5564d
   languageName: node
   linkType: hard
 
@@ -22950,7 +22950,7 @@ __metadata:
     react-native: "npm:0.85.3"
     react-native-reanimated: "npm:4.3.1"
     react-native-safe-area-context: "npm:~5.7.0"
-    react-native-screens: "npm:~4.24.0"
+    react-native-screens: "npm:~4.25.0"
     react-native-sse: "npm:^1.2.1"
     react-native-svg: "npm:15.15.4"
     react-native-web: "npm:^0.21.0"
