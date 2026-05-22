@@ -10,6 +10,11 @@ import {
   READ_TOOL_NAME,
   READ_TOOL_PARAMETERS,
 } from "./direct/read.js"
+import {
+  WRITE_TOOL_DESCRIPTION,
+  WRITE_TOOL_NAME,
+  WRITE_TOOL_PARAMETERS,
+} from "./direct/write.js"
 
 /**
  * Latency class drives the dispatch strategy in session.ts:
@@ -95,6 +100,13 @@ const READ_TOOL: RelayToolDefinition = {
   parameters: READ_TOOL_PARAMETERS as unknown as Record<string, unknown>,
 }
 
+const WRITE_TOOL: RelayToolDefinition = {
+  name: WRITE_TOOL_NAME,
+  description: WRITE_TOOL_DESCRIPTION,
+  latencyClass: "fast",
+  parameters: WRITE_TOOL_PARAMETERS as unknown as Record<string, unknown>,
+}
+
 export function getRelayTools(config: SessionConfigEvent): RelayToolDefinition[] {
   const tools: RelayToolDefinition[] = [ECHO_TOOL]
 
@@ -108,6 +120,7 @@ export function getRelayTools(config: SessionConfigEvent): RelayToolDefinition[]
 
   if (config.experimentalDirectTools) {
     tools.push(READ_TOOL)
+    tools.push(WRITE_TOOL)
   }
 
   return tools
@@ -180,6 +193,7 @@ export function executeSyncTool(
     case "ask_brain":
     case "web_search":
     case READ_TOOL_NAME:
+    case WRITE_TOOL_NAME:
       return null
     default:
       return JSON.stringify({ error: `unknown tool: ${name}` })

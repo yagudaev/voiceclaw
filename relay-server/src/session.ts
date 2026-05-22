@@ -14,6 +14,7 @@ import { executeSyncTool, findRelayTool, getRelayTools, isBlockingLatencyClass, 
 import { askBrain } from "./tools/brain.js"
 import { webSearch } from "./tools/web-search.js"
 import { runRead, READ_TOOL_NAME } from "./tools/direct/read.js"
+import { runWrite, WRITE_TOOL_NAME } from "./tools/direct/write.js"
 import { buildInstructions } from "./instructions.js"
 import { log, error as logError } from "./log.js"
 import { TurnTracer } from "./tracing/turn-tracer.js"
@@ -183,6 +184,10 @@ export class RelaySession {
     }
     if (name === READ_TOOL_NAME) {
       this.runReadTool(callId, args)
+      return
+    }
+    if (name === WRITE_TOOL_NAME) {
+      this.runWriteTool(callId, args)
       return
     }
     log(`[session:${this.id}] No blocking executor registered for tool: ${name}`)
@@ -499,6 +504,37 @@ export class RelaySession {
 
     this.tracer.endToolCall(callId, payload)
     this.emitToolCompleted(callId, READ_TOOL_NAME, payload)
+    this.adapter?.sendToolResult(callId, payload)
+  }
+
+  private async runWriteTool(callId: string, args: string) {
+    let parsed: { path?: unknown, content?: unknown }
+    try {
+      parsed = JSON.parse(args)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "invalid arguments"
+      const errorPayload = JSON.stringify({ error: msg })
+      this.tracer.endToolCall(callId, errorPayload, msg)
+      this.emitToolFailed(callId, WRITE_TOOL_NAME, msg, false)
+      this.adapter?.sendToolResult(callId, errorPayload)
+      return
+    }
+    const path = typeof parsed.path === "string" ? parsed.path : ""
+    const content = typeof parsed.content === "string" ? parsed.content : ""
+
+    log(`[session:${this.id}] write → ${path.slice(0, 120)} (${content.length} chars)`)
+    const result = await runWrite({ path, content })
+    const payload = JSON.stringify(result)
+
+    if ("error" in result) {
+      this.tracer.endToolCall(callId, payload, result.error)
+      this.emitToolFailed(callId, WRITE_TOOL_NAME, result.error, false)
+      this.adapter?.sendToolResult(callId, payload)
+      return
+    }
+
+    this.tracer.endToolCall(callId, payload)
+    this.emitToolCompleted(callId, WRITE_TOOL_NAME, payload)
     this.adapter?.sendToolResult(callId, payload)
   }
 
