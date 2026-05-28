@@ -1,6 +1,7 @@
 import { getConversation, getMessages, getSetting, updateConversationTitle } from '@/db'
 import { streamRealtimeText } from './chat'
 import { getProviderForRealtimeModel } from './use-realtime'
+import { DEFAULT_REALTIME_SERVER_URL } from './relay-config'
 
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
 const DEFAULT_VOICE_FOR_GEMINI = 'Zephyr'
@@ -21,7 +22,7 @@ export async function maybeGenerateTitle(conversationId: number) {
     const msgs = await getMessages(conversationId)
     if (msgs.length < 3) return
 
-    const serverUrl = await getSetting('realtime_server_url')
+    const serverUrl = (await getSetting('realtime_server_url')) || DEFAULT_REALTIME_SERVER_URL
     const apiKey = await getSetting('realtime_api_key')
     if (!serverUrl || !apiKey) {
       console.debug('[TitleGen] Brain Gateway not configured; skipping title generation')

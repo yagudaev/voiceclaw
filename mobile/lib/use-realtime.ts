@@ -44,6 +44,7 @@ export interface RealtimeCallbacks {
     callId: string,
     progress: { textDelta?: string, step?: string, summary?: string },
   ) => void
+  onToolCancelled?: (callIds: string[]) => void
   onTurnStarted?: () => void
   onTurnEnded?: () => void
   onSessionReady?: (sessionId: string) => void
@@ -197,6 +198,10 @@ export function useRealtime(callbacks: RealtimeCallbacks): RealtimeControls {
           step: data.step,
           summary: data.summary,
         })
+        break
+
+      case 'tool.cancelled':
+        cb.onToolCancelled?.(Array.isArray(data.callIds) ? data.callIds : [])
         break
 
       case 'turn.started':

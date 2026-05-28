@@ -14,6 +14,7 @@ import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
 import { usePipeline } from '@/lib/use-pipeline'
 import { useRealtime, getProviderForRealtimeModel, type RmsMetrics } from '@/lib/use-realtime'
+import { DEFAULT_REALTIME_SERVER_URL } from '@/lib/relay-config'
 import { useTranscriptBuffer } from '@/lib/use-transcript-buffer'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoCustomPipelineModule from '@/modules/expo-custom-pipeline/src/ExpoCustomPipelineModule'
@@ -352,6 +353,24 @@ export default function ChatScreen() {
           progressStep: latestStep ?? existing.progressStep,
         })
         return next
+      })
+    },
+    onToolCancelled: (callIds) => {
+      setToolCalls((prev) => {
+        let changed = false
+        const next = new Map(prev)
+        const startedAt = Date.now()
+        for (const callId of callIds) {
+          const existing = next.get(callId)
+          if (!existing || existing.status !== 'in-progress') continue
+          next.set(callId, {
+            ...existing,
+            status: 'cancelled',
+            durationMs: startedAt - existing.startedAt,
+          })
+          changed = true
+        }
+        return changed ? next : prev
       })
     },
     onTranscriptDelta: (text, role) => {
@@ -701,7 +720,7 @@ export default function ChatScreen() {
     await addMessage(conversationId, 'user', userInput)
     await loadMessages()
 
-    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const serverUrl = (await getSetting('realtime_server_url')) || DEFAULT_REALTIME_SERVER_URL
     const apiKey = await getSetting('realtime_api_key')
     if (!apiKey) {
       await addMessage(conversationId, 'assistant', 'Configure Brain Gateway URL in Settings to start chatting.')
@@ -823,7 +842,7 @@ export default function ChatScreen() {
   const startRealtimeCall = useCallback(async (): Promise<boolean> => {
     if (!conversationId) return false
 
-    const serverUrl = (await getSetting('realtime_server_url')) || 'ws://localhost:8080/ws'
+    const serverUrl = (await getSetting('realtime_server_url')) || DEFAULT_REALTIME_SERVER_URL
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
     const voice = normalizeRealtimeVoice(model, await getSetting('realtime_voice'))
     const apiKey = await getSetting('realtime_api_key')

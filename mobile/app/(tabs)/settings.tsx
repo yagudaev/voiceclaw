@@ -6,6 +6,7 @@ import { Text } from '@/components/ui/text'
 import { getSetting, setSetting, getLatencyAverages, type LatencyAverages } from '@/db'
 import { BRAND } from '@/lib/brand'
 import type { BrainConnectionMode } from '@/lib/chat'
+import { DEFAULT_REALTIME_SERVER_URL } from '@/lib/relay-config'
 import { connectPlugin, disconnectPlugin, getPluginStatus, addPluginStatusListener, type PluginConnectionStatus } from '@/lib/plugin-completion'
 import { runPipelineTests, type TestResult } from '@/lib/pipeline-test-runner'
 import { isOptedOut as isMobileOptedOut, setMobileOptedOut } from '@/lib/telemetry'
@@ -110,7 +111,7 @@ export default function SettingsScreen() {
   const [openaiTtsVoice, setOpenaiTtsVoice] = useState<typeof OPENAI_TTS_VOICES[number]>('alloy')
 
   // Realtime mode settings
-  const [realtimeServerUrl, setRealtimeServerUrl] = useState('ws://localhost:8080/ws')
+  const [realtimeServerUrl, setRealtimeServerUrl] = useState(DEFAULT_REALTIME_SERVER_URL)
   const [realtimeVoice, setRealtimeVoice] = useState<string>('Zephyr')
   const [realtimeApiKey, setRealtimeApiKey] = useState('')
   const [realtimeVolume, setRealtimeVolume] = useState(2.0)
@@ -509,7 +510,7 @@ export default function SettingsScreen() {
               <View className="gap-2">
                 <Text className="text-sm text-muted-foreground">Brain Gateway URL</Text>
                 <Input
-                  placeholder="ws://localhost:8080/ws"
+                  placeholder={DEFAULT_REALTIME_SERVER_URL}
                   value={realtimeServerUrl}
                   onChangeText={updateRealtimeServerUrl}
                   autoCapitalize="none"
