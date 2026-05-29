@@ -11,7 +11,8 @@ import { BRAND } from '@/lib/brand'
 import { useConversationContext } from '@/lib/conversation-context'
 import { maybeGenerateTitle } from '@/lib/title'
 import { useCallSounds } from '@/lib/sounds'
-import { useRealtime, getProviderForRealtimeModel, type RmsMetrics } from '@/lib/use-realtime'
+import { useRealtime, getProviderForRealtimeModel, type RealtimeCallbacks, type RealtimeConfig, type RmsMetrics } from '@/lib/use-realtime'
+import { useDirectGemini } from '@/lib/use-direct-gemini'
 import { DEFAULT_REALTIME_SERVER_URL } from '@/lib/relay-config'
 import { useAutoReconnect } from '@/lib/use-auto-reconnect'
 import ExpoRealtimeAudioModule from '@/modules/expo-realtime-audio/src/ExpoRealtimeAudioModule'
@@ -86,7 +87,16 @@ export default function ChatScreen() {
   const loadMessagesRef = useRef<() => Promise<void>>(async () => {})
   const startRealtimeCallRef = useRef<() => Promise<boolean>>(async () => false)
 
-  const realtime = useRealtime({
+  // 'direct' = phone ↔ Gemini Live directly (beta), 'relay' = phone ↔ desktop
+  // relay-proxy (default). Set per call in startRealtimeCall; toggleMute and
+  // stopRealtimeCall route through the active mode.
+  const activeModeRef = useRef<'direct' | 'relay'>('relay')
+  // Snapshot of the config used for the current call so we can rebuild a relay
+  // start() if direct-mode setup fails after we already committed to it.
+  const lastConfigRef = useRef<RealtimeConfig | null>(null)
+  const fallbackToRelayRef = useRef<((reason: string) => void) | null>(null)
+
+  const sharedCallbacks: RealtimeCallbacks = {
     onSessionReady: (sessionId) => {
       console.log('[Realtime] Session ready:', sessionId)
       setIsCallActive(true)
@@ -222,6 +232,15 @@ export default function ChatScreen() {
     },
     onRmsMetrics: (metrics) => {
       setRmsMetrics(metrics)
+    },
+  }
+
+  const realtime = useRealtime(sharedCallbacks)
+  const directGemini = useDirectGemini({
+    ...sharedCallbacks,
+    onDirectModeFailure: (reason) => {
+      console.warn('[Chat] Direct mode failed, falling back to relay-proxy:', reason)
+      fallbackToRelayRef.current?.(reason)
     },
   })
 
@@ -467,8 +486,13 @@ export default function ChatScreen() {
       .slice(-200)
       .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.content }))
 
-    console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length, echoGateEnabled, echoGateThreshold })
-    realtime.start({
+    const directPref = await getSetting('direct_provider_mode')
+    const directProviderModeEnabled = directPref === 'true'
+    // Direct mode only applies to Gemini today — OpenAI and Grok stay on the
+    // relay-proxy path until the relay learns to mint tokens for them too.
+    const useDirect = directProviderModeEnabled && isGemini
+
+    const startConfig: RealtimeConfig = {
       serverUrl,
       voice,
       model,
@@ -486,15 +510,42 @@ export default function ChatScreen() {
       instructionsOverride: systemPrompt || undefined,
       conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
       tracingEnabled,
-    })
+    }
+    lastConfigRef.current = startConfig
+    console.log('[Realtime] Starting session with', { serverUrl, voice, model, historyMessages: recentMessages.length, echoGateEnabled, echoGateThreshold, mode: useDirect ? 'direct' : 'relay' })
+
+    if (useDirect) {
+      activeModeRef.current = 'direct'
+      directGemini.start(startConfig)
+    } else {
+      activeModeRef.current = 'relay'
+      realtime.start(startConfig)
+    }
 
     return true
-  }, [conversationId, loadMessages, realtime])
+  }, [conversationId, loadMessages, realtime, directGemini])
   startRealtimeCallRef.current = startRealtimeCall
+
+  // If direct-mode setup fails (token mint / Gemini WS / session.prep), reuse
+  // the last config to bring the call up via the relay-proxy path so the user
+  // doesn't end up stranded mid-tap. Mirrors the auto-reconnect contract: we
+  // silently rotate the transport, the UI just sees a connecting → connected.
+  fallbackToRelayRef.current = (reason: string) => {
+    const config = lastConfigRef.current
+    if (!config) {
+      console.warn('[Chat] fallback requested but no last config; reason:', reason)
+      setIsConnecting(false)
+      return
+    }
+    activeModeRef.current = 'relay'
+    setIsConnecting(true)
+    realtime.start(config)
+  }
 
   const stopRealtimeCall = useCallback(() => {
     cancelReconnect()
-    realtime.stop()
+    if (activeModeRef.current === 'direct') directGemini.stop()
+    else realtime.stop()
     activeProvidersRef.current = null
     setIsCallActive(false)
     setIsMuted(false)
@@ -502,7 +553,7 @@ export default function ChatScreen() {
     setIsUserSpeaking(false)
     setToolCalls(settleInProgressToolCalls)
     soundsRef.current.playEnd()
-  }, [realtime, cancelReconnect])
+  }, [realtime, directGemini, cancelReconnect])
 
   useEffect(() => {
     if (reconnectState.status === 'failed') {
@@ -512,9 +563,10 @@ export default function ChatScreen() {
 
   const toggleMute = useCallback(async () => {
     const newMuted = !isMuted
-    realtime.setMuted(newMuted)
+    if (activeModeRef.current === 'direct') directGemini.setMuted(newMuted)
+    else realtime.setMuted(newMuted)
     setIsMuted(newMuted)
-  }, [isMuted, realtime])
+  }, [isMuted, realtime, directGemini])
 
   let baseMessages = messages as Message[]
   if (streamingText !== null) {

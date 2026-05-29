@@ -124,6 +124,10 @@ export default function SettingsScreen() {
   // Show latency
   const [showLatency, setShowLatencyState] = useState(false)
 
+  // Direct-to-provider beta — phone opens its own WS to Gemini Live, only
+  // bouncing tool execution off the desktop. Off by default.
+  const [directProviderMode, setDirectProviderMode] = useState<boolean>(false)
+
   // Langfuse tracing — defaults on in dev builds, off in release
   const [tracingEnabled, setTracingEnabled] = useState<boolean>(__DEV__)
 
@@ -269,6 +273,10 @@ export default function SettingsScreen() {
       const tr = await getSetting('tracing_enabled')
       if (tr === 'true') setTracingEnabled(true)
       else if (tr === 'false') setTracingEnabled(false)
+
+      const dpm = await getSetting('direct_provider_mode')
+      if (dpm === 'true') setDirectProviderMode(true)
+      else if (dpm === 'false') setDirectProviderMode(false)
 
       const optedOut = await isMobileOptedOut()
       setTelemetryEnabled(!optedOut)
@@ -454,6 +462,11 @@ export default function SettingsScreen() {
     setSetting('tracing_enabled', v ? 'true' : 'false')
   }, [])
 
+  const toggleDirectProviderMode = useCallback((v: boolean) => {
+    setDirectProviderMode(v)
+    setSetting('direct_provider_mode', v ? 'true' : 'false')
+  }, [])
+
   const toggleTelemetry = useCallback(async (v: boolean) => {
     setTelemetryEnabled(v)
     await setMobileOptedOut(!v)
@@ -595,6 +608,22 @@ export default function SettingsScreen() {
                 </Pressable>
               </View>
           </>
+        </Card>
+
+        <Card testID="direct-provider-card" className="gap-2 p-4">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 pr-3">
+              <Text className="text-lg font-semibold text-foreground">Direct to provider (beta)</Text>
+              <Text className="text-sm text-muted-foreground">
+                Connect straight to Gemini for lower latency on cellular. Tools still run on your desktop. OpenAI/Grok use the standard path.
+              </Text>
+            </View>
+            <Switch
+              testID="direct-provider-toggle"
+              value={directProviderMode}
+              onValueChange={toggleDirectProviderMode}
+            />
+          </View>
         </Card>
 
         <Card testID="debug-mode-card" className="gap-2 p-4">
