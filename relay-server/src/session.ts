@@ -858,7 +858,11 @@ export class RelaySession {
     }
     try {
       const instructions = buildInstructions(config)
-      const tools = getGeminiTools(config)
+      // Direct mode delegates tools via tool.exec, which only runs the
+      // standalone executors. Advertise only those so the model never calls
+      // a tool the direct path can't fulfill.
+      const directExecutable = new Set([READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, BASH_TOOL_NAME])
+      const tools = getGeminiTools(config).filter((t) => directExecutable.has(t.name))
       log(`[session:${this.id}] session.prep: ${instructions.length} chars, ${tools.length} tools`)
       this.send({ type: "session.prep.result", instructions, tools })
     } catch (err) {
