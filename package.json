@@ -43,7 +43,7 @@
     "brain:doctor": "node desktop/scripts/brain-doctor.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.0",
     "prettier": "^3.8.3"
   },
   "resolutions": {
