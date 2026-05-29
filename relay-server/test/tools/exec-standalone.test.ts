@@ -22,8 +22,53 @@ describe("executeStandaloneTool", () => {
     await rm(tmpRoot, { recursive: true, force: true })
   })
 
-  it("exposes exactly read/write/edit/bash via STANDALONE_TOOL_NAMES", () => {
-    expect([...STANDALONE_TOOL_NAMES].sort()).toEqual(["bash", "edit", "read", "write"])
+  it("exposes read/write/edit/bash + web_search via STANDALONE_TOOL_NAMES", () => {
+    expect([...STANDALONE_TOOL_NAMES].sort()).toEqual(["bash", "edit", "read", "web_search", "write"])
+  })
+
+  it("web_search returns ok=false when no Tavily key is supplied", async () => {
+    const outcome = await executeStandaloneTool(
+      "web_search",
+      JSON.stringify({ query: "latest news" }),
+    )
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) throw new Error("expected failure")
+    expect(outcome.error).toMatch(/Tavily API key not configured/)
+  })
+
+  it("web_search returns ok=false on an empty query", async () => {
+    const outcome = await executeStandaloneTool(
+      "web_search",
+      JSON.stringify({ query: "   " }),
+      { tavilyApiKey: "tvly-test" },
+    )
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) throw new Error("expected failure")
+    expect(outcome.error).toMatch(/query/)
+  })
+
+  it("web_search runs against Tavily and returns a JSON result (mocked fetch)", async () => {
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          query: "who won",
+          answer: "Team A won.",
+          results: [{ title: "Result", url: "https://example.com", content: "snippet" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    using _ = withFetch(fetchImpl as unknown as typeof fetch)
+
+    const outcome = await executeStandaloneTool(
+      "web_search",
+      JSON.stringify({ query: "who won" }),
+      { tavilyApiKey: "tvly-test" },
+    )
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) throw new Error(outcome.error)
+    const parsed = JSON.parse(outcome.result) as { answer: string, results: unknown[] }
+    expect(parsed.answer).toBe("Team A won.")
+    expect(parsed.results).toHaveLength(1)
   })
 
   it("rejects an unknown tool name with ok=false", async () => {
@@ -163,3 +208,15 @@ describe("executeStandaloneTool", () => {
     expect(fail.durationMs).toBeGreaterThanOrEqual(0)
   })
 })
+
+// Tiny scoped fetch shim that restores the global on dispose. Uses the
+// `using` declaration for guaranteed cleanup even on test failure.
+function withFetch(fn: typeof fetch): Disposable {
+  const original = globalThis.fetch
+  globalThis.fetch = fn
+  return {
+    [Symbol.dispose]: () => {
+      globalThis.fetch = original
+    },
+  }
+}

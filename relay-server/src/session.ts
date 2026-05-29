@@ -31,6 +31,10 @@ export class RelaySession {
   private ws: WebSocket
   private adapter: ProviderAdapter | null = null
   private config: SessionConfigEvent | null = null
+  // Direct mode resolves the Tavily key at session.prep time (config first, env
+  // fallback) and stashes it here, since the standalone tool.exec path carries
+  // no session.config to resolve it from.
+  private directTavilyKey: string | null = null
   private startedAt: number = Date.now()
   private turnCount: number = 0
   private tracer = new TurnTracer()
@@ -858,11 +862,11 @@ export class RelaySession {
     }
     try {
       const instructions = buildInstructions(config)
-      // Direct mode delegates tools via tool.exec, which only runs the
-      // standalone executors. Advertise only those so the model never calls
-      // a tool the direct path can't fulfill.
-      const directExecutable = new Set([READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, BASH_TOOL_NAME])
-      const tools = getGeminiTools(config).filter((t) => directExecutable.has(t.name))
+      this.directTavilyKey = resolveTavilyKey(config)
+      // Direct mode delegates tools via tool.exec, which runs the standalone
+      // executors. Advertise exactly the tools that path can fulfill so the
+      // model never calls one the direct path can't run.
+      const tools = getGeminiTools(config).filter((t) => STANDALONE_TOOL_NAMES.has(t.name))
       log(`[session:${this.id}] session.prep: ${instructions.length} chars, ${tools.length} tools`)
       this.send({ type: "session.prep.result", instructions, tools })
     } catch (err) {
@@ -951,6 +955,7 @@ export class RelaySession {
 
     executeStandaloneTool(name, args, {
       signal: controller.signal,
+      tavilyApiKey: this.directTavilyKey ?? undefined,
       onProgress: (event) => {
         if (controller.signal.aborted) return
         this.send({

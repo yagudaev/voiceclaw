@@ -168,6 +168,105 @@ describe("session direct-mode messages", () => {
     }
   })
 
+  it("session.prep advertises web_search when a Tavily key is available", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test"
+    try {
+      const { session, sent } = mountSession()
+      await deliver(session, {
+        type: "session.prep",
+        config: {
+          type: "session.config",
+          provider: "gemini",
+          voice: "Zephyr",
+          model: "gemini-3.1-flash-live-preview",
+          brainAgent: "enabled",
+          apiKey: "stub-key",
+        },
+      })
+      await waitForEvent(sent, (e) => e.type === "session.prep.result")
+      const result = sent.find((e) => e.type === "session.prep.result") as
+        | Extract<RelayEvent, { type: "session.prep.result" }>
+        | undefined
+      const names = (result?.tools ?? []).map((t) => t.name)
+      expect(names).toContain("web_search")
+      // echo_tool is a test-only tool the direct path can't fulfill — never advertised.
+      expect(names).not.toContain("echo_tool")
+    } finally {
+      delete process.env.TAVILY_API_KEY
+    }
+  })
+
+  it("session.prep omits web_search when no Tavily key is available", async () => {
+    delete process.env.TAVILY_API_KEY
+    const { session, sent } = mountSession()
+    await deliver(session, {
+      type: "session.prep",
+      config: {
+        type: "session.config",
+        provider: "gemini",
+        voice: "Zephyr",
+        model: "gemini-3.1-flash-live-preview",
+        brainAgent: "enabled",
+        apiKey: "stub-key",
+      },
+    })
+    await waitForEvent(sent, (e) => e.type === "session.prep.result")
+    const result = sent.find((e) => e.type === "session.prep.result") as
+      | Extract<RelayEvent, { type: "session.prep.result" }>
+      | undefined
+    const names = (result?.tools ?? []).map((t) => t.name)
+    expect(names).not.toContain("web_search")
+  })
+
+  it("tool.exec runs web_search end-to-end after prep (mocked Tavily)", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test"
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          query: "who won the game",
+          answer: "Team A.",
+          results: [{ title: "t", url: "https://e.com", content: "c" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    using _ = withFetch(fetchImpl as unknown as typeof fetch)
+    try {
+      const { session, sent } = mountSession()
+      // prep must run first: it resolves + stashes the Tavily key the
+      // standalone tool.exec path uses (the direct path carries no session.config).
+      await deliver(session, {
+        type: "session.prep",
+        config: {
+          type: "session.config",
+          provider: "gemini",
+          voice: "Zephyr",
+          model: "gemini-3.1-flash-live-preview",
+          brainAgent: "enabled",
+          apiKey: "stub-key",
+        },
+      })
+      await waitForEvent(sent, (e) => e.type === "session.prep.result")
+
+      await deliver(session, {
+        type: "tool.exec",
+        callId: "call-ws",
+        name: "web_search",
+        arguments: JSON.stringify({ query: "who won the game" }),
+      })
+      await waitForEvent(sent, (e) => e.type === "tool.result" || e.type === "tool.error")
+      const result = sent.find((e) => e.type === "tool.result") as
+        | Extract<RelayEvent, { type: "tool.result" }>
+        | undefined
+      expect(result).toBeDefined()
+      expect(result?.callId).toBe("call-ws")
+      expect(result?.name).toBe("web_search")
+      const parsed = JSON.parse(result?.result ?? "{}") as { answer: string }
+      expect(parsed.answer).toBe("Team A.")
+    } finally {
+      delete process.env.TAVILY_API_KEY
+    }
+  })
+
   it("mint_token falls back to ephemeral=false when the upstream call fails", async () => {
     process.env.GEMINI_API_KEY = "stub-relay-key"
     const fetchImpl = async () => new Response("forbidden", { status: 403 })

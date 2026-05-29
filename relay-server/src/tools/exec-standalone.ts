@@ -16,6 +16,7 @@ import { runRead, READ_TOOL_NAME } from "./direct/read.js"
 import { runWrite, WRITE_TOOL_NAME } from "./direct/write.js"
 import { runEdit, EDIT_TOOL_NAME } from "./direct/edit.js"
 import { runBash, BASH_TOOL_NAME } from "./direct/bash.js"
+import { webSearch } from "./web-search.js"
 import { ensureWorkspace } from "../workspace.js"
 
 export type StandaloneToolName =
@@ -23,12 +24,16 @@ export type StandaloneToolName =
   | typeof WRITE_TOOL_NAME
   | typeof EDIT_TOOL_NAME
   | typeof BASH_TOOL_NAME
+  | "web_search"
 
 export const STANDALONE_TOOL_NAMES = new Set<string>([
   READ_TOOL_NAME,
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
   BASH_TOOL_NAME,
+  // web_search is a server-side Tavily fetch — no desktop/workspace needed, so
+  // the direct (mobile → relay) path can fulfill it just like the file tools.
+  "web_search",
 ])
 
 export interface StandaloneProgress {
@@ -40,6 +45,10 @@ export interface StandaloneProgress {
 export interface StandaloneToolOptions {
   signal?: AbortSignal
   onProgress?: (event: StandaloneProgress) => void
+  // Tavily key for web_search. The session resolves it at session.prep time
+  // (config first, env fallback) since the direct tool.exec path carries no
+  // session.config to resolve it from.
+  tavilyApiKey?: string
 }
 
 export interface StandaloneToolSuccess {
@@ -79,6 +88,25 @@ export async function executeStandaloneTool(
       error: `invalid arguments: ${(err as Error).message}`,
       durationMs: Date.now() - startedAt,
     }
+  }
+
+  // web_search is a pure network call (Tavily) with no filesystem dependency,
+  // so it runs before ensureWorkspace — a workspace init failure must not block
+  // a web lookup.
+  if (name === "web_search") {
+    const apiKey = opts.tavilyApiKey?.trim()
+    if (!apiKey) {
+      return { ok: false, error: "Tavily API key not configured", durationMs: Date.now() - startedAt }
+    }
+    const query = typeof parsed.query === "string" ? parsed.query : ""
+    if (query.trim().length === 0) {
+      return { ok: false, error: "missing or empty query", durationMs: Date.now() - startedAt }
+    }
+    // webSearch encodes Tavily errors into the returned JSON (matching the
+    // in-session path), so a {error} payload is still a completed tool result
+    // the model reads — not a transport failure.
+    const result = await webSearch(query, { apiKey }, opts.signal)
+    return { ok: true, result, durationMs: Date.now() - startedAt }
   }
 
   try {
