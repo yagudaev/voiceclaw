@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { createHash } from "node:crypto"
-import { checkDeviceToken, hashDeviceToken, touchDeviceToken } from "../src/device-tokens.js"
+import { checkDeviceToken, touchDeviceToken } from "../src/device-tokens.js"
 
 describe("checkDeviceToken", () => {
   let prevUrl: string | undefined
@@ -20,17 +19,15 @@ describe("checkDeviceToken", () => {
     else process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = prevNonce
   })
 
-  it("hashDeviceToken matches sha256(plaintext) hex", () => {
-    const h = hashDeviceToken("vcd_example")
-    expect(h).toBe(createHash("sha256").update("vcd_example", "utf8").digest("hex"))
-    expect(h).toMatch(/^[0-9a-f]{64}$/)
-  })
-
-  it("returns ok with deviceId when the bridge reports the hash is valid", async () => {
+  it("posts the plaintext token to the bridge with the nonce header", async () => {
     let observedUrl: string | undefined
+    let observedMethod: string | undefined
+    let observedBody: string | undefined
     let observedHeaders: Record<string, string> | undefined
     using _ = withFetch(async (input, init) => {
       observedUrl = String(input)
+      observedMethod = init?.method
+      observedBody = typeof init?.body === "string" ? init.body : ""
       observedHeaders = init?.headers as Record<string, string>
       return new Response(JSON.stringify({ ok: true, deviceId: "dev-42" }), {
         status: 200,
@@ -40,8 +37,10 @@ describe("checkDeviceToken", () => {
     const result = await checkDeviceToken("vcd_plaintext")
     expect(result).toEqual({ ok: true, deviceId: "dev-42" })
 
-    const expectedHash = hashDeviceToken("vcd_plaintext")
-    expect(observedUrl).toContain(`/device-token/check?hash=${expectedHash}`)
+    expect(observedMethod).toBe("POST")
+    expect(observedUrl).toContain("/device-token/check")
+    expect(observedUrl).not.toContain("vcd_plaintext")
+    expect(JSON.parse(observedBody ?? "")).toEqual({ token: "vcd_plaintext" })
     expect(observedHeaders?.["x-voiceclaw-nonce"]).toBe("nonce-xyz")
   })
 

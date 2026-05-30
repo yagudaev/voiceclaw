@@ -1,15 +1,17 @@
 import { randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { URL } from 'node:url'
-import { lookupDeviceTokenByHash, touchDeviceToken } from '../device-tokens'
+import { hashDeviceToken, lookupDeviceTokenByHash, touchDeviceToken } from '../device-tokens'
 
 // Localhost-only HTTP endpoint the bundled relay calls to validate
-// inbound per-device tokens. The desktop owns the SQLite DB; the
-// relay (separate process, plain Node) shouldn't open it directly —
-// adding better-sqlite3 to the relay's deps would mean a second
-// native-ABI build of a module that the desktop already rebuilds for
-// Electron. So we expose a tiny loopback bridge instead and let the
-// relay hash a candidate token locally, then ask "is this hash valid?".
+// inbound per-device tokens. The desktop owns the SQLite DB AND the
+// token-hashing function; the relay (separate process, plain Node)
+// shouldn't open the DB directly — adding better-sqlite3 to the relay's
+// deps would mean a second native-ABI build of a module that the
+// desktop already rebuilds for Electron. So we expose a tiny loopback
+// bridge instead and let the relay forward the plaintext token; this
+// process hashes it against the stored sha256 digests and answers
+// "valid or not".
 //
 // Surface: bind 127.0.0.1 on an OS-picked port. A per-launch nonce is
 // required on every request via the x-voiceclaw-nonce header so a
@@ -80,18 +82,24 @@ function handleRequest(req: IncomingMessage, res: ServerResponse, nonce: string)
     return
   }
   const parsed = new URL(req.url, 'http://127.0.0.1')
-  if (req.method === 'GET' && parsed.pathname === '/device-token/check') {
-    const hash = parsed.searchParams.get('hash') ?? ''
-    if (!/^[0-9a-f]{64}$/.test(hash)) {
-      respond(res, 200, { ok: false })
-      return
-    }
-    const row = lookupDeviceTokenByHash(hash)
-    if (!row || row.revoked) {
-      respond(res, 200, { ok: false })
-      return
-    }
-    respond(res, 200, { ok: true, deviceId: row.id })
+  if (req.method === 'POST' && parsed.pathname === '/device-token/check') {
+    readJson(req)
+      .then((body) => {
+        const token = typeof (body as { token?: unknown }).token === 'string'
+          ? (body as { token: string }).token
+          : ''
+        if (token.length === 0) {
+          respond(res, 200, { ok: false })
+          return
+        }
+        const row = lookupDeviceTokenByHash(hashDeviceToken(token))
+        if (!row || row.revoked) {
+          respond(res, 200, { ok: false })
+          return
+        }
+        respond(res, 200, { ok: true, deviceId: row.id })
+      })
+      .catch(() => respond(res, 200, { ok: false }))
     return
   }
   if (req.method === 'POST' && parsed.pathname === '/device-token/touch') {

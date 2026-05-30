@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto"
 import { log, error as logError } from "./log.js"
 
 // Per-device-token validation client. The relay does NOT open the
@@ -6,8 +5,9 @@ import { log, error as logError } from "./log.js"
 // better-sqlite3 with a different ABI from the one the desktop
 // rebuilds against Electron). Instead the desktop main process
 // exposes a tiny loopback HTTP bridge and hands us the URL + a
-// per-launch nonce via env. We hash candidate plaintext tokens here
-// and ask the bridge "is this hash valid?".
+// per-launch nonce via env. The bridge owns the storage AND the
+// hashing — we forward the plaintext token over 127.0.0.1 and the
+// bridge tells us "is this valid?".
 //
 // Env contract (set by the desktop):
 //   VOICECLAW_DEVICE_TOKEN_CHECK_URL    e.g. http://127.0.0.1:54213
@@ -25,10 +25,6 @@ export type DeviceTokenCheck =
   | { ok: true; deviceId: string }
   | { ok: false }
 
-export function hashDeviceToken(plaintext: string): string {
-  return createHash("sha256").update(plaintext, "utf8").digest("hex")
-}
-
 export async function checkDeviceToken(plaintext: unknown): Promise<DeviceTokenCheck> {
   if (typeof plaintext !== "string" || plaintext.length === 0) {
     return { ok: false }
@@ -36,13 +32,14 @@ export async function checkDeviceToken(plaintext: unknown): Promise<DeviceTokenC
   const bridge = getBridgeConfig()
   if (!bridge) return { ok: false }
 
-  const hash = hashDeviceToken(plaintext)
-  const url = `${bridge.url}/device-token/check?hash=${encodeURIComponent(hash)}`
-
   try {
-    const res = await fetchWithTimeout(url, {
-      method: "GET",
-      headers: { [NONCE_HEADER]: bridge.nonce },
+    const res = await fetchWithTimeout(`${bridge.url}/device-token/check`, {
+      method: "POST",
+      headers: {
+        [NONCE_HEADER]: bridge.nonce,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ token: plaintext }),
     })
     if (!res.ok) {
       logError(`[device-tokens] bridge returned ${res.status}`)
