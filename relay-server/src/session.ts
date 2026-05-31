@@ -1,6 +1,6 @@
 // Relay session — manages the lifecycle of a single client connection
 
-import { randomUUID, timingSafeEqual } from "node:crypto"
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto"
 import { context, ROOT_CONTEXT } from "@opentelemetry/api"
 import type { WebSocket } from "ws"
 import {
@@ -887,7 +887,7 @@ export class RelaySession {
     const credential = await checkRelayCredential(apiKey)
     if (!credential.ok) {
       log(
-        `[session:${this.id}] session.auth failed (apiKey=${previewCredential(apiKey)}, reason=${credential.reason}: ${describeRejectReason(credential.reason)})`,
+        `[session:${this.id}] session.auth failed (fp=${credentialFingerprint(apiKey)}, reason=${credential.reason}: ${describeRejectReason(credential.reason)})`,
       )
       this.sendError("unauthorized", 401)
       try { this.ws.close(1008, "unauthorized") } catch { /* ignore */ }
@@ -1085,7 +1085,7 @@ export class RelaySession {
     const credential = await checkRelayCredential(config.apiKey)
     if (!credential.ok) {
       log(
-        `[session:${this.id}] Auth failed — invalid API key (apiKey=${previewCredential(config.apiKey)}, reason=${credential.reason}: ${describeRejectReason(credential.reason)})`,
+        `[session:${this.id}] Auth failed — invalid API key (fp=${credentialFingerprint(config.apiKey)}, reason=${credential.reason}: ${describeRejectReason(credential.reason)})`,
       )
       this.sendError("unauthorized", 401)
       this.ws.close()
@@ -1385,10 +1385,9 @@ export function describeRejectReason(reason: CredentialRejectReason): string {
   }
 }
 
-export function previewCredential(provided: unknown): string {
+export function credentialFingerprint(provided: unknown): string {
   if (typeof provided !== "string" || provided.length === 0) return "<empty>"
-  if (provided.length <= 10) return `${provided.slice(0, 2)}…(len=${provided.length})`
-  return `${provided.slice(0, 6)}…${provided.slice(-4)} (len=${provided.length})`
+  return createHash("sha256").update(provided, "utf8").digest("hex").slice(0, 8)
 }
 
 function constantTimeMatch(a: string, b: string): boolean {
