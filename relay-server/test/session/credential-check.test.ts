@@ -1,12 +1,11 @@
 // Locks the order in which checkRelayCredential evaluates auth paths.
-// Order is load-bearing:
+// Two paths after the master-key drop:
 //   1. RELAY_ALLOW_UNAUTHENTICATED dev hatch
-//   2. RELAY_API_KEY master key (timing-safe compare)
-//   3. per-device token via the localhost bridge
-// Most critical regression: the master-key path MUST succeed without
-// touching the device-token bridge, because that's how the desktop
-// self-connects and how `yarn dev` reaches the relay. An earlier
-// auth change broke this and locked everyone out.
+//   2. per-device token via the localhost bridge (this is how the
+//      desktop's own 'system'-kind device token authenticates too)
+// Most critical regression: a random UUID that happens to be lying
+// around (e.g. an old `realtime_api_key` value from a pre-migration
+// install) must NOT authenticate via any leftover master-key path.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { checkRelayCredential } from "../../src/session.js"
@@ -58,31 +57,7 @@ describe("checkRelayCredential", () => {
     expect(result).toEqual({ ok: true, via: "dev-hatch" })
   })
 
-  it("(2) master-key: RELAY_API_KEY matches => via=master-key, without calling the bridge", async () => {
-    process.env.RELAY_API_KEY = "the-real-key"
-    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
-    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "should-not-be-used"
-    let called = false
-    using _ = withFetch(async () => {
-      called = true
-      return new Response("nope", { status: 500 })
-    })
-    const result = await checkRelayCredential("the-real-key")
-    expect(result).toEqual({ ok: true, via: "master-key" })
-    expect(called).toBe(false)
-  })
-
-  it("(2) master-key: rejects a wrong key with constant-time compare even when same length", async () => {
-    process.env.RELAY_API_KEY = "the-real-key" // 12 chars
-    using _ = withFetch(async () =>
-      new Response(JSON.stringify({ ok: false }), { status: 200 }),
-    )
-    const result = await checkRelayCredential("the-fake-key") // 12 chars
-    expect(result).toEqual({ ok: false })
-  })
-
-  it("(3) device-token: bridge says ok => via=device-token with deviceId", async () => {
-    process.env.RELAY_API_KEY = "the-real-key"
+  it("(2) device-token: bridge says ok => via=device-token with deviceId", async () => {
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "n"
     using _ = withFetch(async () =>
@@ -95,8 +70,7 @@ describe("checkRelayCredential", () => {
     expect(result).toEqual({ ok: true, via: "device-token", deviceId: "phone-7" })
   })
 
-  it("(3) device-token: bridge says revoked => reject overall", async () => {
-    process.env.RELAY_API_KEY = "the-real-key"
+  it("(2) device-token: bridge says revoked => reject overall", async () => {
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "n"
     using _ = withFetch(async () =>
@@ -109,7 +83,38 @@ describe("checkRelayCredential", () => {
     expect(result).toEqual({ ok: false })
   })
 
-  it("reject: no RELAY_API_KEY + no bridge env + no dev-hatch => no auth path can succeed", async () => {
+  it("no master-key tier: a stray RELAY_API_KEY env value does NOT authenticate matching input", async () => {
+    // The pre-migration world treated this as a successful master-key match.
+    // Post-migration: RELAY_API_KEY is ignored entirely, and only the
+    // device-token bridge can vouch for the candidate.
+    process.env.RELAY_API_KEY = "leftover-master-key-from-old-env"
+    let bridgeCalled = false
+    using _ = withFetch(async () => {
+      bridgeCalled = true
+      return new Response(JSON.stringify({ ok: false }), { status: 200 })
+    })
+    const result = await checkRelayCredential("leftover-master-key-from-old-env")
+    expect(result).toEqual({ ok: false })
+    expect(bridgeCalled).toBe(false) // bridge env not set; short-circuited
+  })
+
+  it("no master-key tier: an old realtime_api_key UUID hitting the relay with bridge env present is asked of the bridge, NOT of RELAY_API_KEY", async () => {
+    process.env.RELAY_API_KEY = "leftover-master-key"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "n"
+    let bridgeCalls = 0
+    using _ = withFetch(async () => {
+      bridgeCalls += 1
+      return new Response(JSON.stringify({ ok: false }), { status: 200 })
+    })
+    // Even when the provided value EQUALS the leftover RELAY_API_KEY, it
+    // must take the device-token path and fail when the bridge rejects it.
+    const result = await checkRelayCredential("leftover-master-key")
+    expect(result).toEqual({ ok: false })
+    expect(bridgeCalls).toBe(1)
+  })
+
+  it("reject: no bridge env + no dev-hatch => no auth path can succeed", async () => {
     let called = false
     using _ = withFetch(async () => {
       called = true
@@ -120,19 +125,20 @@ describe("checkRelayCredential", () => {
     expect(called).toBe(false) // env-gated short-circuit before fetch
   })
 
-  it("self-connect regression: master RELAY_API_KEY authenticates with NO device-token bridge env at all", async () => {
-    // This is the exact scenario that broke: desktop self-connects with the
-    // bundled RELAY_API_KEY before any per-device token bridge exists.
-    process.env.RELAY_API_KEY = "bundled-desktop-key-uuid"
-    // VOICECLAW_DEVICE_TOKEN_CHECK_URL / NONCE intentionally absent.
-    let fetchCalled = false
-    using _ = withFetch(async () => {
-      fetchCalled = true
-      return new Response("fail", { status: 500 })
-    })
-    const ok = await checkRelayCredential("bundled-desktop-key-uuid")
-    expect(ok).toEqual({ ok: true, via: "master-key" })
-    expect(fetchCalled).toBe(false)
+  it("self-connect regression: desktop's 'system' device token authenticates via the bridge with no RELAY_API_KEY anywhere", async () => {
+    // Post-migration shape: the desktop bootstraps a 'system'-kind row in
+    // device_tokens and connects with its plaintext. The relay never sees
+    // RELAY_API_KEY — only the bridge lookup matters.
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "n"
+    using _ = withFetch(async () =>
+      new Response(JSON.stringify({ ok: true, deviceId: "this-mac" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    const ok = await checkRelayCredential("vcd_system-token-plaintext")
+    expect(ok).toEqual({ ok: true, via: "device-token", deviceId: "this-mac" })
   })
 
   it("self-connect regression: `yarn dev` (RELAY_ALLOW_UNAUTHENTICATED + no bridge) authenticates", async () => {
@@ -148,7 +154,8 @@ describe("checkRelayCredential", () => {
   })
 
   it("reject: non-string provided value", async () => {
-    process.env.RELAY_API_KEY = "x"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "n"
     expect(await checkRelayCredential(undefined)).toEqual({ ok: false })
     expect(await checkRelayCredential(null)).toEqual({ ok: false })
     expect(await checkRelayCredential(123 as unknown)).toEqual({ ok: false })

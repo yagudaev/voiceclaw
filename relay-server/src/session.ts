@@ -1,6 +1,6 @@
 // Relay session — manages the lifecycle of a single client connection
 
-import { randomUUID, timingSafeEqual } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import { context, ROOT_CONTEXT } from "@opentelemetry/api"
 import type { WebSocket } from "ws"
 import { checkDeviceToken, identifyDeviceToken, touchDeviceToken } from "./device-tokens.js"
@@ -39,11 +39,11 @@ export class RelaySession {
   // fallback) and stashes it here, since the standalone tool.exec path carries
   // no session.config to resolve it from.
   private directTavilyKey: string | null = null
-  // True once a valid RELAY_API_KEY has been presented (via session.auth or
-  // session.config). All privileged handlers — mint_token, tool.exec,
-  // session.prep, audio/frame/response/tool.result — require this. When
-  // RELAY_ALLOW_UNAUTHENTICATED=true is set (local dev), the flag flips true
-  // on first message so legacy fixtures still work.
+  // True once a valid device-token (or dev-hatch) has authenticated this
+  // connection via session.auth or session.config. All privileged handlers
+  // — mint_token, tool.exec, session.prep, audio/frame/response/tool.result —
+  // require this. When RELAY_ALLOW_UNAUTHENTICATED=true is set (local dev),
+  // the flag flips true on first message so legacy fixtures still work.
   private authed = false
   private startedAt: number = Date.now()
   private turnCount: number = 0
@@ -1073,8 +1073,9 @@ export class RelaySession {
       this.tracer.endSession()
     }
 
-    // Validate API key — accepts the master RELAY_API_KEY (desktop self-connect
-    // and `yarn dev`) OR a valid per-device token (paired mobile clients).
+    // Validate API key — accepts a per-device token (the desktop itself
+    // mints one of these as a 'system'-kind row, so its self-connect uses
+    // the same gate as paired phones) or the dev hatch for `yarn dev`.
     const credential = await checkRelayCredential(config.apiKey)
     if (!credential.ok) {
       log(`[session:${this.id}] Auth failed — invalid API key`)
@@ -1324,17 +1325,16 @@ async function retryTranscriptSync(opts: {
   throw new Error("transcript sync loop exited without result")
 }
 
-// Wire-level credential check. Order is load-bearing:
-//   1. RELAY_ALLOW_UNAUTHENTICATED dev hatch — bypass everything.
-//   2. Master RELAY_API_KEY (timing-safe compare) — desktop self-connect and
-//      `yarn dev`. MUST be checked before any device-token lookup so the
-//      desktop self-connect does not depend on the bridge being up.
-//   3. Per-device token — calls the localhost bridge owned by the desktop
-//      main process. Live revocation: the bridge re-checks SQLite on every
-//      call, so flipping `revoked = 1` rejects the next reconnect.
+// Wire-level credential check. There are now two paths:
+//   1. RELAY_ALLOW_UNAUTHENTICATED dev hatch — bypass everything. This is
+//      how `yarn dev` (standalone relay, no desktop) authenticates without
+//      a real token store.
+//   2. Per-device token — calls the localhost bridge owned by the desktop
+//      main process. The desktop's own self-connect rides this path too:
+//      its plaintext token is a regular 'system'-kind row in device_tokens,
+//      so there is no longer a separate master-key tier.
 type CredentialResult =
   | { ok: true; via: "dev-hatch" }
-  | { ok: true; via: "master-key" }
   | { ok: true; via: "device-token"; deviceId: string }
   | { ok: false }
 
@@ -1345,24 +1345,11 @@ export async function checkRelayCredential(provided: unknown): Promise<Credentia
   if (typeof provided !== "string" || provided.length === 0) {
     return { ok: false }
   }
-  const expected = process.env.RELAY_API_KEY?.trim()
-  if (expected && constantTimeMatch(provided, expected)) {
-    return { ok: true, via: "master-key" }
-  }
   const token = await checkDeviceToken(provided)
   if (token.ok) {
     return { ok: true, via: "device-token", deviceId: token.deviceId }
   }
   return { ok: false }
-}
-
-function constantTimeMatch(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, "utf8")
-  const bBuf = Buffer.from(b, "utf8")
-  // timingSafeEqual requires equal-length buffers. Bail when they differ so
-  // length-based early exits never reach the comparison itself.
-  if (aBuf.length !== bBuf.length) return false
-  return timingSafeEqual(aBuf, bBuf)
 }
 
 function isUnauthenticatedAllowed(): boolean {

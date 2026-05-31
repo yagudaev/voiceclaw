@@ -9,7 +9,7 @@ import { networkInterfaces } from "node:os"
 import { WebSocketServer } from "ws"
 import { RelaySession } from "./session.js"
 import { getTestPageHTML } from "./test-page.js"
-import { log, warn, error as logError } from "./log.js"
+import { log, warn } from "./log.js"
 import { gracefulShutdown } from "./shutdown.js"
 import { createRelayServer } from "./server-factory.js"
 
@@ -86,15 +86,13 @@ async function shutdown() {
 process.on("SIGTERM", () => { void shutdown() })
 process.on("SIGINT", () => { void shutdown() })
 
-if (!process.env.RELAY_API_KEY) {
-  // Production must have a relay key or the WS is wide open: any LAN/tailnet
-  // peer can run mint_token / tool.exec / session.prep. The dev override is
-  // explicit so we never ship "we just forgot to set it".
-  if (process.env.NODE_ENV === "production" && process.env.RELAY_ALLOW_UNAUTHENTICATED !== "true") {
-    logError("RELAY_API_KEY is not set in production — refusing to start (set RELAY_ALLOW_UNAUTHENTICATED=true to bypass for local dev only)")
-    process.exit(1)
-  }
-  warn("⚠️  RELAY_API_KEY is not set — WebSocket connections will not require authentication (dev only)")
+// Auth is gated per-message via checkRelayCredential — either the dev hatch
+// (RELAY_ALLOW_UNAUTHENTICATED=true) or a valid device token via the
+// localhost bridge. There is no master RELAY_API_KEY anymore. Standalone
+// `yarn dev` without the dev hatch will refuse every WS connection (honest:
+// the relay has no way to validate anything), and that's by design.
+if (process.env.RELAY_ALLOW_UNAUTHENTICATED === "true") {
+  warn("⚠️  RELAY_ALLOW_UNAUTHENTICATED=true — WebSocket auth is disabled (dev only)")
 }
 
 const httpScheme = tlsActive ? "https" : "http"
