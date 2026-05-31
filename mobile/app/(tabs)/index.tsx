@@ -27,6 +27,14 @@ const URL_IMAGE_REGEX = /(?:^|\s)(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\?
 const THINKING_MESSAGE_ID = -2
 const LISTENING_MESSAGE_ID = -3
 const DEFAULT_REALTIME_MODEL = 'gemini-3.1-flash-live-preview'
+const PAIR_NEEDED_MESSAGE = [
+  "This device isn't paired with your VoiceClaw desktop yet.",
+  '',
+  'On your Mac: open VoiceClaw → Settings → Devices → Pair a device.',
+  'Then open the iPhone Camera and scan the QR — it\'ll bring you right back here.',
+  '',
+  'Already paired? Re-pair from the same screen and tap the new QR.',
+].join('\n')
 const REALTIME_MODELS = [
   'gemini-3.1-flash-live-preview',
   'grok-voice-think-fast-1.0',
@@ -79,6 +87,8 @@ export default function ChatScreen() {
   const activeProvidersRef = useRef<ProviderInfo | null>(null)
   const cancelReconnectRef = useRef<(() => void) | null>(null)
   const triggerReconnectRef = useRef<(() => void) | null>(null)
+  const pairNeededShownRef = useRef(false)
+  const connectionErrorShownRef = useRef(false)
   const [rmsMetrics, setRmsMetrics] = useState<RmsMetrics | null>(null)
   const conversationIdRef = useRef<number | null>(null)
   conversationIdRef.current = conversationId
@@ -102,6 +112,8 @@ export default function ChatScreen() {
       setIsCallActive(true)
       setIsConnecting(false)
       cancelReconnectRef.current?.()
+      pairNeededShownRef.current = false
+      connectionErrorShownRef.current = false
       soundsRef.current.playJoin()
       ExpoRealtimeAudioModule.startCapture()
     },
@@ -218,17 +230,28 @@ export default function ChatScreen() {
     },
 
     onDisconnect: () => {
+      if (pairNeededShownRef.current) {
+        console.log('[Realtime] Disconnect after pair-needed; skipping auto-reconnect')
+        setIsConnecting(false)
+        return
+      }
       console.log('[Realtime] Unexpected disconnect, triggering auto-reconnect')
       triggerReconnectRef.current?.()
     },
     onError: (message, code) => {
       console.error(`[Realtime] Error (${code}): ${message}`)
+      const convId = conversationIdRef.current
+      if (!convId) return
       if (code === 401) {
-        const convId = conversationIdRef.current
-        if (convId) {
-          addMessage(convId, 'assistant', 'Authentication failed. Check your brain agent gateway URL and auth token in Settings.').then(() => loadMessagesRef.current())
-        }
+        cancelReconnectRef.current?.()
+        if (pairNeededShownRef.current) return
+        pairNeededShownRef.current = true
+        addMessage(convId, 'assistant', PAIR_NEEDED_MESSAGE).then(() => loadMessagesRef.current())
+        return
       }
+      if (connectionErrorShownRef.current) return
+      connectionErrorShownRef.current = true
+      addMessage(convId, 'assistant', `Couldn't reach your VoiceClaw desktop. Check that it's running and on the same network, then try again.`).then(() => loadMessagesRef.current())
     },
     onRmsMetrics: (metrics) => {
       setRmsMetrics(metrics)
@@ -440,6 +463,8 @@ export default function ChatScreen() {
 
   const startRealtimeCall = useCallback(async (): Promise<boolean> => {
     if (!conversationId) return false
+    pairNeededShownRef.current = false
+    connectionErrorShownRef.current = false
 
     const serverUrl = (await getSetting('realtime_server_url')) || DEFAULT_REALTIME_SERVER_URL
     const model = normalizeRealtimeModel(await getSetting('realtime_model'))
