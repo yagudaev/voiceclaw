@@ -208,13 +208,41 @@ describe("bridge discovery file fallback", () => {
   it("reads {url, nonce} from the discovery file when env is unset", () => {
     writeFileSync(
       discoveryPath,
-      JSON.stringify({ url: "http://127.0.0.1:55555", nonce: "disc-nonce", pid: 999 }),
+      JSON.stringify({ url: "http://127.0.0.1:55555", nonce: "disc-nonce", pid: process.pid }),
     )
     const cfg = getBridgeConfig()
-    expect(cfg).toEqual({ url: "http://127.0.0.1:55555", nonce: "disc-nonce", source: "discovery" })
+    expect(cfg?.url).toBe("http://127.0.0.1:55555")
+    expect(cfg?.nonce).toBe("disc-nonce")
+    expect(cfg?.source).toBe("discovery")
   })
 
-  it("env wins over discovery file when both are present", () => {
+  it("discovery file wins over env when both are present and the discovery pid is alive", () => {
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:11111"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "env-nonce"
+    writeFileSync(
+      discoveryPath,
+      JSON.stringify({ url: "http://127.0.0.1:55555", nonce: "disc-nonce", pid: process.pid }),
+    )
+    const cfg = getBridgeConfig()
+    expect(cfg?.source).toBe("discovery")
+    expect(cfg?.url).toBe("http://127.0.0.1:55555")
+    expect(cfg?.nonce).toBe("disc-nonce")
+  })
+
+  it("env wins when the discovery file's pid is dead (stale leftover from a crashed desktop)", () => {
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:11111"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "env-nonce"
+    const deadPid = 2_147_483_646
+    writeFileSync(
+      discoveryPath,
+      JSON.stringify({ url: "http://127.0.0.1:55555", nonce: "disc-nonce", pid: deadPid }),
+    )
+    const cfg = getBridgeConfig()
+    expect(cfg?.source).toBe("env")
+    expect(cfg?.url).toBe("http://127.0.0.1:11111")
+  })
+
+  it("env wins when the discovery file has no pid (older bridge writer)", () => {
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:11111"
     process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "env-nonce"
     writeFileSync(
@@ -223,8 +251,18 @@ describe("bridge discovery file fallback", () => {
     )
     const cfg = getBridgeConfig()
     expect(cfg?.source).toBe("env")
-    expect(cfg?.url).toBe("http://127.0.0.1:11111")
-    expect(cfg?.nonce).toBe("env-nonce")
+  })
+
+  it("discovery file is used when env points at a dead bridge and discovery pid is alive", () => {
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "stale-env-nonce"
+    writeFileSync(
+      discoveryPath,
+      JSON.stringify({ url: "http://127.0.0.1:55555", nonce: "live-disc-nonce", pid: process.pid }),
+    )
+    const cfg = getBridgeConfig()
+    expect(cfg?.source).toBe("discovery")
+    expect(cfg?.nonce).toBe("live-disc-nonce")
   })
 
   it("uses discovery file to validate a token via the relay's bridge call", async () => {

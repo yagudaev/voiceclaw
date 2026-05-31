@@ -212,4 +212,67 @@ describe("checkRelayCredential — discovery-file fallback", () => {
     expect(result).toEqual({ ok: true, via: "device-token", deviceId: "phone-disc" })
     expect(observedHeader).toBe("disc-nonce")
   })
+
+  it("uses live discovery file even when stale env URL/NONCE are also present", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const dir = mkdtempSync(join(tmpdir(), "vc-disc-stale-env-"))
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, "device-token-bridge.json")
+    writeFileSync(
+      path,
+      JSON.stringify({
+        url: "http://127.0.0.1:55556",
+        nonce: "live-nonce",
+        pid: process.pid,
+      }),
+    )
+    process.env.VOICECLAW_DEVICE_TOKEN_DISCOVERY_FILE = path
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:65535"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "stale-env-nonce"
+    __resetBridgeDiscoveryCacheForTests()
+    let observedHeader: string | undefined
+    let observedUrl: string | undefined
+    using _ = withFetch(async (input, init) => {
+      observedUrl = String(input)
+      const h = init?.headers as Record<string, string> | undefined
+      observedHeader = h?.["x-voiceclaw-nonce"]
+      return new Response(JSON.stringify({ ok: true, deviceId: "phone-fresh" }), { status: 200 })
+    })
+    const result = await checkRelayCredential("vcd_paired")
+    expect(result).toEqual({ ok: true, via: "device-token", deviceId: "phone-fresh" })
+    expect(observedHeader).toBe("live-nonce")
+    expect(observedUrl).toContain("127.0.0.1:55556")
+  })
+
+  it("falls back to env when discovery file's pid is dead", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const dir = mkdtempSync(join(tmpdir(), "vc-disc-dead-"))
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+    const path = join(dir, "device-token-bridge.json")
+    writeFileSync(
+      path,
+      JSON.stringify({
+        url: "http://127.0.0.1:55557",
+        nonce: "dead-disc-nonce",
+        pid: 2_147_483_646,
+      }),
+    )
+    process.env.VOICECLAW_DEVICE_TOKEN_DISCOVERY_FILE = path
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL = "http://127.0.0.1:55558"
+    process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE = "env-nonce"
+    __resetBridgeDiscoveryCacheForTests()
+    let observedHeader: string | undefined
+    using _ = withFetch(async (_input, init) => {
+      const h = init?.headers as Record<string, string> | undefined
+      observedHeader = h?.["x-voiceclaw-nonce"]
+      return new Response(JSON.stringify({ ok: true, deviceId: "phone-env" }), { status: 200 })
+    })
+    const result = await checkRelayCredential("vcd_paired")
+    expect(result).toEqual({ ok: true, via: "device-token", deviceId: "phone-env" })
+    expect(observedHeader).toBe("env-nonce")
+  })
 })

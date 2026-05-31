@@ -12,14 +12,22 @@ import { log, error as logError } from "./log.js"
 // bridge tells us "is this valid?".
 //
 // Two ways to find the bridge:
-//   1. Env vars VOICECLAW_DEVICE_TOKEN_CHECK_URL + _NONCE — injected
-//      by the desktop when it spawns the bundled relay itself.
-//   2. Discovery file at <userData>/device-token-bridge.json — written
+//   1. Discovery file at <userData>/device-token-bridge.json — written
 //      by the desktop on bridge start, removed on shutdown. Lets a
 //      standalone `yarn dev` relay (started by a developer in a
 //      separate shell, NOT spawned by Electron) talk to the running
 //      desktop bridge without any per-launch env wiring. The file is
 //      0600 and contains {url, nonce, pid, startedAt}.
+//   2. Env vars VOICECLAW_DEVICE_TOKEN_CHECK_URL + _NONCE — injected
+//      by the desktop when it spawns the bundled relay itself, OR
+//      sitting stale in a developer's shell / .env.
+//
+// Discovery file wins when its `pid` is alive: it is the live source
+// of truth from the currently-running desktop, so it cannot point at
+// a dead bridge. Env vars are only used when no fresh discovery file
+// exists. Otherwise stale env (left over from a previous launch, or
+// hardcoded in a dev shell) would silently shadow the actual running
+// bridge and every paired-device session.auth would 401.
 //
 // When neither is available (no desktop running at all),
 // `checkDeviceToken` returns `{ ok: false }` and the caller falls
@@ -110,7 +118,7 @@ export async function touchDeviceToken(deviceId: string): Promise<void> {
   }
 }
 
-export type BridgeConfig = { url: string; nonce: string; source: "env" | "discovery" }
+export type BridgeConfig = { url: string; nonce: string; source: "env" | "discovery"; pid?: number }
 
 let discoveryCache: { value: BridgeConfig | null; loadedAt: number; mtimeMs: number } | null = null
 
@@ -127,15 +135,17 @@ function readDiscoveryFile(): BridgeConfig | null {
       return discoveryCache.value
     }
     const raw = readFileSync(path, "utf-8")
-    const parsed = JSON.parse(raw) as { url?: unknown; nonce?: unknown }
+    const parsed = JSON.parse(raw) as { url?: unknown; nonce?: unknown; pid?: unknown }
     if (typeof parsed.url !== "string" || typeof parsed.nonce !== "string") {
       discoveryCache = { value: null, loadedAt: Date.now(), mtimeMs: stat.mtimeMs }
       return null
     }
+    const pid = typeof parsed.pid === "number" && Number.isFinite(parsed.pid) ? parsed.pid : undefined
     const value: BridgeConfig = {
       url: parsed.url.replace(/\/$/, ""),
       nonce: parsed.nonce,
       source: "discovery",
+      pid,
     }
     discoveryCache = { value, loadedAt: Date.now(), mtimeMs: stat.mtimeMs }
     return value
@@ -148,6 +158,21 @@ function readDiscoveryFile(): BridgeConfig | null {
       `[device-tokens] discovery file read failed (ignored): ${err instanceof Error ? err.message : String(err)}`,
     )
     return null
+  }
+}
+
+// `process.kill(pid, 0)` raises ESRCH for a dead pid and EPERM for a
+// pid owned by another user (still alive). Both ENOENT-style "no such
+// process" and the legitimate permission denied case are distinct.
+function isPidAlive(pid: number | undefined): boolean {
+  if (pid === undefined || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === "EPERM") return true
+    return false
   }
 }
 
@@ -181,12 +206,16 @@ function getDesktopUserDataDir(): string | null {
 }
 
 export function getBridgeConfig(): BridgeConfig | null {
+  const discovery = readDiscoveryFile()
+  if (discovery && isPidAlive(discovery.pid)) {
+    return discovery
+  }
   const url = process.env.VOICECLAW_DEVICE_TOKEN_CHECK_URL?.trim()
   const nonce = process.env.VOICECLAW_DEVICE_TOKEN_CHECK_NONCE?.trim()
   if (url && nonce) {
     return { url: url.replace(/\/$/, ""), nonce, source: "env" }
   }
-  return readDiscoveryFile()
+  return discovery
 }
 
 export function __resetBridgeDiscoveryCacheForTests(): void {
