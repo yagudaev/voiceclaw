@@ -1385,8 +1385,14 @@ export function describeRejectReason(reason: CredentialRejectReason): string {
   }
 }
 
+// Not a password hash — a non-reversible 8-char correlator emitted into
+// failed-auth logs so multiple rejections from the same credential can be
+// tied together without exposing any bytes of the credential itself. The
+// digest is never stored or used for verification.
+// lgtm[js/insufficient-password-hash]
 export function credentialFingerprint(provided: unknown): string {
   if (typeof provided !== "string" || provided.length === 0) return "<empty>"
+  // lgtm[js/insufficient-password-hash]
   return createHash("sha256").update(provided, "utf8").digest("hex").slice(0, 8)
 }
 
