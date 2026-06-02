@@ -3,6 +3,7 @@ import Link from "next/link"
 import {
   ArrowRight,
   Download,
+  Mail,
   Mic,
   PlayCircle,
   RadioTower,
@@ -28,6 +29,7 @@ import {
 const REPO_URL = "https://github.com/yagudaev/voiceclaw"
 const DOCS_URL = "https://docs.getvoiceclaw.com"
 const MAC_DOWNLOAD_URL = "/download"
+const JOIN_URL = "/join"
 const TESTFLIGHT_SIGNUP_URL = ""
 const DEMO_EMBED_URL = "https://www.youtube.com/embed/iAS7vj2vRaA"
 const HERO_BARS = [26, 44, 58, 42, 24, 34, 52, 78, 50, 31, 66, 86, 60, 38, 54, 82, 48, 72]
@@ -75,14 +77,13 @@ function Header({
           <ThemeSwitcher />
           <TrackCtaLink
             ctaLocation="header"
-            ctaLabel="Download Mac"
-            href={MAC_DOWNLOAD_URL}
-            aria-label="Download for Mac"
-            title={downloadTitle(macRelease)}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-3 py-2 text-[var(--brand-ink)] shadow-[var(--brand-shadow)] transition hover:border-[var(--brand-accent)]"
+            ctaLabel="Join"
+            href={JOIN_URL}
+            aria-label="Join the email list"
+            className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-accent)] px-3 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
           >
-            <Download className="size-4" />
-            <span className="hidden sm:inline">Download Mac</span>
+            <Mail className="size-4" />
+            <span className="hidden sm:inline">Join</span>
           </TrackCtaLink>
         </nav>
       </div>
@@ -116,20 +117,29 @@ function HeroSection({
               OpenAI-compatible endpoint and it handles the mic, the route, and
               the transcript while your agent does the real work.
             </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <TrackCtaLink
+                ctaLocation="hero"
+                ctaLabel="Join"
+                href={JOIN_URL}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
+              >
+                <Mail className="size-4" />
+                Join
+              </TrackCtaLink>
               <TrackCtaLink
                 ctaLocation="hero"
                 ctaLabel="Download for Mac"
                 href={MAC_DOWNLOAD_URL}
                 title={downloadTitle(macRelease)}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
               >
                 <Download className="size-4" />
                 Download for Mac
               </TrackCtaLink>
               <Link
                 href="#demo"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-line-strong)] bg-[var(--brand-panel)] px-5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-accent)]"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-transparent px-2 text-sm font-semibold text-[var(--brand-muted)] transition hover:text-[var(--brand-ink)]"
               >
                 <PlayCircle className="size-4" />
                 Watch demo
@@ -381,20 +391,30 @@ function GetStartedSection({
             Get started
           </p>
           <h2 className="mt-4 max-w-3xl font-serif text-5xl leading-none sm:text-6xl">
-            Start with the Mac app.
+            Get on the list.
           </h2>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--brand-contrast-muted)]">
-            Download VoiceClaw for macOS, connect your agent endpoint, and start
-            talking. <TestFlightSignupNotice contrast />
+            Drop your email for launch notes, TestFlight invites, and build
+            updates. Already on a Mac? Grab the desktop app below.{" "}
+            <TestFlightSignupNotice contrast />
           </p>
         </div>
         <div className="flex flex-col justify-end gap-3">
           <TrackCtaLink
             ctaLocation="get_started"
+            ctaLabel="Join"
+            href={JOIN_URL}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-accent)] px-5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--brand-accent-hover)]"
+          >
+            <Mail className="size-4" />
+            Join
+          </TrackCtaLink>
+          <TrackCtaLink
+            ctaLocation="get_started"
             ctaLabel="Download for Mac"
             href={MAC_DOWNLOAD_URL}
             title={downloadTitle(macRelease)}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--brand-contrast-fg)] px-5 text-sm font-semibold text-[var(--brand-contrast-bg)] transition hover:bg-[var(--brand-contrast-fg-hover)]"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-5 text-sm font-semibold text-[var(--brand-contrast-fg)] transition hover:border-[var(--brand-contrast-fg)]"
           >
             <Download className="size-4" />
             Download for Mac
@@ -404,7 +424,7 @@ function GetStartedSection({
             href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[var(--brand-contrast-line)] px-5 text-sm font-semibold text-[var(--brand-contrast-fg)] transition hover:border-[var(--brand-contrast-fg)]"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-transparent px-5 text-sm font-semibold text-[var(--brand-contrast-muted)] transition hover:text-[var(--brand-contrast-fg)]"
           >
             View source
             <ArrowRight className="size-4" />
