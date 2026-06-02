@@ -81,6 +81,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { slug: 'relay-server' },
+            { slug: 'voiceclaw-cloud' },
             { slug: 'desktop-app' },
             { slug: 'desktop/onboarding', label: 'Desktop: onboarding wizard' },
             { slug: 'desktop/call-bar', label: 'Desktop: floating call bar' },
