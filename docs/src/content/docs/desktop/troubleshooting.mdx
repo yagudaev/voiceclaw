@@ -119,6 +119,21 @@ The banner stays visible for the rest of the session so you can confirm the fix 
 
 The **Run brain diagnostic** tool (Settings → Debug) runs 11 checks, including a reachability test for your configured xAI key (check 11). If a key is invalid or your quota is exhausted, the diagnostic will flag the failing check and show the same hint as the runtime banner.
 
+## Startup crash dialog
+
+If VoiceClaw fails to start cleanly — for example, because a required component is missing or a stored database file became corrupted — you'll see a dialog titled **"Something went wrong starting VoiceClaw."** instead of the app's main window.
+
+The dialog gives you four ways forward:
+
+| Button | What it does |
+|--------|--------------|
+| **Reveal Logs** | Opens `~/Library/Logs/VoiceClaw/` in Finder. The most recent `startup-crash-<timestamp>.log` contains the full error. |
+| **Copy Diagnostic** | Copies the log file path plus a short, sanitized error summary to your clipboard. Paste it into a support email or GitHub issue. |
+| **Reinstall** | Opens the [latest release page](https://github.com/yagudaev/voiceclaw/releases/latest) so you can download a fresh build. |
+| **Quit** | Closes VoiceClaw. |
+
+The summary the **Copy Diagnostic** button puts on your clipboard is sanitized — your home directory shows up as `~/…` and the app bundle as `<app>/…`, so it's safe to paste into chat or a public issue. The full unsanitized log on disk stays local.
+
 ## Common problems
 
 **The assistant isn't responding.** Check that your Gemini API key is saved correctly in Settings → Provider. If the key is valid but calls still fail, restart VoiceClaw.
