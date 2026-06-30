@@ -54,7 +54,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.0",
+    "@babel/core": "^7.29.6",
     "@types/react": "~19.2.10",
     "canvas": "^3.2.3",
     "expo-mcp": "~0.2.1",
