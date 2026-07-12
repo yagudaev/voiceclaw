@@ -1,0 +1,73 @@
+---
+title: VoiceClaw Cloud
+description: What VoiceClaw Cloud is, how cloud sign-in works, and when you need it (vs running fully self-hosted with your own API keys).
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+VoiceClaw Cloud is the optional hosted service behind sign-in for the desktop and mobile apps. It lives at `cloud.getvoiceclaw.com` and is what runs when you click *Continue with Google* (or *Continue with Apple*) in the wizard.
+
+Cloud is **opt-in**. The desktop app works fully self-hosted with your own API keys — no account, no internet trip through our servers. Sign-in only matters when you want features that need an identity, like the Pro tier or the upcoming phone↔desktop relay.
+
+## Cloud vs self-hosted
+
+|  | Self-hosted (BYO key) | VoiceClaw Cloud |
+| --- | --- | --- |
+| Account required | No | Yes (Google or Apple) |
+| Where API keys live | Your machine, encrypted with macOS Keychain | We mint short-lived broker tokens on your behalf |
+| Audio path | Your laptop ↔ Gemini/OpenAI/Grok directly | Your laptop ↔ Gemini/OpenAI/Grok directly |
+| Phone↔desktop link | Tailscale (you set it up) | Routed through us, no Tailscale needed *(coming soon)* |
+| What we store about you | Nothing | Email, OAuth provider sub, list of signed-in devices |
+| Cost | API provider's bill | Free tier or Pro subscription *(Pro coming soon)* |
+
+The audio path is identical in both modes. Sign-in does not put us between you and the AI provider for voice traffic.
+
+## Signing in
+
+In the desktop wizard, on the *Sign in* step, click **Continue with Google** or **Continue with Apple**. Your browser opens to `cloud.getvoiceclaw.com/api/auth/<provider>/start?target=desktop` and walks you through the provider's sign-in. When it's done, the browser shows a "Signed in. Returning to VoiceClaw…" page and hands back to the desktop app via a `voiceclaw://auth/callback?ticket=…` deep link.
+
+The desktop app exchanges that ticket for a long-lived **device token** — an HS256 JWT scoped to that one device, stored encrypted in macOS Keychain via Electron's `safeStorage`. We never see the plaintext token after we mint it; we keep only its SHA-256 hash to recognize the device on later requests.
+
+Tickets expire after 90 seconds, so if your browser sits on the callback page longer than that, you'll need to click *Continue with Google* again. The flow is idempotent — retrying is safe and produces a fresh ticket.
+
+## What we store
+
+| Field | Where | Why |
+| --- | --- | --- |
+| `email` | Postgres on `cloud.getvoiceclaw.com` | Identity, future billing emails |
+| `googleSub` / `appleSub` | Postgres | Stable identifier from the provider — survives email changes |
+| `name` | Postgres | Display name in the wizard |
+| `deviceId` + `tokenHash` | Postgres | Recognize your signed-in devices, support per-device revocation |
+| `lastSeenAt` per device | Postgres | Show "last used 2 hours ago" in a future settings page |
+
+We do **not** store: voice audio, transcripts, conversations, message history, screen captures, your provider keys, or anything you say to the AI. None of that ever reaches `cloud.getvoiceclaw.com`. It lives on your Mac (in `~/Library/Application Support/VoiceClaw/`) or wherever the AI provider holds it.
+
+## Apple Sign-in details
+
+Apple's flow has two quirks worth knowing:
+
+- **Hide My Email** wraps your real address in a relay like `xyz@privaterelay.appleid.com`. Mail to that address still reaches you. We store the relay address as-is — never see your real one.
+- **Names are sent only on first sign-in.** If you sign out and back in via Apple, Apple stops sending your name. We persist whatever name you provided the first time and don't clobber it on subsequent sign-ins.
+
+## Multiple devices, multiple sign-ins
+
+Each device — your Mac, your iPhone, a second Mac — gets its own device token. Signing in on one device does not sign you in on the others. They share an identity (your `User` row), not a token. Revoking one device leaves the others working.
+
+## Self-hosters
+
+If you're running VoiceClaw self-hosted with your own Gemini/OpenAI/Grok keys, you can ignore this entirely. The wizard's *Sign in* step is optional — skip it, fill in your provider key, and your app calls the AI directly. `cloud.getvoiceclaw.com` is never contacted.
+
+The phone↔desktop link works through Tailscale today; the cloud-hosted alternative (so phone works without a desktop on the same network) will require a cloud account when it ships, but BYO-key + Tailscale will keep working.
+
+<Aside type="note" title="Roadmap">
+This page describes only what ships today: cloud auth and per-device tokens. Coming next: a free trial of Gemini Live without paste-your-own-key (via short-lived broker tokens), a Pro tier with Stripe, and a Tailscale-replacement relay for phone↔desktop. Each will get its own page here when it lands.
+</Aside>
+
+## Why a separate service
+
+`getvoiceclaw.com` (the marketing site) and `cloud.getvoiceclaw.com` (the auth + broker) are deliberately separate.
+
+- The marketing site is open source, deployed on Vercel, and has no database. Anyone can read its source on GitHub and propose copy changes.
+- The cloud service is closed source and lives on our infrastructure. It holds account data and (later) handles billing, so its source isn't part of the public repo.
+
+Both are run by Nano3 Labs. If you want to run the entire stack yourself with no Nano3 Labs involvement, the self-hosted path is supported and complete — that's the dual-path commitment.

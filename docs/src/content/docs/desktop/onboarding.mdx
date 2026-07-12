@@ -13,7 +13,7 @@ The first time you open VoiceClaw on a Mac, a six-step wizard runs before the ma
 
 1. **Welcome.** A short pitch and a "let's set up" button. No data captured.
 
-2. **Sign in (optional).** Click *Continue with Google* and we open `https://getvoiceclaw.com/api/auth/google/start?target=desktop` in your browser. Complete the Google sign-in, then your browser shows a "Signed in. Returning to VoiceClaw…" page and hands control back to the desktop app via a `voiceclaw://auth/callback?ticket=…` deep link. The desktop app exchanges that ticket for a device token and stores it encrypted in its local database (see *What gets saved* below). If you close the browser before finishing, tap *Cancel* in the app and try again. Sign-in is fully optional — your API keys work with or without an account.
+2. **Sign in (optional).** Click *Continue with Google* and we open `https://cloud.getvoiceclaw.com/api/auth/google/start?target=desktop` in your browser. Complete the Google sign-in, then your browser shows a "Signed in. Returning to VoiceClaw…" page and hands control back to the desktop app via a `voiceclaw://auth/callback?ticket=…` deep link. The desktop app exchanges that ticket for a device token and stores it encrypted in its local database (see *What gets saved* below). If you close the browser before finishing, tap *Cancel* in the app and try again. Sign-in is fully optional — your API keys work with or without an account. See [VoiceClaw Cloud](/voiceclaw-cloud/) for what we store on the server side.
 
 3. **Permissions.** Two rows: microphone and screen recording. The wizard reads current state via `systemPreferences.getMediaAccessStatus()`. Microphone can be requested in-app; screen recording opens the matching pane in System Settings (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). The wizard polls every second while you're on this step, so granting a permission in System Settings flips the row to a green check without you having to click anything else. (Accessibility will be asked for separately when the AX-based screen-text-reader feature lands; today nothing in the binary consumes that grant, so the wizard doesn't ask.)
 
@@ -77,9 +77,9 @@ The desktop app registers `voiceclaw://` as a URL handler at startup via `app.se
 voiceclaw://auth/callback?ticket=<opaque>
 ```
 
-The `ticket` query parameter is exchanged for a device token at `https://getvoiceclaw.com/api/auth/ticket/redeem`. Tickets expire after 90 seconds — if your browser takes unusually long on the callback page before the deep link fires, the redeem will fail with "That sign-in link already expired. Try again." Just click *Continue with Google* again; the flow is idempotent. If the redeem fails for any other reason, the wizard surfaces the error inline on the sign-in step instead of silently advancing.
+The `ticket` query parameter is exchanged for a device token at `https://cloud.getvoiceclaw.com/api/auth/ticket/redeem`. Tickets expire after 90 seconds — if your browser takes unusually long on the callback page before the deep link fires, the redeem will fail with "That sign-in link already expired. Try again." Just click *Continue with Google* again; the flow is idempotent. If the redeem fails for any other reason, the wizard surfaces the error inline on the sign-in step instead of silently advancing.
 
-To override the auth host (useful for testing against a Vercel preview deploy), set `VOICECLAW_AUTH_BASE_URL=https://my-preview.vercel.app` before launching. The default is `https://getvoiceclaw.com`.
+To override the auth host (useful for testing against a local or staging deploy), set `VOICECLAW_AUTH_BASE_URL=https://my-staging-host` before launching. The default is `https://cloud.getvoiceclaw.com`.
 
 ## IPC surface
 
