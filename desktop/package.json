@@ -44,7 +44,7 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "lucide-react": "^1.11.0",
-    "postcss": "^8.5.3",
+    "postcss": "^8.5.23",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0",
